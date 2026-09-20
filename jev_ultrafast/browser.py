@@ -2,12 +2,16 @@
 
 import hashlib
 import json
+import os
 import sys
 import time
 from pathlib import Path
 
 from browser_harness.admin import ensure_daemon
 from browser_harness.helpers import cdp
+
+VIEWPORT_WIDTH = int(os.environ.get("VIEWPORT_WIDTH", 1120))
+VIEWPORT_HEIGHT = int(os.environ.get("VIEWPORT_HEIGHT", 780))
 
 # Atomically read visible content and controls, preserving actual DOM node identity.
 READ_STATE = Path(__file__).with_name("snapshot.js").read_text()
@@ -22,7 +26,13 @@ class Browser:
         ensure_daemon()
         self.target = cdp("Target.createTarget", url="about:blank", background=True)["targetId"]
         self.session = cdp("Target.attachToTarget", targetId=self.target, flatten=True)["sessionId"]
-        self.call("Emulation.setDeviceMetricsOverride", width=1120, height=780, deviceScaleFactor=1, mobile=False)
+        self.call(
+            "Emulation.setDeviceMetricsOverride",
+            width=VIEWPORT_WIDTH,
+            height=VIEWPORT_HEIGHT,
+            deviceScaleFactor=1,
+            mobile=False,
+        )
         # Keep rAF/menus rendering in an owned background tab, without activating the user's Chrome tab.
         self.call("Emulation.setFocusEmulationEnabled", enabled=True)
         self.call("Page.navigate", url=url)
