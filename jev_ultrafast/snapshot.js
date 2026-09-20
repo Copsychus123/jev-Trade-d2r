@@ -79,6 +79,43 @@
       if (editable) actions.push({...base,kind:'click',value,label:'Open '+base.label});
     }
   }
+  // Icon-only affordances. Component libraries wire up <div>/<span> + inline <svg> with a click
+  // handler but no role, no prose and often no overlay/list context, so the table above never
+  // sees them and the policy can only answer BLOCKED. Admit them on icon evidence alone (never
+  // the row's own text), innermost candidate per subtree, and keep inside the 250-action cap so
+  // no native control is displaced.
+  const ICON_TEXT_LIMIT=12, ICON_CAP=40;
+  const iconEvidence=e=>{
+    const svg=e.querySelector('svg'), img=e.querySelector('img');
+    const token=svg&&[...(svg.getAttribute('class')||'').split(/\s+/)]
+      .filter(c=>/icon/i.test(c)).map(c=>c.replace(/^.*?icon-/,'').replace(/icon$/i,'')).filter(Boolean)[0];
+    return (e.getAttribute('aria-label') || e.getAttribute('title') ||
+      svg?.querySelector('title')?.textContent || svg?.getAttribute('aria-label') || svg?.id ||
+      img?.getAttribute('alt') || img?.id || token || '').trim().slice(0,120);
+  };
+  const nativeInside='input,select,textarea,button,a[href],[contenteditable="true"]';
+  // Names here are kept locally unique so this block can land next to the other clickable
+  // passes (#22/#24) in either order without redeclaring theirs.
+  const iconSeen=new Set(actions.map(a=>a.node)), iconCandidates=[];
+  for (const e of document.querySelectorAll('div,span,li,td,dd,p,section,label,article')) {
+    if (getComputedStyle(e).cursor!=='pointer') continue;
+    if (e.closest('svg') || e.closest(nativeInside) || e.matches(':disabled') ||
+        e.closest('[aria-disabled="true"],[inert]') || !visible(e) || e.querySelector(nativeInside)) continue;
+    if (name(e).trim().length>ICON_TEXT_LIMIT) continue;
+    const r=e.getBoundingClientRect(), x=r.x+r.width/2, y=r.y+r.height/2;
+    if (r.width<=0 || r.height<=0 || x<0 || y<0 || x>=innerWidth || y>=innerHeight) continue;
+    const label=iconEvidence(e), node=identity(e);
+    if (!label || iconSeen.has(node)) continue;
+    iconCandidates.push({element:e,node,label,rect:{x:r.x,y:r.y,w:r.width,h:r.height}});
+  }
+  const budget=Math.min(ICON_CAP,Math.max(0,250-actions.length));
+  let added=0;
+  for (const c of iconCandidates) {
+    if (added>=budget) break;
+    if (iconCandidates.some(o=>o.element!==c.element && c.element.contains(o.element))) continue;
+    actions.push({node:c.node,role:'button',kind:'click',label:c.label,rect:c.rect,value:''});
+    added++;
+  }
   const words=[], walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
   const range=document.createRange(); let node,length=0;
   while ((node=walker.nextNode()) && length<6000) {

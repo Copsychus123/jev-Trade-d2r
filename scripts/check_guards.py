@@ -80,6 +80,17 @@ def main():
           <select id="category" aria-label="Category">
             <option>All</option><option>Design</option><option disabled>Unavailable</option>
           </select></form><aside id="unrelated">News</aside>
+          <div id="icononly" style="cursor:pointer"
+               onclick="window.iconClicks=(window.iconClicks||0)+1">
+            <svg id="star" width="16" height="16"><title>Star</title></svg></div>
+          <div id="iconsvgid" style="cursor:pointer">
+            <svg id="settings" width="16" height="16"><path d="M0 0h16v16H0z"/></svg></div>
+          <div id="iconcard" style="cursor:pointer">
+            <svg id="cardicon" width="16" height="16"/><span>Lenovo ThinkPad X1 Carbon Gen 12</span></div>
+          <div id="iconhidden" style="cursor:pointer;display:none">
+            <svg id="hiddenicon" width="16" height="16"/></div>
+          <span id="iconoff" style="cursor:pointer" aria-disabled="true">
+            <svg id="officon" width="16" height="16"/></span>
         """))
         page = browser.observe(screenshot=False)
         buy = next(a for a in page["actions"] if a["label"] == "Buy")
@@ -107,6 +118,16 @@ def main():
         assert not any(a["label"] == "Disabled" or a.get("value") == "never expose this" for a in actions)
         assert [a["value"] for a in actions if a["kind"] == "select"] == ["Design"]
         passed.append("native controls expose only supported operations and safe values")
+
+        # Icon-only affordances: a role-less <div>/<span> wrapping an <svg> is otherwise invisible
+        # to the table, while an icon hidden, disabled or carrying the row's prose must stay out.
+        icons = {a["label"]: a for a in actions if a["kind"] == "click"}
+        assert icons.get("Star", {}).get("role") == "button", sorted(icons)
+        assert "settings" in icons, sorted(icons)
+        assert not {"cardicon", "hiddenicon", "officon"} & set(icons), sorted(icons)
+        browser.act(icons["Star"], page)
+        assert browser.evaluate("window.iconClicks") == 1
+        passed.append("icon-only affordances are reachable and executable")
 
         select = next(a for a in actions if a["kind"] == "select")
         browser.act(select, page)
