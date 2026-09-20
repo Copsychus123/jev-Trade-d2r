@@ -106,9 +106,28 @@ class Browser:
         self.after_input = action if action["kind"] != "wait" else None
         return result
 
+    def release(self):
+        """Detach while leaving the controlled tab open in Chrome."""
+        if not self.session:
+            return
+        try:
+            cdp("Target.detachFromTarget", sessionId=self.session)
+        except TimeoutError:
+            pass
+        except RuntimeError as error:
+            message = str(error).lower()
+            session_gone = "session" in message and any(
+                detail in message for detail in ("closed", "not found", "does not exist", "invalid")
+            )
+            if not session_gone:
+                raise
+        self.session = None
+        self.target = None
+
     def close(self):
         if self.target:
             cdp("Target.closeTarget", targetId=self.target)
+            self.session = None
             self.target = None
 
 

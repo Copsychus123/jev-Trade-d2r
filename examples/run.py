@@ -9,7 +9,10 @@ parser.add_argument("--url", required=True)
 parser.add_argument("--goal", action="append", required=True, help="Repeat for an ordered list of goals.")
 args = parser.parse_args()
 
-with Agent(args.url, args.goal) as agent:
+agent = Agent(args.url, args.goal)
+try:
     for state in agent.run():
         print(f"{state['elapsed_ms']:>5} ms  {len(state['history'])} actions  {state['status']}")
     print(state["page"]["url"])
+finally:
+    agent.release()

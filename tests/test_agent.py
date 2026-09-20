@@ -239,6 +239,58 @@ def test_observation_is_one_atomic_browser_read(monkeypatch):
     assert cdp.call_args.args[0] == "Runtime.evaluate"
 
 
+def test_browser_release_detaches_without_closing_target(monkeypatch):
+    import jev_ultrafast.browser as browser
+
+    cdp = Mock()
+    monkeypatch.setattr(browser, "cdp", cdp)
+    b = browser.Browser.__new__(browser.Browser)
+    b.target = "target-1"
+    b.session = "session-1"
+    b.release()
+    cdp.assert_called_once_with("Target.detachFromTarget", sessionId="session-1")
+    assert b.target is None and b.session is None
+    b.release()
+    cdp.assert_called_once_with("Target.detachFromTarget", sessionId="session-1")
+
+
+@pytest.mark.parametrize(
+    "error",
+    [RuntimeError("Session closed"), TimeoutError("Daemon did not respond")],
+)
+def test_browser_release_ignores_a_lost_or_timed_out_cdp_session(monkeypatch, error):
+    import jev_ultrafast.browser as browser
+
+    cdp = Mock(side_effect=error)
+    monkeypatch.setattr(browser, "cdp", cdp)
+    b = browser.Browser.__new__(browser.Browser)
+    b.target = "target-1"
+    b.session = "session-1"
+    b.release()
+    cdp.assert_called_once_with("Target.detachFromTarget", sessionId="session-1")
+    assert b.target is None and b.session is None
+
+
+def test_browser_release_preserves_state_on_an_unexpected_cdp_error(monkeypatch):
+    import jev_ultrafast.browser as browser
+
+    cdp = Mock(side_effect=RuntimeError("Permission denied"))
+    monkeypatch.setattr(browser, "cdp", cdp)
+    b = browser.Browser.__new__(browser.Browser)
+    b.target = "target-1"
+    b.session = "session-1"
+    with pytest.raises(RuntimeError, match="Permission denied"):
+        b.release()
+    assert b.target == "target-1" and b.session == "session-1"
+
+
+def test_agent_release_delegates_to_browser():
+    agent = loop.Agent.__new__(loop.Agent)
+    agent.browser = Mock()
+    agent.release()
+    agent.browser.release.assert_called_once_with()
+
+
 def test_executor_rejects_a_stale_page_before_browser_input(monkeypatch):
     import jev_ultrafast.browser as browser
 

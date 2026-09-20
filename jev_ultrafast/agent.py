@@ -164,6 +164,10 @@ class Agent:
         while self.state["status"] not in {"done", "blocked"}:
             yield self.command("tick")
 
+    def release(self):
+        """Stop controlling the browser while leaving its tab open."""
+        self.browser.release()
+
     def close(self):
         self.browser.close()
 
