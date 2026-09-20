@@ -113,7 +113,9 @@ class Browser:
 
 
 def fingerprint(state):
-    content = {k: state[k] for k in ("url", "text", "actions", "scroll")}
+    # Geometry is re-read immediately before input. Animation must not look like a new page.
+    actions = [{k: v for k, v in action.items() if k != "rect"} for action in state["actions"]]
+    content = {"url": state["url"], "text": state["text"], "actions": actions, "scroll": state["scroll"]}
     return hashlib.sha256(json.dumps(content, sort_keys=True).encode()).hexdigest()
 
 
