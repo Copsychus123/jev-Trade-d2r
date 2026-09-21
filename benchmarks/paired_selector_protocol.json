@@ -1,0 +1,131 @@
+{
+  "protocol_version": "paired-selector-benchmark.v2",
+  "label": "Jev vs conventional LLM selector in shared harness",
+  "scope": "Local deterministic browser fixtures only; this does not compare autonomous production agents.",
+  "arms": [
+    {
+      "id": "jev",
+      "selector": "TypeSafe Jev 1.13 via OpenRouter decisions API",
+      "field_helper": "Inception Mercury 2.5"
+    },
+    {
+      "id": "conventional",
+      "selector": "Inception Mercury 2.5 choosing among the same observed operation/target candidates",
+      "field_helper": "Inception Mercury 2.5"
+    }
+  ],
+  "shared_harness": {
+    "executor": "Repository Agent and Browser using Browser Harness/CDP",
+    "viewport": "1120x780",
+    "max_actions_per_run": 4,
+    "max_decisions_per_run": 8,
+    "fresh_tab_per_arm": true,
+    "same_variant_and_goal_within_pair": true,
+    "network": "Loopback fixture origin only for Chromium; model requests go only to configured OpenRouter endpoints."
+  },
+  "families": [
+    {"id": "autocomplete_search", "goal": "Enter a synthetic query, select its exact suggestion, submit; oracle checks the submitted query."},
+    {"id": "filter_select", "goal": "Choose a seeded native-select option and apply; oracle checks selected value and result marker."},
+    {"id": "long_page_navigation", "goal": "Scroll to a seeded target link and open it; oracle checks the local destination marker."},
+    {"id": "form_preview", "goal": "Fill a synthetic title, choose a record type, preview; oracle checks exact title and type."},
+    {"id": "delayed_control", "goal": "Enable a delayed Continue control, wait as needed, activate it; oracle checks the terminal marker."}
+  ],
+  "sampling": {
+    "pilot_pairs": 5,
+    "pilot_allocation": "One seeded pair per family; pilot is operational validation and excluded from primary inference.",
+    "main_pairs": 2627,
+    "main_family_allocation": {"autocomplete_search": 526, "filter_select": 526, "long_page_navigation": 525, "form_preview": 525, "delayed_control": 525},
+    "seed": 20260919,
+    "randomized_arm_order_per_pair": true,
+    "globally_unique_pair_ids_across_phases": true,
+    "power_basis": "Paired binary non-inferiority approximation: one-sided alpha 0.025 (95% two-sided interval), 90% power, 2 percentage-point margin, 10% discordant pairs; n = ceil((1.96+1.282)^2*0.10/0.02^2) = 2627.",
+    "interpretation_limit": "Family-stratified results generalize only to seeded variants of these five fixture families, not to web sites or autonomous agents."
+  },
+  "primary_gates": {
+    "safety_violations": 0,
+    "absolute_completion_rate_each_arm": 0.95,
+      "paired_completion_difference": "Jev minus Mercury; lower bound of the family-stratified 95% bootstrap CI must be greater than -0.02 for Jev non-inferiority.",
+    "inconclusive_if": "Main sample is incomplete, the pilot cannot establish bounded cost, provider errors prevent a valid paired sample, or the observed discordance makes the planned power unsupported."
+  },
+  "secondary_metrics": {
+    "latency": ["end-to-end p50/p95 from tab creation through independent-oracle completion", "agent-loop p50/p95 from first decision through terminal state", "selector decision p50/p95", "field-helper p50/p95"],
+    "cost": ["provider-reported or token-rate cost", "conservative per-call upper bound", "cost per completed workflow including selectors, helpers, errors, and any retries"],
+    "other": ["action count", "decision count", "helper count", "stale recoveries", "fallback use", "per-family completion", "paired discordance"]
+  },
+  "analysis": {
+    "completion_interval": "20,000-replicate family-stratified paired bootstrap; resample pairs within each fixed family and combine using equal family weights.",
+    "latency_and_cost_intervals": "Same paired, family-stratified bootstrap; report medians and p95s plus paired differences and 95% intervals.",
+    "superiority": "Claim only if the 95% paired interval shows lower Jev latency or cost (Mercury minus Jev interval lower bound above zero) and the completion non-inferiority and zero-safety gates pass.",
+    "pilot_excluded_from_main_analysis": true
+  },
+  "metering": {
+    "prices_checked_utc": "2026-09-19",
+    "overall_absolute_cap_usd": 25.0,
+    "operational_stop_usd": 24.0,
+    "reserved_variance_usd": 1.0,
+    "already_spent_cross_model_review_usd": 7.931816,
+    "unreconciled_reviewer_spend_usd": null,
+    "reviewer_spend_status": "At least $7.931816 is known; two timed-out reviews have unknown cost, so the total and remaining budget are unbounded.",
+    "review_spend_reconciled": false,
+    "remaining_until_operational_stop_usd": null,
+    "selector_and_helper_calls": "Single HTTP attempt per request; no provider retries or fallback. Every request is checked against the remaining budget before sending.",
+    "request_body_max_bytes": 16384,
+    "reserved_input_tokens_per_request": 16384,
+    "max_output_tokens_per_mercury_request": 128,
+    "max_calls_per_pair_for_bound": {"jev_decisions": 8, "mercury_calls_including_both_arms_helpers_and_slack": 16},
+    "verified_unit_prices_usd_per_million_tokens": {
+      "jev_input": 0.042,
+      "jev_output": 0.0,
+      "mercury_input": 0.04,
+      "mercury_output": 0.15
+    },
+    "price_sources": ["https://openrouter.ai/typesafe/jev-1.13/", "https://openrouter.ai/inception/mercury-2.5"],
+  "conservative_bound_per_pair_usd": 0.016297984,
+  "projected_pilot_plus_main_usd": 42.896293888,
+    "projected_total_including_review_usd": null,
+    "per_call_cost_confirmation": "Require the response model and generation record to match the pinned model, response usage counts to match the generation record when present, finite total_cost, and prompt/completion token counts within reserve. Write and fsync an attempt reservation before POST; settle it only after exact generation reconciliation. An interrupted or unreconciled attempt remains reserved at its full bound and blocks resume. A confirmed cost above reserve is charged at its reported amount and stops the run. No inference retries.",
+    "durable_spend_ledger": "One fsynced append-only ledger at ~/Library/Application Support/jev-ultrafast/paired-selector/spend-ledger.jsonl is shared across this Mac's worktrees and output directories; a process lock prevents concurrent local runs. Pair and ledger records must reconcile before resumption. This file is local to this Mac and does not reconcile other hosts.",
+    "missing_usage_policy": "Use the full rate-derived request upper bound; if body/output bounds or price cannot be established, stop before the next request.",
+    "stop_rule": "Stop before any call or pair whose reserved maximum would put cumulative total spend above $24; never exceed the absolute $25 cap."
+  },
+  "run_policy": {
+    "single_runnable_provider_benchmark": "benchmarks/paired_selector.py",
+    "pilot_before_main": true,
+    "provider_inference_enabled": false,
+    "enable_only_after_reviewer_spend_reconciled": true,
+    "main_requires_pilot_cost_and_loopback_oracles_verified": true,
+    "pilot_stop_conditions": ["any safety violation", "missing/unbounded request cost", "provider/auth error", "fixture/oracle mismatch", "main sample upper-bound projection exceeds the $24 operational stop"],
+    "test_only_task_failure_continuation": {
+      "scope": "One explicit continuation of the existing authorized local-fixture pilot after its original smoke row is preserved.",
+      "pairs": 5,
+      "smoke_rerun": false,
+      "eligible_failures": "A blocked or incomplete task with valid bounded provider calls, a preserved loopback origin, and no safety violations; decision/text-helper validation failures remain outcomes.",
+      "stop_immediately_on": ["provider/auth/metering error", "unbounded request", "browser/harness error", "loopback-origin loss", "safety violation", "incremental spend cap", "aggregate provider-call ceiling"],
+      "retain_original_smoke_gate": true,
+      "preserve_original_smoke_row_and_artifacts": true,
+      "single_pre_provider_recovery": {
+        "max_recoveries": 1,
+        "eligibility": "Only the recorded local metering authorization-forwarding failure, after proving request-log and ledger attempt IDs exactly match the original smoke row and no pilot row exists.",
+        "preserve_prior_attempt_marker_result_and_stop": true,
+        "write_separate_recovery_marker_and_result": true,
+        "include_all_existing_calls_and_reserves_in_original_bounds": true
+      },
+      "resume_after_pre_send_request_bound_stop": {
+        "one_active_run_authorization": true,
+        "only_unattempted_families_and_a_named_fresh_form_preview_pair": true,
+        "fresh_form_preview_pair_id": "pilot:form_preview_recovery_1",
+        "fresh_form_preview_pair_seed": 20320922,
+        "preserve_partial_form_preview_calls_in_a_separate_artifact": true,
+        "partial_attempt_counts_toward_spend_and_call_ceilings": true,
+        "request_and_input_token_bounds_bytes_and_tokens": [16384, 16384]
+      },
+      "retries_for_favorable_results": false,
+      "enables_main_sample_or_global_provider_inference": false,
+      "statistical_superiority_claim": false
+    },
+    "raw_pair_results_jsonl": true,
+    "test_only_raw_response_and_offered_choices_log": "model-evidence.jsonl",
+    "record_git_head_dirty_file_hashes_model_ids_prices_seeds_and_provider_usage": true,
+    "never_send_public_or_destructive_actions": true
+  }
+}
