@@ -50,6 +50,7 @@
     return [identity(e),role(e),name(e),e.value??null,e.checked??null,e.selectedIndex??null,
       e.readOnly??null,e.matches(':disabled'),e.getAttribute('aria-disabled'),
       e.getAttribute('aria-expanded'),e.getAttribute('aria-checked'),e.getAttribute('aria-selected'),
+      e.getAttribute('aria-pressed'),
       e.getAttribute('href'),scope?.innerText?.slice(0,6000)||''];
   };
   const actions=[];
@@ -79,42 +80,78 @@
       if (editable) actions.push({...base,kind:'click',value,label:'Open '+base.label});
     }
   }
-  // Icon-only affordances. Component libraries wire up <div>/<span> + inline <svg> with a click
-  // handler but no role, no prose and often no overlay/list context, so the table above never
-  // sees them and the policy can only answer BLOCKED. Admit them on icon evidence alone (never
-  // the row's own text), innermost candidate per subtree, and keep inside the 250-action cap so
-  // no native control is displaced.
-  const ICON_TEXT_LIMIT=12, ICON_CAP=40;
-  const iconEvidence=e=>{
-    const svg=e.querySelector('svg'), img=e.querySelector('img');
-    const token=svg&&[...(svg.getAttribute('class')||'').split(/\s+/)]
-      .filter(c=>/icon/i.test(c)).map(c=>c.replace(/^.*?icon-/,'').replace(/icon$/i,'')).filter(Boolean)[0];
-    return (e.getAttribute('aria-label') || e.getAttribute('title') ||
-      svg?.querySelector('title')?.textContent || svg?.getAttribute('aria-label') || svg?.id ||
-      img?.getAttribute('alt') || img?.id || token || '').trim().slice(0,120);
-  };
-  const nativeInside='input,select,textarea,button,a[href],[contenteditable="true"]';
-  // Names here are kept locally unique so this block can land next to the other clickable
-  // passes (#22/#24) in either order without redeclaring theirs.
-  const iconSeen=new Set(actions.map(a=>a.node)), iconCandidates=[];
-  for (const e of document.querySelectorAll('div,span,li,td,dd,p,section,label,article')) {
-    if (getComputedStyle(e).cursor!=='pointer') continue;
-    if (e.closest('svg') || e.closest(nativeInside) || e.matches(':disabled') ||
-        e.closest('[aria-disabled="true"],[inert]') || !visible(e) || e.querySelector(nativeInside)) continue;
-    if (name(e).trim().length>ICON_TEXT_LIMIT) continue;
-    const r=e.getBoundingClientRect(), x=r.x+r.width/2, y=r.y+r.height/2;
-    if (r.width<=0 || r.height<=0 || x<0 || y<0 || x>=innerWidth || y>=innerHeight) continue;
-    const label=iconEvidence(e), node=identity(e);
-    if (!label || iconSeen.has(node)) continue;
-    iconCandidates.push({element:e,node,label,rect:{x:r.x,y:r.y,w:r.width,h:r.height}});
-  }
-  const budget=Math.min(ICON_CAP,Math.max(0,250-actions.length));
-  let added=0;
-  for (const c of iconCandidates) {
-    if (added>=budget) break;
-    if (iconCandidates.some(o=>o.element!==c.element && c.element.contains(o.element))) continue;
-    actions.push({node:c.node,role:'button',kind:'click',label:c.label,rect:c.rect,value:''});
-    added++;
+  // Icon-only affordances. Component libraries wire up <div>/<span> + <svg> (or an icon-font
+  // glyph) with a click handler but no role, no prose and often no overlay/list context, so the
+  // table above never sees them and the policy can only answer BLOCKED. Admit them on icon
+  // evidence alone, innermost candidate per subtree, and only while the table has room — the
+  // scan itself is skipped, not just the additions, once the 250-action cap is reached.
+  // Locals are kept unique so this block can land next to the other clickable passes (#22/#24)
+  // in either order without redeclaring theirs. The :has() scope keeps the scan off the bulk of
+  // a content-heavy page; it needs Chrome 105+.
+  const budget=Math.min(40,Math.max(0,250-actions.length));
+  if (budget) {
+    const ICON_PROSE_LIMIT=12, ICON_SCAN_CAP=120;
+    const GENERIC_ICON_TOKENS=new Set(['solid','regular','light','thin','duotone','brands','fw','lg','sm',
+      'xs','2x','3x','4x','5x','spin','pulse','fixed','width','rotate','flip','stack','inverse','only',
+      'icon','icons','glyph','svg','img','anticon','ruyi','el','fa','bi','mdi']);
+    const iconToken=(...classNames)=>{
+      for (const classList of classNames) for (const name of String(classList||'').split(/\s+/)) {
+        const parts=name.split('-').filter(Boolean);
+        const last=parts.length>1 ? parts[parts.length-1].toLowerCase() : '';
+        if (last.length>=3 && !GENERIC_ICON_TOKENS.has(last) && !/^\d/.test(last)) return last;
+      }
+      return '';
+    };
+    // First non-empty evidence wins, across every asset: a decorative leading icon must not hide
+    // the one that names the control.
+    const iconEvidence=e=>{
+      const assets=[...e.querySelectorAll('svg,img,i,em,b')].slice(0,8);
+      const values=[e.getAttribute('aria-label'), e.getAttribute('title')];
+      for (const asset of assets) values.push(asset.querySelector('title')?.textContent,
+        asset.getAttribute('aria-label'), asset.getAttribute('alt'), asset.id);
+      values.push(iconToken(e.className, ...assets.map(asset=>asset.className)));
+      for (const value of values) { const text=String(value||'').trim(); if (text) return text.slice(0,120); }
+      return '';
+    };
+    const indexedAncestor=e=>{
+      for (let parent=e.parentElement; parent; parent=parent.parentElement) {
+        const id=cache.ids.get(parent);
+        if (id!==undefined && iconSeen.has(id)) return true;
+      }
+      return false;
+    };
+    // Prose is measured on the element's own text, never on its accessible name: a long
+    // aria-label still describes an icon control, while a text-bearing row belongs to the
+    // overlay/list pass. Own text keeps the check cheap, at the cost of counting sr-only spans.
+    const iconScope=':is(div,span,li,td,dd,p,section,label,article)';
+    const iconSeen=new Set(actions.map(a=>a.node)), iconCandidates=[];
+    for (const e of document.querySelectorAll(iconScope+':has(svg,img,i,em,b),[class*="icon"],[class*="Icon"]')) {
+      if (iconCandidates.length>=ICON_SCAN_CAP) break;
+      if (getComputedStyle(e).cursor!=='pointer' || e.closest('svg')) continue;
+      if (!visible(e) || e.matches(':disabled') || e.closest('[aria-disabled="true"],[inert]')) continue;
+      if (e.querySelector(selector) || e.textContent.trim().length>ICON_PROSE_LIMIT || indexedAncestor(e)) continue;
+      const r=e.getBoundingClientRect(), x=r.x+r.width/2, y=r.y+r.height/2;
+      if (r.width<=0 || r.height<=0 || x<0 || y<0 || x>=innerWidth || y>=innerHeight) continue;
+      const label=iconEvidence(e), node=identity(e);
+      if (!label || iconSeen.has(node)) continue;
+      iconCandidates.push({element:e,node,label,rect:{x:r.x,y:r.y,w:r.width,h:r.height}});
+    }
+    // Innermost per subtree, without the O(n²) contains() scan over every pair.
+    const nested=new Set(iconCandidates.map(c=>c.element)), outer=new Set();
+    for (const c of iconCandidates) {
+      for (let parent=c.element.parentElement; parent; parent=parent.parentElement) {
+        if (nested.has(parent)) outer.add(parent);
+      }
+    }
+    let added=0;
+    for (const c of iconCandidates) {
+      if (added>=budget || outer.has(c.element)) continue;
+      const action={node:c.node,role:'button',kind:'click',label:c.label,rect:c.rect,value:''};
+      const pressed=c.element.getAttribute('aria-pressed');
+      if (pressed!==null) action.pressed=pressed;
+      actions.push(action);
+      added++;
+    }
   }
   const words=[], walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
   const range=document.createRange(); let node,length=0;
