@@ -318,3 +318,61 @@ def test_navigation_during_prediction_reobserves_without_action(runner):
     assert runner.state["status"] == "ready"
     assert runner.state["decision"] is None
     runner.state["browser"].act.assert_not_called()
+
+
+def test_run_yields_independent_snapshots(runner, monkeypatch):
+    monkeypatch.setattr(loop, "choose", Mock(side_effect=[decision("wait"), decision("wait"), decision("DONE")]))
+
+    states = list(runner.run())
+
+    assert [len(state["history"]) for state in states] == [1, 2, 2]
+    assert [len(state["decisions"]) for state in states] == [1, 2, 3]
+    assert [state["status"] for state in states] == ["ready", "ready", "done"]
+    assert all("browser" not in state for state in states)
+    json.dumps(states)
+
+
+def test_editing_a_snapshot_cannot_change_the_agent(runner):
+    runner.state["plan"] = ["Find a book"]
+    runner.state["text_calls"] = [{"usage": {"total_tokens": 12}}]
+    expected = deepcopy({key: value for key, value in runner.state.items() if key != "browser"})
+
+    snapshot = runner.snapshot()
+    snapshot["page"]["actions"][0]["node"] = 999
+    snapshot["decision"]["probabilities"]["e1"] = 0
+    snapshot["history"].append({"action": "external annotation"})
+    snapshot["plan"].clear()
+    snapshot["text_calls"][0]["usage"]["total_tokens"] = 0
+
+    assert {key: value for key, value in runner.state.items() if key != "browser"} == expected
+
+
+@pytest.mark.parametrize("action", ["wait", "DONE", "stale"])
+def test_tick_exports_only_one_snapshot(runner, monkeypatch, action):
+    choice = "wait" if action == "stale" else action
+    monkeypatch.setattr(loop, "choose", Mock(return_value=decision(choice)))
+    if action == "stale":
+        runner.state["browser"].fresh.side_effect = StalePage("Document navigating")
+    snapshot = Mock(wraps=runner.snapshot)
+    monkeypatch.setattr(runner, "snapshot", snapshot)
+
+    result = runner.command("tick")
+
+    snapshot.assert_called_once_with()
+    assert result["status"] == ("done" if action == "DONE" else "ready")
+
+
+def test_inspector_reuses_the_command_snapshot(runner, monkeypatch):
+    from jev_ultrafast import demo
+
+    monkeypatch.setattr(loop, "choose", Mock(return_value=decision("wait")))
+    monkeypatch.setattr(demo, "AGENT", runner)
+    snapshot = Mock(wraps=runner.snapshot)
+    monkeypatch.setattr(runner, "snapshot", snapshot)
+
+    result = demo.command("tick", {})
+
+    snapshot.assert_called_once_with()
+    assert result["status"] == "ready"
+    assert len(result["history"]) == 1
+    assert result["max_steps"] == loop.MAX_STEPS

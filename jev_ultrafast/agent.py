@@ -2,6 +2,7 @@
 
 import base64
 import time
+from copy import deepcopy
 from pathlib import Path
 
 from .browser import Browser, StalePage
@@ -45,23 +46,26 @@ class Agent:
 
     def snapshot(self):
         return {
-            **{k: v for k, v in self.state.items() if k != "browser"},
+            **deepcopy({k: v for k, v in self.state.items() if k != "browser"}),
             "elements": action_space(self.state["page"]["actions"])[0],
         }
 
     def command(self, name, body=None):
+        self._command(name, body)
+        return self.snapshot()
+
+    def _command(self, name, body=None):
         body = body or {}
         state = self.state
         if name == "tick":
             try:
-                self.command("predict", {})
-                return self.command("act", {"fingerprint": state["page"]["fingerprint"]})
+                self._command("predict", {})
+                self._command("act", {"fingerprint": state["page"]["fingerprint"]})
             except StalePage:
                 state["decision"] = None
                 state["status"] = "ready"
                 state["page"] = state["browser"].observe(screenshot=self.screenshots)
                 state["elapsed_ms"] = round((time.perf_counter() - state["started_at"]) * 1000)
-                return self.snapshot()
         elif name == "predict":
             if not state["browser"]:
                 raise ValueError("Start a demo first")
@@ -97,7 +101,7 @@ class Agent:
                 state["status"] = "done" if selected == "DONE" else "blocked"
                 state["plan_index"] = int(selected == "DONE")
                 state["elapsed_ms"] = round((time.perf_counter() - state["started_at"]) * 1000)
-                return self.snapshot()
+                return
             action = next(a for a in page["actions"] if a["id"] == selected)
             if len(state["history"]) >= MAX_STEPS:
                 state["status"] = "blocked"
@@ -158,7 +162,6 @@ class Agent:
             )
         else:
             raise ValueError("Unknown command")
-        return self.snapshot()
 
     def run(self):
         while self.state["status"] not in {"done", "blocked"}:

@@ -81,6 +81,8 @@ with Agent(
         print(state["elapsed_ms"], state["status"])
 ```
 
+Returned states are detached snapshots with cumulative history and decisions. Process them as they arrive, or retain only the fields you need: keeping every full snapshot uses storage that grows quadratically with the number of steps.
+
 Run with `uv run --env-file .env python your_script.py`. The same policy can run a different task:
 
 ```bash

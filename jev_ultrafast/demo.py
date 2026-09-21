@@ -29,8 +29,9 @@ def load_environment():
                 os.environ.setdefault(key, value)
 
 
-def response_state():
-    state = AGENT.snapshot() if AGENT else {"page": None, "status": "idle", "history": [], "decision": None}
+def response_state(state=None):
+    if state is None:
+        state = AGENT.snapshot() if AGENT else {"page": None, "status": "idle", "history": [], "decision": None}
     return {**state, "text_model": os.environ.get("TEXT_MODEL", "deepseek-chat"), "max_steps": MAX_STEPS}
 
 
@@ -63,7 +64,7 @@ def command(name, body):
     else:
         if AGENT is None:
             raise ValueError("Start a demo first")
-        AGENT.command(name, body)
+        return response_state(AGENT.command(name, body))
     return response_state()
 
 
