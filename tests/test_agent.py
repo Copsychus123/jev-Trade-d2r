@@ -318,3 +318,54 @@ def test_navigation_during_prediction_reobserves_without_action(runner):
     assert runner.state["status"] == "ready"
     assert runner.state["decision"] is None
     runner.state["browser"].act.assert_not_called()
+
+
+def test_viewport_dimension_validation(monkeypatch):
+    import jev_ultrafast.browser as browser
+
+    assert browser._viewport_dimension("TEST_VP", 800) == 800
+
+    monkeypatch.setenv("TEST_VP", "1280")
+    assert browser._viewport_dimension("TEST_VP", 800) == 1280
+
+    monkeypatch.setenv("TEST_VP", "invalid")
+    with pytest.raises(ValueError, match="TEST_VP must be an integer, got 'invalid'"):
+        browser._viewport_dimension("TEST_VP", 800)
+
+    monkeypatch.setenv("TEST_VP", "")
+    with pytest.raises(ValueError, match="TEST_VP must be an integer, got ''"):
+        browser._viewport_dimension("TEST_VP", 800)
+
+    monkeypatch.setenv("TEST_VP", "0")
+    with pytest.raises(ValueError, match="TEST_VP must be a positive integer, got 0"):
+        browser._viewport_dimension("TEST_VP", 800)
+
+    monkeypatch.setenv("TEST_VP", "-50")
+    with pytest.raises(ValueError, match="TEST_VP must be a positive integer, got -50"):
+        browser._viewport_dimension("TEST_VP", 800)
+
+
+def test_scroll_dispatches_at_center_of_viewport(monkeypatch):
+    import jev_ultrafast.browser as browser
+
+    calls = []
+
+    def fake_cdp(method, session_id=None, **params):
+        calls.append((method, params))
+        return {}
+
+    monkeypatch.setattr(browser, "cdp", fake_cdp)
+    res = browser.browser_operation({
+        "operation": "act",
+        "session": "test-session",
+        "action": {"id": "s1", "kind": "scroll", "delta": 300},
+    })
+    assert res == {"executed": "s1"}
+    assert len(calls) == 1
+    method, params = calls[0]
+    assert method == "Input.dispatchMouseEvent"
+    assert params["type"] == "mouseWheel"
+    assert params["x"] == browser.VIEWPORT_WIDTH // 2
+    assert params["y"] == browser.VIEWPORT_HEIGHT // 2
+    assert params["deltaY"] == 300
+
