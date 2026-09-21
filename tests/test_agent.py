@@ -218,6 +218,20 @@ def test_loading_waits_do_not_trigger_no_progress_stop(runner):
     assert len(runner.state["history"]) == 5 and runner.state["status"] == "ready"
 
 
+def test_unobserved_post_action_triggers_no_progress_stop(runner):
+    p = page()
+    # Simulate alternating failed observations where page_changed stays None vs False
+    runner.state["history"] = [
+        {"kind": "click", "page_changed": False},
+        {"kind": "click", "page_changed": None},
+    ]
+    runner.state["decision"] = decision("e3")
+    runner.command("act", {"fingerprint": p["fingerprint"]})
+    assert len(runner.state["history"]) == 3
+    assert runner.state["history"][-1]["page_changed"] is False
+    assert runner.state["status"] == "blocked"
+
+
 def test_stale_observation_preserves_executed_action(runner):
     runner.state["decision"] = decision("e3")
     runner.state["browser"].observe.side_effect = StalePage("changed")
