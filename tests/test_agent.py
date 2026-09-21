@@ -319,6 +319,7 @@ def test_navigation_during_prediction_reobserves_without_action(runner):
     assert runner.state["decision"] is None
     runner.state["browser"].act.assert_not_called()
 
+
 def test_snapshot_handles_none_page(runner):
     runner.state["page"] = None
     snap = runner.snapshot()
