@@ -22,8 +22,24 @@ def _viewport_dimension(name: str, default: int) -> int:
     return value
 
 
-VIEWPORT_WIDTH = _viewport_dimension("VIEWPORT_WIDTH", 1120)
-VIEWPORT_HEIGHT = _viewport_dimension("VIEWPORT_HEIGHT", 780)
+def viewport_dimensions() -> tuple[int, int]:
+    return (
+        _viewport_dimension("VIEWPORT_WIDTH", 1120),
+        _viewport_dimension("VIEWPORT_HEIGHT", 780),
+    )
+
+
+def __getattr__(name: str):
+    if name == "VIEWPORT_WIDTH":
+        return _viewport_dimension("VIEWPORT_WIDTH", 1120)
+    if name == "VIEWPORT_HEIGHT":
+        return _viewport_dimension("VIEWPORT_HEIGHT", 780)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__():
+    return list(globals().keys()) + ["VIEWPORT_WIDTH", "VIEWPORT_HEIGHT"]
+
 
 # Atomically read visible content and controls, preserving actual DOM node identity.
 READ_STATE = Path(__file__).with_name("snapshot.js").read_text()
@@ -38,10 +54,13 @@ class Browser:
         ensure_daemon()
         self.target = cdp("Target.createTarget", url="about:blank", background=True)["targetId"]
         self.session = cdp("Target.attachToTarget", targetId=self.target, flatten=True)["sessionId"]
+        width, height = viewport_dimensions()
+        self.width = width
+        self.height = height
         self.call(
             "Emulation.setDeviceMetricsOverride",
-            width=VIEWPORT_WIDTH,
-            height=VIEWPORT_HEIGHT,
+            width=width,
+            height=height,
             deviceScaleFactor=1,
             mobile=False,
         )
@@ -158,11 +177,12 @@ def browser_operation(request):
         action = request["action"]
         kind = action["kind"]
         if kind == "scroll":
+            width, height = viewport_dimensions()
             call(
                 "Input.dispatchMouseEvent",
                 type="mouseWheel",
-                x=VIEWPORT_WIDTH // 2,
-                y=VIEWPORT_HEIGHT // 2,
+                x=width // 2,
+                y=height // 2,
                 deltaX=0,
                 deltaY=action["delta"],
             )
