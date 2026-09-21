@@ -57,7 +57,8 @@ git clone https://github.com/browser-use/jev-ultrafast.git
 cd jev-ultrafast
 uv sync
 cp .env.example .env
-# Add TYPESAFE_API_KEY and TEXT_MODEL_API_KEY.
+# Add OPENROUTER_API_KEY and TEXT_MODEL_API_KEY for OpenRouter's native Decisions endpoint.
+# Set TYPESAFE_API_KEY instead to use the direct TypeSafe endpoint.
 uv run jev
 ```
 
@@ -65,7 +66,9 @@ Open **http://127.0.0.1:8766** and click **Start demo → Run automatically**. T
 
 Chrome connects through [Browser Harness](https://github.com/browser-use/browser-harness), installed by `uv sync`. Run `uv run browser-harness --doctor` if it needs connecting. Allow remote debugging in Chrome when prompted.
 
-`TEXT_MODEL_API_KEY` is an OpenRouter key in the example configuration. The current demo uses `inception/mercury-2.5` with reasoning disabled. Gemini, GLM, and DeepSeek can also use the OpenAI-compatible text helper; configure the appropriate model, endpoint, and reasoning setting.
+`TEXT_MODEL_API_KEY` is an OpenRouter key in the example configuration. The current demo uses `inception/mercury-2.5` with reasoning disabled. Gemini and GLM can also use the OpenAI-compatible text helper with `TEXT_MODEL_REASONING=none` (provider-specific reasoning fields are omitted); DeepSeek supports `enabled` or `disabled`, and OpenRouter supports `low`, `medium`, or `high`.
+
+When `OPENROUTER_API_KEY` is set, decisions use `https://openrouter.ai/api/alpha/decisions` with `~typesafe/jev-latest` by default. `OPENROUTER_MODEL` overrides that model. If no OpenRouter key is present, `TYPESAFE_API_KEY` and `TYPESAFE_MODEL` select the direct TypeSafe endpoint.
 
 ## Use the library
 
@@ -80,6 +83,8 @@ with Agent(
     for state in agent.run():
         print(state["elapsed_ms"], state["status"])
 ```
+
+After a run, `agent.result()` returns a stable `jev.result.v1` JSON-safe envelope with status, executed actions, final URL/title, extracted result, confidence/probabilities, errors, fallback usage, and model provenance. It omits raw requests, screenshots, credentials, and browser handles.
 
 Run with `uv run --env-file .env python your_script.py`. The same policy can run a different task:
 
@@ -97,7 +102,7 @@ uv run --env-file .env python examples/run.py \
 - **No screenshots in the default agent loop.** Jev consumes structured state. The inspector opts into screenshots; the video uses a separate continuous screencast.
 - **One browser call per snapshot.** Read visible controls, their names, values, and text atomically. Keep references to the actual DOM nodes.
 - **Validate the selected target.** Clicks check the document, form values, target, and nearby context. Animation alone does not force another prediction. Resolve current geometry and reject covered controls before input.
-- **Wait for useful state.** After typing into a combobox, wait for visible suggestions, capped at 200 ms. Other interactions get at most two animation frames or 50 ms. These reads happen after execution is logged.
+- **Wait for useful state.** After typing into a combobox, wait for visible suggestions, capped at 200 ms. Scrolls wait for movement/stability for up to 1,000 ms, or settle after 250 ms when the document does not move; other interactions get at most two animation frames or 50 ms. These reads happen after execution is logged.
 - **Keep hidden tabs rendering.** Focus emulation prevents background animation throttling without switching Chrome's visible tab.
 - **Send visible text.** Offscreen article bodies and footers do not fill the model context.
 - **Reuse an interrupted text request.** A generated value survives a stale-page retry only if the entire text-helper input is unchanged.

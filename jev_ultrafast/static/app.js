@@ -1,5 +1,4 @@
 const $ = (id) => document.getElementById(id);
-const token = document.querySelector('meta[name="demo-token"]').content;
 let state = null,
   busy = false,
   automatic = false;
@@ -18,10 +17,16 @@ const escape = (value) =>
       ],
   );
 const percent = (value) => `${(value * 100).toFixed(value < 0.01 ? 1 : 0)}%`;
+async function readState() {
+  const response = await fetch("/api/state");
+  const data = await response.json();
+  if (!response.ok) throw Error(data.error || "Request failed");
+  return data;
+}
 async function call(name, body = {}) {
   const response = await fetch(`/api/${name}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-Demo-Token": token },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   const data = await response.json();
@@ -53,7 +58,7 @@ async function perform(fn, label) {
   } catch (error) {
     automatic = false;
     try {
-      state = await fetch("/api/state").then((r) => r.json());
+      state = await readState();
       render();
     } catch {
       /* Preserve the original failure if the server disconnected. */
@@ -233,8 +238,7 @@ $("download").addEventListener("click", () => {
   a.click();
   URL.revokeObjectURL(url);
 });
-fetch("/api/state")
-  .then((r) => r.json())
+readState()
   .then((s) => {
     state = s;
     render();

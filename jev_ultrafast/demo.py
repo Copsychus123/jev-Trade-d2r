@@ -5,6 +5,7 @@ import json
 import os
 import secrets
 import threading
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
@@ -16,6 +17,7 @@ ROOT = Path(__file__).parent
 PORT = int(os.environ.get("TYPESAFE_DEMO_PORT", "8766"))
 ORIGIN = f"http://127.0.0.1:{PORT}"
 TOKEN = secrets.token_urlsafe(32)
+TOKEN_COOKIE = "jev_demo_token"
 LOCK = threading.Lock()
 AGENT = None
 
@@ -25,13 +27,16 @@ def load_environment():
     if path.exists():
         for line in path.read_text().splitlines():
             if "=" in line and not line.startswith("#"):
-                key, value = line.split("=", 1)
-                os.environ.setdefault(key, value)
+                key, value = (part.strip() for part in line.split("=", 1))
+                if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+                    value = value[1:-1]
+                if key:
+                    os.environ.setdefault(key, value)
 
 
 def response_state():
     state = AGENT.snapshot() if AGENT else {"page": None, "status": "idle", "history": [], "decision": None}
-    return {**state, "text_model": os.environ.get("TEXT_MODEL", "deepseek-chat"), "max_steps": MAX_STEPS}
+    return {**state, "text_model": os.environ.get("TEXT_MODEL", "inception/mercury-2.5"), "max_steps": MAX_STEPS}
 
 
 def close_browser():
@@ -57,7 +62,9 @@ def command(name, body):
             else f"{ORIGIN}/fixture.html?scenario={scenario}",
             goal,
             screenshots=True,
-            record_dir=Path.cwd() / "artifacts" / "frames" if body.get("record") else None,
+            record_dir=(Path.cwd() / "artifacts" / "frames" / secrets.token_hex(8))
+            if body.get("record")
+            else None,
         )
         AGENT.state["scenario"] = scenario
     else:
@@ -68,23 +75,37 @@ def command(name, body):
 
 
 class Handler(BaseHTTPRequestHandler):
-    def send(self, status, content, mime="application/json"):
+    def send(self, status, content, mime="application/json", headers=None):
         content = content if isinstance(content, bytes) else content.encode()
         self.send_response(status)
         self.send_header("Content-Type", mime)
         self.send_header("Content-Length", str(len(content)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
+        for key, value in (headers or {}).items():
+            self.send_header(key, value)
         self.end_headers()
         self.wfile.write(content)
 
+    def authorized(self):
+        cookies = SimpleCookie(self.headers.get("Cookie", ""))
+        cookie_token = cookies.get(TOKEN_COOKIE)
+        token = self.headers.get("X-Demo-Token") or (cookie_token.value if cookie_token else None)
+        return (
+            self.headers.get("Host") == f"127.0.0.1:{PORT}"
+            and token == TOKEN
+            and self.headers.get("Origin") in (None, ORIGIN)
+        )
+
     def do_GET(self):
-        if self.headers.get("Host") != f"127.0.0.1:{PORT}":
-            return self.send(403, "Forbidden", "text/plain")
         path = urlparse(self.path).path
         if path == "/api/state":
+            if not self.authorized():
+                return self.send(403, json.dumps({"error": "Local demo requests only"}))
             with LOCK:
                 return self.send(200, json.dumps(response_state()))
+        if self.headers.get("Host") != f"127.0.0.1:{PORT}":
+            return self.send(403, "Forbidden", "text/plain")
         if path == "/demo.mp4":
             video = ROOT.parent / "docs" / "demo.mp4"
             if video.exists():
@@ -98,15 +119,16 @@ class Handler(BaseHTTPRequestHandler):
         if path not in files:
             return self.send(404, "Not found", "text/plain")
         name, mime = files[path]
-        content = (ROOT / "static" / name).read_text().replace("__TOKEN__", TOKEN)
-        self.send(200, content, mime + "; charset=utf-8")
+        content = (ROOT / "static" / name).read_text()
+        headers = (
+            {"Set-Cookie": f"{TOKEN_COOKIE}={TOKEN}; Path=/; HttpOnly; SameSite=Strict"}
+            if path == "/"
+            else None
+        )
+        self.send(200, content, mime + "; charset=utf-8", headers)
 
     def do_POST(self):
-        if (
-            self.headers.get("Host") != f"127.0.0.1:{PORT}"
-            or self.headers.get("X-Demo-Token") != TOKEN
-            or self.headers.get("Origin") not in (None, ORIGIN)
-        ):
+        if not self.authorized():
             return self.send(403, json.dumps({"error": "Local demo requests only"}))
         if not LOCK.acquire(blocking=False):
             return self.send(409, json.dumps({"error": "A browser step is already running"}))
