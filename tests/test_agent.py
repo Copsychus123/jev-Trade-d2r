@@ -5,6 +5,7 @@ import time
 from copy import deepcopy
 from unittest.mock import Mock
 
+import httpx
 import pytest
 
 from jev_ultrafast import agent as loop
@@ -45,7 +46,7 @@ def decision(action="e1"):
     }
 
 
-@pytest.mark.parametrize("mutation", ["unknown", "nan", "missing", "negative", "non_max", "confidence"])
+@pytest.mark.parametrize("mutation", ["unknown", "nan", "missing", "negative", "non_max", "confidence", "list"])
 def test_invalid_choice_is_rejected(mutation):
     a = choice(["a", "b"], "a")
     if mutation == "unknown":
@@ -58,6 +59,8 @@ def test_invalid_choice_is_rejected(mutation):
         a["probabilities"]["b"] = -1
     elif mutation == "non_max":
         a["choice"] = "b"
+    elif mutation == "list":
+        a["probabilities"] = [0.5, 0.5]
     else:
         a["confidence"] = 5
     with pytest.raises(ValueError, match="Invalid TypeSafe"):
@@ -89,11 +92,66 @@ def test_all_heads_are_one_request_and_only_matching_head_executes(monkeypatch):
         }
 
     monkeypatch.setenv("TYPESAFE_API_KEY", "test")
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.setattr(model, "post_json", post)
     d = model.choose(page(), "Find a book", [])
     assert len(calls) == 1
+    assert calls[0]["state"]["omitted_actions"] == 0
     assert d["operation"] == "TYPE_TEXT" and d["target"] == "1" and d["choice"] == "e1"
+    assert "request" not in d and "raw_answers" not in d
     assert set(calls[0]["questions"]) == {"operation", "click_target", "type_text_target"}
+
+
+def test_openrouter_decisions_provider_uses_native_endpoint(monkeypatch):
+    calls = []
+
+    def post(url, key, body):
+        calls.append((url, key, body["model"]))
+        return {
+            "model": "typesafe/jev-1.13-20260917",
+            "answers": {
+                "operation": choice(body["questions"]["operation"]["criteria"], "DONE"),
+            },
+        }
+
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "openrouter-test")
+    monkeypatch.delenv("OPENROUTER_MODEL", raising=False)
+    monkeypatch.setattr(model, "post_json", post)
+    d = model.choose(page(), "Find a book", [])
+    assert d["choice"] == "DONE"
+    assert calls == [(model.OPENROUTER_DECISIONS_URL, "openrouter-test", "~typesafe/jev-latest")]
+
+
+def test_missing_decision_credential_is_actionable(monkeypatch):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    with pytest.raises(ValueError, match="OPENROUTER_API_KEY or TYPESAFE_API_KEY"):
+        model.decision_provider()
+
+
+def test_malformed_decision_envelope_stops_before_action(monkeypatch):
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test")
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setattr(model, "post_json", Mock(return_value={"error": {"code": "provider_unavailable"}}))
+    with pytest.raises(RuntimeError, match="invalid decisions response"):
+        model.choose(page(), "Find a book", [])
+
+
+def test_http_error_retries_then_reports_without_action(monkeypatch):
+    response = Mock(status_code=429, is_error=True)
+    post = Mock(return_value=response)
+    monkeypatch.setattr(model.CLIENT, "post", post)
+    monkeypatch.setattr(model, "sleep", Mock())
+    with pytest.raises(RuntimeError, match="HTTP 429"):
+        model.post_json("https://example.test/decisions", "test", {})
+    assert post.call_count == 3
+
+
+def test_provider_timeout_reports_without_action(monkeypatch):
+    monkeypatch.setattr(model.CLIENT, "post", Mock(side_effect=httpx.ReadTimeout("timed out")))
+    with pytest.raises(RuntimeError, match="connection failed"):
+        model.post_json("https://example.test/decisions", "test", {})
 
 
 def test_click_cannot_consume_a_text_target(monkeypatch):
@@ -108,6 +166,7 @@ def test_click_cannot_consume_a_text_target(monkeypatch):
         }
 
     monkeypatch.setenv("TYPESAFE_API_KEY", "test")
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.setattr(model, "post_json", post)
     with pytest.raises(ValueError, match="Invalid TypeSafe"):
         model.choose(page(), "Find a book", [])
@@ -135,6 +194,7 @@ def test_target_head_receives_control_state_and_full_next_step_rules(monkeypatch
         }
 
     monkeypatch.setenv("TYPESAFE_API_KEY", "test")
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.setattr(model, "post_json", post)
     d = model.choose(p, "Search with free cancellation", [])
     assert d["choice"] == "e3"
@@ -142,6 +202,8 @@ def test_target_head_receives_control_state_and_full_next_step_rules(monkeypatch
 
 def test_quoted_task_text_still_uses_the_llm(monkeypatch):
     monkeypatch.setenv("TEXT_MODEL_API_KEY", "test")
+    monkeypatch.setenv("TEXT_MODEL_BASE_URL", "https://openrouter.ai/api/v1")
+    monkeypatch.setenv("TEXT_MODEL_REASONING", "none")
     post = Mock(return_value={"choices": [{"message": {"content": '{"text":"Zurich"}'}}]})
     monkeypatch.setattr(model, "post_json", post)
     context = model.field_context('Fly from "Zurich" to London', page()["actions"][0], page(), [])
@@ -170,12 +232,57 @@ def runner():
         "goal": "Find a book",
         "history": [],
         "decisions": [],
+        "last_decision": None,
         "status": "predicted",
         "started_at": time.perf_counter(),
         "record": False,
         "text_calls": [],
+        "errors": [],
+        "fallback_used": False,
+        "stale_recoveries": 0,
     }
     return a
+
+
+def test_result_envelope_is_stable_and_excludes_raw_requests(runner):
+    runner.state["status"] = "done"
+    runner.state["decisions"] = [{
+        "model": "jev-test", "confidence": 0.9, "target_confidence": None,
+        "probabilities": {"DONE": 0.9}, "target_probabilities": {},
+        "raw_answers": {"secret": "must not leak"}, "request": {"secret": "must not leak"},
+    }]
+    runner.state["last_decision"] = runner.state["decisions"][0]
+    runner.state["history"] = [{
+        "step": 1, "action": "Search", "kind": "fill", "choice": "e1", "operation": "TYPE_TEXT",
+        "target": "1", "text": "Zurich", "probability": 0.9, "confidence": 0.9,
+        "page_changed": True, "url": "https://example.test/results", "text_helper": "helper", "text_latency_ms": 20,
+        "latency_ms": 30, "usage": {}, "executed_ms": 40, "elapsed_ms": 50,
+    }]
+    result = runner.result({"matches": 3})
+    assert set(result) == {
+        "schema_version", "status", "actions", "final_url", "final_title", "extracted_result",
+        "confidence", "probabilities", "target_confidence", "target_probabilities", "errors",
+        "operation_confidence", "operation_probabilities", "fallback_used", "model", "provenance",
+        "omitted_actions",
+    }
+    assert result["schema_version"] == "jev.result.v1"
+    assert result["extracted_result"] == {"matches": 3}
+    assert result["confidence"] == 0.9
+    assert result["probabilities"] == {"DONE": 0.9}
+    assert result["actions"][0]["elapsed_ms"] == 50
+    serialized = json.dumps(result)
+    assert "request" not in serialized and "raw_answers" not in serialized and "must not leak" not in serialized
+
+
+def test_recorded_frames_do_not_overwrite_same_millisecond(tmp_path):
+    recorder = loop.Agent.__new__(loop.Agent)
+    recorder.record_dir = tmp_path
+    page = {"screenshot": "ZGF0YQ=="}
+
+    recorder._record_frame(page, 12)
+    recorder._record_frame(page, 12)
+
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["000012.jpg", "000013.jpg"]
 
 
 def test_stale_decision_is_consumed_before_any_mutation(runner):
@@ -227,6 +334,37 @@ def test_stale_observation_preserves_executed_action(runner):
     runner.state["browser"].act.assert_called_once()
 
 
+def test_pre_input_stale_recovery_does_not_rewrite_previous_history(runner, monkeypatch):
+    previous = {
+        "step": 1, "action": "Previous", "kind": "click", "choice": "e3",
+        "page_changed": True, "url": "https://example.test/previous", "execution_status": "executed",
+    }
+    runner.state["history"] = [previous.copy()]
+    runner.state["last_decision"] = decision("e3")
+    runner.state["browser"].act.side_effect = StalePage("Changed before input")
+    monkeypatch.setattr(loop, "choose", Mock(return_value=decision("e3")))
+
+    runner.command("tick")
+
+    assert runner.state["history"] == [previous]
+    assert runner.state["errors"][-1]["message"] == "Decision discarded and page re-observed."
+    assert runner.state["last_decision"]["choice"] == "e3"
+
+
+def test_browser_error_records_ambiguous_execution_metadata(runner):
+    runner.state["decision"] = decision("e3")
+    runner.state["browser"].act.side_effect = RuntimeError("input follow-up failed")
+
+    with pytest.raises(RuntimeError, match="input follow-up failed"):
+        runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
+
+    row = runner.state["history"][-1]
+    assert row["execution_status"] == "unknown"
+    assert row["usage"] == {}
+    assert isinstance(row["executed_ms"], int)
+    assert isinstance(row["elapsed_ms"], int)
+
+
 def test_observation_is_one_atomic_browser_read(monkeypatch):
     import jev_ultrafast.browser as browser
 
@@ -260,7 +398,8 @@ def test_interrupted_dropdown_mutation_cannot_be_retried_as_stale(monkeypatch, r
         response["exceptionDetails"] = {"text": "Execution context destroyed"}
     cdp = Mock(return_value=response)
     monkeypatch.setattr(browser, "cdp", cdp)
-    with pytest.raises(RuntimeError, match="Dropdown execution"):
+    expected = RuntimeError if "exceptionDetails" in response else StalePage
+    with pytest.raises(expected, match="Dropdown execution" if expected is RuntimeError else "Target changed"):
         browser_operation({"operation": "act", "session": "test", "action": {
             "id": "e1", "kind": "select", "node": 1, "value": "Design",
         }})
@@ -307,9 +446,80 @@ def test_flight_verification_rejects_wrong_trip(changed):
 )
 def test_text_helper_rejects_invalid_values(monkeypatch, content):
     monkeypatch.setenv("TEXT_MODEL_API_KEY", "test")
+    monkeypatch.setenv("TEXT_MODEL_BASE_URL", "https://openrouter.ai/api/v1")
+    monkeypatch.setenv("TEXT_MODEL_REASONING", "none")
     monkeypatch.setattr(model, "post_json", Mock(return_value={"choices": [{"message": {"content": content}}]}))
     with pytest.raises(ValueError, match="nothing typed"):
         model.field_text({"goal": "Find a flight"})
+
+
+def test_text_helper_defaults_to_reasoning_disabled_for_openrouter(monkeypatch):
+    monkeypatch.setenv("TEXT_MODEL_API_KEY", "test")
+    monkeypatch.setenv("TEXT_MODEL_BASE_URL", "https://openrouter.ai/api/v1")
+    monkeypatch.delenv("TEXT_MODEL_REASONING", raising=False)
+    post = Mock(return_value={"choices": [{"message": {"content": '{"text":"Zurich"}'}}]})
+    monkeypatch.setattr(model, "post_json", post)
+    model.field_text({"goal": "Find a flight"})
+    assert post.call_args.args[2]["reasoning"] == {"enabled": False}
+
+
+def test_text_helper_rejects_empty_choices(monkeypatch):
+    monkeypatch.setenv("TEXT_MODEL_API_KEY", "test")
+    monkeypatch.setenv("TEXT_MODEL_BASE_URL", "https://openrouter.ai/api/v1")
+    monkeypatch.setenv("TEXT_MODEL_REASONING", "none")
+    monkeypatch.setattr(model, "post_json", Mock(return_value={"choices": []}))
+    with pytest.raises(ValueError, match="nothing typed"):
+        model.field_text({"goal": "Find a flight"})
+
+
+def test_deepseek_root_uses_thinking_field(monkeypatch):
+    monkeypatch.setenv("TEXT_MODEL_API_KEY", "test")
+    monkeypatch.setenv("TEXT_MODEL_BASE_URL", "https://api.deepseek.com")
+    monkeypatch.setenv("TEXT_MODEL_REASONING", "enabled")
+    post = Mock(return_value={"choices": [{"message": {"content": '{"text":"Zurich"}'}}]})
+    monkeypatch.setattr(model, "post_json", post)
+    model.field_text({"goal": "Find a flight"})
+    assert post.call_args.args[2]["thinking"] == {"type": "enabled"}
+
+
+def test_deepseek_default_omits_reasoning_field(monkeypatch):
+    monkeypatch.setenv("TEXT_MODEL_API_KEY", "test")
+    monkeypatch.setenv("TEXT_MODEL_BASE_URL", "https://api.deepseek.com")
+    monkeypatch.delenv("TEXT_MODEL_REASONING", raising=False)
+    post = Mock(return_value={"choices": [{"message": {"content": '{"text":"Zurich"}'}}]})
+    monkeypatch.setattr(model, "post_json", post)
+    model.field_text({"goal": "Find a flight"})
+    assert "thinking" not in post.call_args.args[2]
+
+
+def test_generic_text_provider_omits_unknown_reasoning_field(monkeypatch):
+    monkeypatch.setenv("TEXT_MODEL_API_KEY", "test")
+    monkeypatch.setenv("TEXT_MODEL_BASE_URL", "https://text.example.test/v1")
+    monkeypatch.delenv("TEXT_MODEL_REASONING", raising=False)
+    post = Mock(return_value={"choices": [{"message": {"content": '{"text":"Zurich"}'}}]})
+    monkeypatch.setattr(model, "post_json", post)
+    model.field_text({"goal": "Find a flight"})
+    assert "reasoning" not in post.call_args.args[2]
+
+
+def test_generic_text_provider_rejects_provider_specific_reasoning(monkeypatch):
+    monkeypatch.setenv("TEXT_MODEL_API_KEY", "test")
+    monkeypatch.setenv("TEXT_MODEL_BASE_URL", "https://text.example.test/v1")
+    monkeypatch.setenv("TEXT_MODEL_REASONING", "low")
+    with pytest.raises(ValueError, match="OpenRouter or DeepSeek"):
+        model.field_text({"goal": "Find a flight"})
+
+
+def test_openrouter_root_accepts_reasoning_override(monkeypatch):
+    monkeypatch.setenv("TEXT_MODEL_API_KEY", "test")
+    monkeypatch.setenv("TEXT_MODEL_BASE_URL", "https://openrouter.ai")
+    monkeypatch.setenv("TEXT_MODEL_REASONING", "high")
+    post = Mock(return_value={"choices": [{"message": {"content": '{"text":"Zurich"}'}}]})
+    monkeypatch.setattr(model, "post_json", post)
+
+    model.field_text({"goal": "Find a flight"})
+
+    assert post.call_args.args[2]["reasoning"] == {"effort": "high"}
 
 
 def test_navigation_during_prediction_reobserves_without_action(runner):
@@ -317,4 +527,33 @@ def test_navigation_during_prediction_reobserves_without_action(runner):
     runner.command("tick")
     assert runner.state["status"] == "ready"
     assert runner.state["decision"] is None
+    assert runner.state["fallback_used"] is True
+    assert runner.state["errors"][0]["phase"] == "stale_recovery"
     runner.state["browser"].act.assert_not_called()
+
+
+def test_failed_stale_recovery_is_recorded(runner):
+    runner.state["browser"].fresh.side_effect = StalePage("Document navigating")
+    runner.state["browser"].observe.side_effect = StalePage("Still navigating")
+    with pytest.raises(StalePage):
+        runner.command("tick")
+    assert runner.state["status"] == "blocked"
+    assert runner.state["fallback_used"] is True
+    assert runner.state["errors"][-1]["phase"] == "stale_recovery_observe"
+
+
+def test_run_yields_terminal_state_on_model_error(runner, monkeypatch):
+    monkeypatch.setattr(loop, "choose", Mock(side_effect=ValueError("bad response")))
+    runner.state["status"] = "ready"
+    states = list(runner.run())
+    assert states[-1]["status"] == "blocked"
+    assert runner.state["errors"][-1]["phase"] == "decision"
+
+
+def test_post_action_stale_recovery_preserves_execution_result(runner, monkeypatch):
+    monkeypatch.setattr(loop, "choose", Mock(return_value=decision("e3")))
+    runner.state["browser"].observe.side_effect = [StalePage("Navigation in progress"), page()]
+    runner.command("tick")
+    assert runner.state["history"][-1]["choice"] == "e3"
+    assert runner.state["errors"][-1]["message"] == "Executed action re-observed."
+    assert runner.state["history"][-1]["page_changed"] is False

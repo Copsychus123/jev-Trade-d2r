@@ -1,6 +1,7 @@
 (() => {
   if (!document.body) return null;
   const cache = window.__jevFast ||= {ids:new WeakMap(), nodes:new Map(), next:1};
+  const clipName = value => String(value ?? '').replace(/\s+/g,' ').trim().slice(0,600);
   const identity = e => {
     if (!cache.ids.has(e)) cache.ids.set(e,cache.next++);
     const id=cache.ids.get(e); cache.nodes.set(id,e); return id;
@@ -14,12 +15,12 @@
     seen.add(e);
     const referenced=(e.getAttribute('aria-labelledby')||'').split(/\s+/)
       .map(id=>name(document.getElementById(id),seen)).filter(Boolean).join(' ');
-    return referenced || e.getAttribute('aria-label') ||
+    return clipName(referenced || e.getAttribute('aria-label') ||
       [...(e.labels||[])].map(l=>name(l,seen)).filter(Boolean).join(' ') ||
       (['button','submit','reset'].includes(e.type) ? e.value : '') || e.getAttribute('alt') ||
       (e.tagName==='INPUT' ? '' : [...e.childNodes].map(n=>n.nodeType===3 ? n.textContent :
         n.nodeType===1 && n.getAttribute('aria-hidden')!=='true' ? name(n,seen) : '').join(' ').trim()) ||
-      e.getAttribute('title') || e.getAttribute('placeholder') || '';
+      e.getAttribute('title') || e.getAttribute('placeholder') || '');
   };
   const roles=['button','link','checkbox','radio','switch','tab','menuitem','menuitemradio',
     'option','gridcell','combobox','textbox','searchbox','spinbutton'];
@@ -41,8 +42,8 @@
     }
     return null;
   };
-  cache.pageKey=()=>[performance.timeOrigin,location.href,scrollX,scrollY,innerWidth,innerHeight,
-    [...document.querySelectorAll('input,textarea,select')].filter(safe)
+  cache.pageKey=(watched=null)=>[performance.timeOrigin,location.href,scrollX,scrollY,innerWidth,innerHeight,
+    [...document.querySelectorAll('input,textarea,select')].filter(e=>safe(e) && (!watched || watched.has(e)))
       .map(e=>[identity(e),e.value,e.checked,e.selectedIndex,e.disabled,e.readOnly])];
   cache.guard=e=>{
     if (!e?.isConnected || !visible(e)) return null;
@@ -50,7 +51,7 @@
     return [identity(e),role(e),name(e),e.value??null,e.checked??null,e.selectedIndex??null,
       e.readOnly??null,e.matches(':disabled'),e.getAttribute('aria-disabled'),
       e.getAttribute('aria-expanded'),e.getAttribute('aria-checked'),e.getAttribute('aria-selected'),
-      e.getAttribute('href'),scope?.innerText?.slice(0,6000)||''];
+      e.getAttribute('href'),scope?.innerText?.slice(0,600)||''];
   };
   const actions=[];
   for (const e of document.querySelectorAll(selector)) {
@@ -90,18 +91,42 @@
     }
   }
   const text=words.join('\n').slice(0,6000), height=document.documentElement.scrollHeight;
-  const page_key=cache.pageKey(), guards={};
-  for (const a of actions) if (!(a.node in guards)) guards[a.node]=cache.guard(cache.nodes.get(a.node));
+  const all_actions=actions.length;
+  const controls=actions.filter(a=>a.kind!=='select');
+  const options=actions.filter(a=>a.kind==='select');
+  const optionNodes=[...new Set(options.map(a=>a.node))];
+  const optionBudget=Math.min(options.length,Math.max(0,250-Math.min(controls.length,50)));
+  const controlBudget=Math.min(controls.length,250-optionBudget);
+  const retainedControls=controls.slice(0,controlBudget);
+  const optionGroups=optionNodes.map(node=>options.filter(a=>a.node===node));
+  const retainedOptions=[];
+  const selected=new Set(retainedControls);
+  while (retainedOptions.length<optionBudget && optionGroups.some(group=>group.length)) {
+    for (const group of optionGroups) {
+      if (group.length && retainedOptions.length<optionBudget) {
+        const option=group.shift();
+        retainedOptions.push(option);
+        selected.add(option);
+      }
+    }
+  }
+  // Preserve DOM order after selecting the bounded, per-control retention set.
+  const retained=actions.filter(action=>selected.has(action));
+  const omitted_actions=all_actions-retained.length;
+  const page_key_nodes=[...new Set(retained.map(a=>a.node).filter(node=>Number.isInteger(node)))];
+  const watchedNodes=new Set(page_key_nodes.map(node=>cache.nodes.get(node)).filter(Boolean));
+  const page_key=cache.pageKey(watchedNodes), guards={};
+  for (const a of retained) if (!(a.node in guards)) guards[a.node]=cache.guard(cache.nodes.get(a.node));
   // Compare meaning and identity. Geometry is always resolved and hit-tested just before input.
-  const semantics=actions.map(({rect,...action})=>action);
+  const semantics=retained.map(({rect,...action})=>action);
   const marker=[performance.timeOrigin,location.href,scrollX,scrollY,innerWidth,innerHeight,
     document.title,text,semantics,page_key[6]];
-  const omitted_actions=Math.max(0,actions.length-250);
-  actions.splice(250);
+  actions.length=0;
+  actions.push(...retained);
   actions.forEach((a,i)=>a.id='e'+(i+1));
   if (scrollY+innerHeight<height-2) actions.push({id:'scroll_down',kind:'scroll',label:'Scroll down',delta:560});
   if (scrollY>0) actions.push({id:'scroll_up',kind:'scroll',label:'Scroll up',delta:-560});
   actions.push({id:'wait',kind:'wait',label:'Wait for the page to update'});
   return {url:location.href,title:document.title,w:innerWidth,h:innerHeight,text,
-    scroll:{y:scrollY,height},actions,marker,page_key,guards,omitted_actions};
+    scroll:{y:scrollY,height},actions,marker,page_key,page_key_nodes,guards,omitted_actions};
 })()

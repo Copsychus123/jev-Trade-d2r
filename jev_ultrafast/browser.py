@@ -20,17 +20,32 @@ class StalePage(ValueError):
 class Browser:
     def __init__(self, url):
         ensure_daemon()
-        self.target = cdp("Target.createTarget", url="about:blank", background=True)["targetId"]
-        self.session = cdp("Target.attachToTarget", targetId=self.target, flatten=True)["sessionId"]
-        self.call("Emulation.setDeviceMetricsOverride", width=1120, height=780, deviceScaleFactor=1, mobile=False)
-        # Keep rAF/menus rendering in an owned background tab, without activating the user's Chrome tab.
-        self.call("Emulation.setFocusEmulationEnabled", enabled=True)
-        self.call("Page.navigate", url=url)
-        deadline = time.monotonic() + 15
-        while time.monotonic() < deadline:
-            if self.evaluate("document.readyState") == "complete":
-                break
-            time.sleep(0.02)
+        self.target = None
+        self.session = None
+        try:
+            self.target = cdp("Target.createTarget", url="about:blank", background=True)["targetId"]
+            self.session = cdp("Target.attachToTarget", targetId=self.target, flatten=True)["sessionId"]
+            self.call("Emulation.setDeviceMetricsOverride", width=1120, height=780, deviceScaleFactor=1, mobile=False)
+            # Keep rAF/menus rendering in an owned background tab, without activating the user's Chrome tab.
+            self.call("Emulation.setFocusEmulationEnabled", enabled=True)
+            self.call("Page.navigate", url=url)
+            deadline = time.monotonic() + 15
+            while time.monotonic() < deadline:
+                try:
+                    if self.evaluate("document.readyState") == "complete":
+                        break
+                except StalePage:
+                    # Redirects and client-side navigations can briefly destroy the context.
+                    pass
+                time.sleep(0.02)
+        except Exception:
+            if self.target:
+                try:
+                    cdp("Target.closeTarget", targetId=self.target)
+                except Exception:
+                    pass
+                self.target = None
+            raise
 
     def call(self, method, **params):
         return cdp(method, session_id=self.session, **params)
@@ -51,16 +66,29 @@ class Browser:
                     expression="""(action => new Promise(resolve => {
                       const field=window.__jevFast?.nodes.get(action.node);
                       const autocomplete=action.kind==='fill' && field?.getAttribute('role')==='combobox';
-                      let frames=0, stopped=false;
+                      const initialScrollY=scrollY;
+                      let frames=0, stableFrames=0, stopped=false;
+                      let lastScrollY=initialScrollY;
                       const finish=()=>{stopped=true;resolve()};
-                      setTimeout(finish,autocomplete ? 200 : 50);
+                      const settleMs=autocomplete ? 200 : action.kind==='scroll' ? 1000 : 50;
+                      const minReadyAt=performance.now()+(action.kind==='scroll' ? 200 : 0);
+                      const noMoveAt=performance.now()+250;
+                      setTimeout(finish,settleMs);
                       const ready=()=>{
                         if (stopped) return;
+                        if (action.kind==='scroll') {
+                          stableFrames=scrollY===lastScrollY ? stableFrames+1 : 0;
+                          lastScrollY=scrollY;
+                        }
                         const ids=(field?.getAttribute('aria-controls')||field?.getAttribute('aria-owns')||'')
                           .split(/\\s+/).filter(Boolean);
                         const roots=ids.length ? ids.map(id=>document.getElementById(id)).filter(Boolean) : [document];
                         const options=roots.flatMap(root=>[...root.querySelectorAll('[role="option"]')]);
-                        if (++frames>=2 && (!autocomplete || options.some(e=>{
+                        const moved=scrollY!==initialScrollY;
+                        const scrollSettled=moved ? stableFrames>=2 : performance.now()>=noMoveAt;
+                        if (++frames>=2 && performance.now()>=minReadyAt &&
+                            (action.kind!=='scroll' || scrollSettled) &&
+                            (!autocomplete || options.some(e=>{
                           const r=e.getBoundingClientRect();
                           return r.width && r.height && r.bottom>0 && r.top<innerHeight &&
                             e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true});
@@ -86,25 +114,49 @@ class Browser:
         raise StalePage("Page did not settle")
 
     def fresh(self, page, action=None):
-        if action is not None and action["kind"] in {"click", "select"}:
+        if action is not None and action["kind"] == "wait":
+            return True
+        if action is not None and action["kind"] in {"click", "select", "fill"}:
             node = action["node"]
             if type(node) is not int:
                 return False
+            watched = json.dumps(page.get("page_key_nodes", []))
             current = self.evaluate(
                 "(() => { const c=window.__jevFast; "
-                f"return c ? [c.pageKey(),c.guard(c.nodes.get({node}))] : null; }})()"
+                f"const watched=new Set({watched}.map(id=>c?.nodes.get(id)).filter(Boolean)); "
+                f"return c ? [c.pageKey(watched),c.guard(c.nodes.get({node}))] : null; }})()"
             )
             return current == [page["page_key"], page["guards"].get(str(node))]
+        if action is not None and action["kind"] == "scroll":
+            watched = json.dumps(page.get("page_key_nodes", []))
+            current = self.evaluate(
+                "(() => { const c=window.__jevFast; "
+                f"const watched=new Set({watched}.map(id=>c?.nodes.get(id)).filter(Boolean)); "
+                f"return c ? c.pageKey(watched) : null; }})()"
+            )
+            return current == page["page_key"]
         return self.evaluate(MARKER) == page["marker"]
 
     def act(self, action, page, text=None):
         if not self.fresh(page, action):
             raise StalePage("Page changed since this decision. Observe again.")
+        action = dict(action)
+        if action["kind"] not in {"scroll", "wait"}:
+            action["expected_page_key"] = page["page_key"]
+            action["expected_page_key_nodes"] = page.get("page_key_nodes", [])
+            action["expected_guard"] = page["guards"].get(str(action["node"]))
         if action["kind"] == "wait":
             time.sleep(0.1)
-        result = browser_operation({"operation": "act", "session": self.session, "action": action, "text": text})
         self.after_input = action if action["kind"] != "wait" else None
-        return result
+        try:
+            return browser_operation({"operation": "act", "session": self.session, "action": action, "text": text})
+        except StalePage:
+            self.after_input = None
+            raise
+        except (RuntimeError, ValueError) as error:
+            if not getattr(error, "input_dispatched", False):
+                self.after_input = None
+            raise
 
     def close(self):
         if self.target:
@@ -128,7 +180,9 @@ def browser_operation(request):
         result = call("Runtime.evaluate", expression=expression, returnByValue=True)
         if result.get("exceptionDetails"):
             if operation == "act" and request["action"]["kind"] == "select":
-                raise RuntimeError("Dropdown execution was interrupted; inspect before retrying.")
+                error = RuntimeError("Dropdown execution was interrupted; inspect before retrying.")
+                error.input_dispatched = True
+                raise error
             raise StalePage("Document changed during evaluation")
         return result.get("result", {}).get("value")
 
@@ -142,7 +196,10 @@ def browser_operation(request):
                 raise ValueError("Invalid observed node")
             # Code-owned node IDs refer to actual observed elements, never model-generated selectors.
             target = evaluate("""(action => {
-              const e=window.__jevFast?.nodes.get(action.node);
+              const c=window.__jevFast, e=c?.nodes.get(action.node);
+              const watched=new Set((action.expected_page_key_nodes||[]).map(id=>c?.nodes.get(id)).filter(Boolean));
+              if (!c || JSON.stringify(c.pageKey(watched))!==JSON.stringify(action.expected_page_key) ||
+                  JSON.stringify(c.guard(e))!==JSON.stringify(action.expected_guard)) return null;
               if (!e?.isConnected || e.matches(':disabled') || e.closest('[aria-disabled="true"],[inert]') ||
                   !e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})) return null;
               if (action.kind==='fill' && (e.readOnly || e.getAttribute('aria-readonly')==='true')) return null;
@@ -159,30 +216,35 @@ def browser_operation(request):
               return {x,y};
             })(""" + json.dumps(action) + ")")
             if target is None:
-                if kind == "select":
-                    raise RuntimeError("Dropdown execution was not confirmed; inspect before retrying.")
                 raise StalePage("Target changed or is covered. Observe again.")
             if kind != "select":
                 x, y = target["x"], target["y"]
-                for event in ("mousePressed", "mouseReleased"):
-                    call("Input.dispatchMouseEvent", type=event, x=x, y=y, button="left", clickCount=1)
-                if kind == "fill":
-                    call(
-                        "Input.dispatchKeyEvent",
-                        type="keyDown",
-                        key="a",
-                        code="KeyA",
-                        modifiers=4 if sys.platform == "darwin" else 2,
-                        commands=["selectAll"],
-                    )
-                    call(
-                        "Input.dispatchKeyEvent",
-                        type="keyUp",
-                        key="a",
-                        code="KeyA",
-                        modifiers=4 if sys.platform == "darwin" else 2,
-                    )
-                    call("Input.insertText", text=request["text"])
+                input_dispatched = False
+                try:
+                    for event in ("mousePressed", "mouseReleased"):
+                        call("Input.dispatchMouseEvent", type=event, x=x, y=y, button="left", clickCount=1)
+                        input_dispatched = True
+                    if kind == "fill":
+                        call(
+                            "Input.dispatchKeyEvent",
+                            type="keyDown",
+                            key="a",
+                            code="KeyA",
+                            modifiers=4 if sys.platform == "darwin" else 2,
+                            commands=["selectAll"],
+                        )
+                        input_dispatched = True
+                        call(
+                            "Input.dispatchKeyEvent",
+                            type="keyUp",
+                            key="a",
+                            code="KeyA",
+                            modifiers=4 if sys.platform == "darwin" else 2,
+                        )
+                        call("Input.insertText", text=request["text"])
+                except RuntimeError as error:
+                    error.input_dispatched = input_dispatched
+                    raise
         return {"executed": action["id"]}
 
     info = evaluate(READ_STATE)

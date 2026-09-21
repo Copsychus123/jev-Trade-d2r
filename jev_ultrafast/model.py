@@ -10,6 +10,29 @@ import httpx
 from .questions import NEXT_ACTION, TARGET, TEXT_VALUE
 
 CLIENT = httpx.Client(http2=True, timeout=25)
+sleep = time.sleep
+TYPESAFE_DECISIONS_URL = "https://api.typesafe.ai/v1/systemone"
+OPENROUTER_DECISIONS_URL = "https://openrouter.ai/api/alpha/decisions"
+
+
+def decision_provider():
+    """Return the configured decision endpoint, credential, and model."""
+    openrouter_key = os.environ.get("OPENROUTER_API_KEY")
+    if openrouter_key:
+        return (
+            OPENROUTER_DECISIONS_URL,
+            openrouter_key,
+            os.environ.get("OPENROUTER_MODEL", "~typesafe/jev-latest"),
+        )
+    return (
+        TYPESAFE_DECISIONS_URL,
+        os.environ.get("TYPESAFE_API_KEY") or _missing_decision_key(),
+        os.environ.get("TYPESAFE_MODEL", "jev-latest"),
+    )
+
+
+def _missing_decision_key():
+    raise ValueError("Set OPENROUTER_API_KEY or TYPESAFE_API_KEY before choosing an action.")
 
 
 def post_json(url, key, body):
@@ -19,12 +42,14 @@ def post_json(url, key, body):
         except httpx.HTTPError:
             raise RuntimeError("Model connection failed; no action executed.") from None
         if response.status_code in {429, 529, 503} and attempt < 2:
-            time.sleep(0.5 * 2**attempt)
+            sleep(0.5 * 2**attempt)
             continue
         if response.is_error:
             raise RuntimeError(f"Model provider returned HTTP {response.status_code}; no action executed.")
-        return response.json()
-    raise RuntimeError("Model unavailable")
+        try:
+            return response.json()
+        except ValueError:
+            raise RuntimeError("Model provider returned invalid JSON; no action executed.") from None
 
 
 def validate_choice(answer, ids):
@@ -38,7 +63,7 @@ def validate_choice(answer, ids):
             and abs(sum(probabilities.values()) - 1) < 0.02
             and probabilities[answer["choice"]] >= max(probabilities.values()) - 1e-6
         )
-    except (KeyError, TypeError, ValueError):
+    except (AttributeError, KeyError, TypeError, ValueError):
         valid = False
     if not valid:
         raise ValueError("Invalid TypeSafe response; no action executed.")
@@ -61,8 +86,8 @@ def action_space(actions):
             element = {k: action[k] for k in ("role", "value", "checked", "selected", "expanded") if k in action}
             element.update(index=index, label=action["label"].split(" → ")[0], operations=[])
             if kind == "select":
-                element["value"] = action.get("current_value", "")
-                element["options"] = []
+                element["value"] = action.get("current_value", element.get("value", ""))
+                element.setdefault("options", [])
             elements.append(element)
         index = indices[node]
         operation = operations[kind]
@@ -72,6 +97,8 @@ def action_space(actions):
             element["operations"].append(operation)
         target = index
         if kind == "select":
+            element["value"] = action.get("current_value", element.get("value", ""))
+            element.setdefault("options", [])
             target = f"{index}:{len(element['options']) + 1}"
             element["options"].append({"index": target, "label": action["label"], "value": action["value"]})
         group[target] = action
@@ -105,10 +132,11 @@ def choose(state, goal, history):
             "instructions": {"goal": goal, "operation": operation, "rules": [NEXT_ACTION, TARGET]},
         }
     body = {
-        "model": os.environ.get("TYPESAFE_MODEL", "jev-latest"),
+        "model": decision_provider()[2],
         "state": {
             "page": {k: state[k] for k in ("url", "title", "text")},
             "elements": elements,
+            "omitted_actions": state.get("omitted_actions", 0),
             "recent_actions": [
                 {k: h.get(k) for k in ("action", "kind", "text", "page_changed")} for h in history[-10:]
             ],
@@ -116,7 +144,10 @@ def choose(state, goal, history):
         "questions": questions,
     }
     started = time.perf_counter()
-    result = post_json("https://api.typesafe.ai/v1/systemone", os.environ["TYPESAFE_API_KEY"], body)
+    endpoint, key, _ = decision_provider()
+    result = post_json(endpoint, key, body)
+    if not isinstance(result, dict) or not isinstance(result.get("answers"), dict):
+        raise RuntimeError("Model provider returned an invalid decisions response; no action executed.")
     operation_answer = validate_choice(result["answers"].get("operation", {}), operations)
     operation = operation_answer["choice"]
     target = None
@@ -140,11 +171,9 @@ def choose(state, goal, history):
         "operation_probabilities": operation_answer["probabilities"],
         "target_probabilities": target_answer["probabilities"] if target_answer else {},
         "target_confidence": target_answer["confidence"] if target_answer else None,
-        "raw_answers": result["answers"],
-        "model": result["model"],
+        "model": result.get("model") or decision_provider()[2],
         "usage": result.get("usage", {}),
         "latency_ms": round((time.perf_counter() - started) * 1000),
-        "request": body,
     }
 
 
@@ -161,18 +190,31 @@ def field_text(context):
     key = os.environ.get("TEXT_MODEL_API_KEY")
     if not key:
         raise ValueError("TYPE_TEXT needs TEXT_MODEL_API_KEY; no text is hardcoded or guessed by the executor.")
-    base = os.environ.get("TEXT_MODEL_BASE_URL", "https://api.deepseek.com/v1").rstrip("/")
-    model = os.environ.get("TEXT_MODEL", "deepseek-chat")
-    reasoning = {"thinking": {"type": "disabled"}} if "api.deepseek.com/" in base else {"reasoning": {"effort": "low"}}
-    if os.environ.get("TEXT_MODEL_REASONING") == "none":
-        reasoning = {"reasoning": {"enabled": False}}
+    base = os.environ.get("TEXT_MODEL_BASE_URL", "https://openrouter.ai/api/v1")
+    base = base.rstrip("/")
+    model = os.environ.get("TEXT_MODEL", "inception/mercury-2.5")
+    requested_reasoning = os.environ.get("TEXT_MODEL_REASONING", "none").lower()
+    is_deepseek = base == "https://api.deepseek.com" or base.startswith("https://api.deepseek.com/")
+    is_openrouter = base == "https://openrouter.ai" or base.startswith("https://openrouter.ai/")
+    if is_deepseek:
+        if requested_reasoning not in {"none", "enabled", "disabled"}:
+            raise ValueError("TEXT_MODEL_REASONING must be none, enabled, or disabled for DeepSeek.")
+        reasoning = {} if requested_reasoning == "none" else {"thinking": {"type": requested_reasoning}}
+    elif requested_reasoning == "none":
+        reasoning = {"reasoning": {"enabled": False}} if is_openrouter else {}
+    else:
+        if not is_openrouter:
+            raise ValueError("TEXT_MODEL_REASONING overrides require an OpenRouter or DeepSeek endpoint.")
+        if requested_reasoning not in {"low", "medium", "high"}:
+            raise ValueError("TEXT_MODEL_REASONING must be none, low, medium, or high for OpenRouter.")
+        reasoning = {"reasoning": {"effort": requested_reasoning}}
     started = time.perf_counter()
     result = post_json(
         base + "/chat/completions",
         key,
         {
             "model": model,
-            "max_tokens": 1024,
+            "max_tokens": 2048,
             "response_format": {"type": "json_object"},
             **reasoning,
             "messages": [
@@ -189,7 +231,7 @@ def field_text(context):
         value = output["text"]
         if set(output) != {"text"} or not isinstance(value, str) or not value.strip() or len(value) > 2000:
             raise ValueError()
-    except (ValueError, KeyError, TypeError):
+    except (IndexError, ValueError, KeyError, TypeError):
         raise ValueError("Text helper returned no valid field value; nothing typed.") from None
     return value, {
         "model": model,

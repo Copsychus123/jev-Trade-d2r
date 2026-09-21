@@ -1,5 +1,6 @@
 """Local-browser freshness/execution regressions. No model calls or external websites."""
 
+import time
 from urllib.parse import quote
 
 from jev_ultrafast.browser import Browser, StalePage
@@ -80,6 +81,7 @@ def main():
           <select id="category" aria-label="Category">
             <option>All</option><option>Design</option><option disabled>Unavailable</option>
           </select></form><aside id="unrelated">News</aside>
+          <div style="height:2200px"></div><input id="offscreen" aria-label="Offscreen" value="hidden">
         """))
         page = browser.observe(screenshot=False)
         buy = next(a for a in page["actions"] if a["label"] == "Buy")
@@ -87,6 +89,15 @@ def main():
         assert browser.fresh(page, buy)
         assert not browser.fresh(page)
         passed.append("click guard accepts unrelated visible updates; terminal guard rejects them")
+        wait = next(a for a in page["actions"] if a["kind"] == "wait")
+        assert not any(a.get("label") == "Offscreen" for a in page["actions"])
+        browser.evaluate("window.buyClicks=0; document.querySelector('#buy').onclick=()=>window.buyClicks++")
+        assert browser.fresh(page, wait)
+        browser.act(wait, page)
+        browser.act(buy, page)
+        assert browser.evaluate("window.buyClicks") == 1
+        page = browser.observe(screenshot=False)
+        passed.append("unretained offscreen inputs do not invalidate clicks; wait tolerates visible updates")
         for label, expression in {
             "nearby price": "document.querySelector('#price').textContent='Total $100'",
             "form value": "document.querySelector('#query').value='changed'",
@@ -125,7 +136,15 @@ def main():
         assert any(a.get("role") == "option" for a in page["actions"])
         passed.append("real text input waits for asynchronous combobox suggestions")
         browser.call("Page.navigate", url="about:blank")
-        assert not browser.fresh(page, field)
+        for _ in range(25):
+            try:
+                if not browser.fresh(page, field):
+                    break
+            except (RuntimeError, StalePage):
+                break
+            time.sleep(0.02)
+        else:
+            raise AssertionError("Navigation did not invalidate the old document")
         passed.append("navigation invalidates the old document")
     finally:
         browser.close()
