@@ -142,10 +142,10 @@ def browser_operation(request):
                 raise ValueError("Invalid observed node")
             # Code-owned node IDs refer to actual observed elements, never model-generated selectors.
             target = evaluate("""(action => {
-              const e=window.__jevFast?.nodes.get(action.node);
+              const cache=window.__jevFast, e=cache?.nodes.get(action.node);
               if (!e?.isConnected || e.matches(':disabled') || e.closest('[aria-disabled="true"],[inert]') ||
                   !e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})) return null;
-              if (action.kind==='fill' && (e.readOnly || e.getAttribute('aria-readonly')==='true')) return null;
+              if (action.kind==='fill' && !cache.editable(e)) return null;
               const r=e.getBoundingClientRect(), x=r.x+r.width/2, y=r.y+r.height/2;
               if (!r.width || !r.height || x<0 || y<0 || x>=innerWidth || y>=innerHeight) return null;
               if (!e.contains(document.elementFromPoint(x,y))) return null;
@@ -167,6 +167,22 @@ def browser_operation(request):
                 for event in ("mousePressed", "mouseReleased"):
                     call("Input.dispatchMouseEvent", type=event, x=x, y=y, button="left", clickCount=1)
                 if kind == "fill":
+                    def require_text_focus():
+                        try:
+                            focused = evaluate("""(node => {
+                              const cache=window.__jevFast, e=cache?.nodes.get(node);
+                              return !!(e?.isConnected && document.activeElement===e &&
+                                !e.matches(':disabled') && !e.closest('[aria-disabled="true"],[inert]') &&
+                                e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true}) &&
+                                cache.editable(e));
+                            })(""" + str(action["node"]) + ")")
+                        except StalePage:
+                            focused = False
+                        if not focused:
+                            # The click already ran. Never retry a partially executed fill as stale.
+                            raise RuntimeError("Text target changed or lost focus; inspect before retrying.")
+
+                    require_text_focus()
                     call(
                         "Input.dispatchKeyEvent",
                         type="keyDown",
@@ -182,6 +198,8 @@ def browser_operation(request):
                         code="KeyA",
                         modifiers=4 if sys.platform == "darwin" else 2,
                     )
+                    # Page key handlers can redirect focus during Select All as well.
+                    require_text_focus()
                     call("Input.insertText", text=request["text"])
         return {"executed": action["id"]}
 

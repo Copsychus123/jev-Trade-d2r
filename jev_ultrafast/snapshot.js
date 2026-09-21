@@ -41,6 +41,14 @@
     }
     return null;
   };
+  cache.editable=e=>{
+    const rname=role(e);
+    return !e.readOnly && !e.closest('[aria-readonly="true"]') &&
+      (['textbox','searchbox','spinbutton'].includes(rname) ||
+        (rname==='combobox' && ['INPUT','TEXTAREA'].includes(e.tagName))) &&
+      (e.isContentEditable || e.tagName==='TEXTAREA' ||
+        (e.tagName==='INPUT' && ['text','search','email','url','tel','number'].includes(e.type)));
+  };
   cache.pageKey=()=>[performance.timeOrigin,location.href,scrollX,scrollY,innerWidth,innerHeight,
     [...document.querySelectorAll('input,textarea,select')].filter(safe)
       .map(e=>[identity(e),e.value,e.checked,e.selectedIndex,e.disabled,e.readOnly])];
@@ -70,9 +78,7 @@
         actions.push({...base,kind:'select',value:o.value,
           current_value:[...e.selectedOptions].map(o=>o.label).join(', '),label:base.label+' → '+o.label});
     } else {
-      const editable=!e.readOnly && e.getAttribute('aria-readonly')!=='true' &&
-        (['textbox','searchbox','spinbutton'].includes(rname) ||
-          (rname==='combobox' && ['INPUT','TEXTAREA'].includes(e.tagName)));
+      const editable=cache.editable(e);
       const value='value' in e ? String(e.value) :
         e.isContentEditable || rname==='combobox' ? e.innerText.trim() : '';
       actions.push({...base,kind:editable?'fill':'click',value});
