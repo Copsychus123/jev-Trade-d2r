@@ -150,7 +150,9 @@ def browser_operation(request):
                 if(!el) return null;
                 const b=el.getBoundingClientRect(), cx=b.x+b.width/2, cy=b.y+b.height/2;
                 if(!b.width||!b.height||cx<0||cy<0||cx>=innerWidth||cy>=innerHeight) return null;
-                if(!el.contains(document.elementFromPoint(cx,cy))) return null;
+                if(!el.contains(document.elementFromPoint(cx,cy)) || el.matches(':disabled') ||
+                   el.closest('[aria-disabled="true"],[inert]') ||
+                   !el.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})) return null;
                 return {x:cx,y:cy};
               };
               let point=hittable(e);
@@ -158,9 +160,9 @@ def browser_operation(request):
                 // Visually-hidden inputs (custom radio/checkbox/toggle) are 0-1px and covered by
                 // their styled <label>, so they can't be clicked at their own centre. Clicking the
                 // associated label activates the control, so fall back to a hit-testable label.
-                let lbl=e.closest('label');
-                if(!lbl && e.id){ try{ lbl=document.querySelector('label[for="'+CSS.escape(e.id)+'"]'); }catch(_){} }
-                if(lbl) point=hittable(lbl);
+                const labels=e.labels ? [...e.labels] : (e.closest('label') ? [e.closest('label')] : []);
+                if(!labels.length && e.id){ try{ labels.push(...document.querySelectorAll('label[for="'+CSS.escape(e.id)+'"]')); }catch(_){} }
+                for(const label of labels){ point=hittable(label); if(point) break; }
               }
               if(!point) return null;
               if (action.kind==='select') {
