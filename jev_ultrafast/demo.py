@@ -36,9 +36,9 @@ def response_state():
 
 def close_browser():
     global AGENT
-    if AGENT:
-        AGENT.close()
-        AGENT = None
+    agent, AGENT = AGENT, None
+    if agent:
+        agent.close()
 
 
 def command(name, body):
