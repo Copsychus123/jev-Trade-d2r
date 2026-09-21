@@ -80,6 +80,23 @@ def main():
           <select id="category" aria-label="Category">
             <option>All</option><option>Design</option><option disabled>Unavailable</option>
           </select></form><aside id="unrelated">News</aside>
+          <div id="icononly" style="cursor:pointer"
+               onclick="window.iconClicks=(window.iconClicks||0)+1">
+            <svg id="star" width="16" height="16"><title>Star</title></svg></div>
+          <div id="iconsvgid" style="cursor:pointer">
+            <svg id="settings" width="16" height="16"><path d="M0 0h16v16H0z"/></svg></div>
+          <div id="iconfont" style="cursor:pointer"><i class="fa-solid fa-bolt"
+               style="display:inline-block;width:16px;height:16px"></i></div>
+          <div id="iconlabelled" style="cursor:pointer"
+               aria-label="Add this repository to the pinned repositories wall"><svg id="pin"/></div>
+          <span id="icontoggle" style="cursor:pointer" aria-pressed="false"
+                onclick="this.setAttribute('aria-pressed','true')"><svg id="play"/></span>
+          <div id="iconwrapped" role="button" style="cursor:pointer">
+            <span id="iconinner" style="cursor:pointer"><svg id="innericon"/></span></div>
+          <div id="iconcard" style="cursor:pointer">
+            <svg id="cardicon" width="16" height="16"/><span>Lenovo ThinkPad X1 Carbon Gen 12</span></div>
+          <div id="iconhidden" style="cursor:pointer;display:none"><svg id="hiddenicon" width="16" height="16"/></div>
+          <span id="iconoff" style="cursor:pointer" aria-disabled="true"><svg id="officon"/></span>
         """))
         page = browser.observe(screenshot=False)
         buy = next(a for a in page["actions"] if a["label"] == "Buy")
@@ -107,6 +124,23 @@ def main():
         assert not any(a["label"] == "Disabled" or a.get("value") == "never expose this" for a in actions)
         assert [a["value"] for a in actions if a["kind"] == "select"] == ["Design"]
         passed.append("native controls expose only supported operations and safe values")
+
+        # Icon-only affordances: a role-less <div>/<span> wrapping an <svg>, an icon-font glyph or
+        # a descriptive aria-label is otherwise invisible to the table, while an icon that is
+        # hidden, aria-disabled, already owned by an indexed control or wrapped around prose stays
+        # out. The aria-pressed toggle also proves the new action is state-guarded.
+        icons = {a["label"]: a for a in actions if a["kind"] == "click"}
+        assert icons.get("Star", {}).get("role") == "button", sorted(icons)
+        assert "settings" in icons and "bolt" in icons, sorted(icons)
+        assert any(label.startswith("Add this repository") for label in icons), sorted(icons)
+        assert "play" in icons, sorted(icons)
+        assert not {"innericon", "hiddenicon", "officon", "cardicon"} & set(icons), sorted(icons)
+        assert not [label for label in icons if "Lenovo" in label], sorted(icons)
+        browser.act(icons["Star"], page)
+        assert browser.evaluate("window.iconClicks") == 1
+        browser.act(icons["play"], page)
+        assert not browser.fresh(page, icons["play"]), "aria-pressed must invalidate the action"
+        passed.append("icon-only affordances are reachable, executable and state-guarded")
 
         select = next(a for a in actions if a["kind"] == "select")
         browser.act(select, page)
