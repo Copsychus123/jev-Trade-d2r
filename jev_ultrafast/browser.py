@@ -111,8 +111,9 @@ class Browser:
         if target:
             try:
                 cdp("Target.closeTarget", targetId=target)
-            except RuntimeError:
-                pass  # The user already closed the tab.
+            except RuntimeError as error:
+                if "No target with given id found" not in str(error):
+                    raise  # Real close failure must not be masked.
 
 
 def fingerprint(state):
