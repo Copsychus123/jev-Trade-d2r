@@ -82,7 +82,7 @@ def action_space(actions):
     return elements, targets, controls
 
 
-def choose(state, goal, history):
+def choose(state, goal, history, start_url=None):
     elements, targets, controls = action_space(state["actions"])
     labels = {
         "CLICK": "Click an element, button, menu option, autocomplete suggestion, or calendar day.",
@@ -112,6 +112,7 @@ def choose(state, goal, history):
         "model": os.environ.get("TYPESAFE_MODEL", "jev-latest"),
         "state": {
             "page": {k: state[k] for k in ("url", "title", "text")},
+            "navigation": {"start_url": start_url, "left_start_page": bool(start_url) and state["url"] != start_url},
             "elements": elements,
             "recent_actions": [
                 {k: h.get(k) for k in ("action", "kind", "text", "page_changed")} for h in history[-10:]
