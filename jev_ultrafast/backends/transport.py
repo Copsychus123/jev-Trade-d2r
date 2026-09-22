@@ -47,6 +47,12 @@ class EgoMalformedResponse(EgoTransportError):
 class EgoRemoteError(EgoTransportError):
     """The runtime returned an application error for a request."""
 
+    def __init__(self, message: str, name: str | None = None) -> None:
+        super().__init__(message)
+        # Ego's own error class name (for example ElementResolutionError) is a
+        # stronger classification signal than the message text.
+        self.ego_name = name or ""
+
 
 # Descriptive aliases keep callers from depending on the shorter internal
 # names, and make the public failure categories easy to discover.
@@ -288,7 +294,8 @@ class EgoTransport:
                 raise EgoMalformedResponse(f"Malformed Ego response for {request_id}") from error
             if not isinstance(response, dict) or response.get("ok") is not True:
                 message = response.get("error", "Ego operation failed") if isinstance(response, dict) else response
-                raise EgoRemoteError(str(message))
+                name = response.get("name") if isinstance(response, dict) else None
+                raise EgoRemoteError(str(message), name=str(name) if name else None)
             return response.get("value")
 
     def close(self) -> None:

@@ -8,3 +8,6 @@ artifacts/
 *.egg-info/
 
 dist/
+
+# This round's live-run evidence stays on disk; the report cites the aggregate.
+recordings/v2/

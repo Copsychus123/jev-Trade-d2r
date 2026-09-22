@@ -21,10 +21,19 @@ from .transport import (
 )
 
 READ_STATE = Path(__file__).resolve().parents[1].joinpath("snapshot.js").read_text()
-_ACTION_SETTLE_DELAYS_MS = (100, 200, 300, 300)
-_FILL_OBSERVE_SETTLE_INITIAL_MS = 500
-_FILL_OBSERVE_SETTLE_INTERVAL_MS = 200
-_FILL_OBSERVE_SETTLE_BUDGET_MS = 900
+READ_PROBE = Path(__file__).resolve().parents[1].joinpath("probe.js").read_text().strip()
+# A fill can replace the field or open an asynchronous autocomplete popup.  Wait
+# until the observed action set stops changing instead of guessing one delay.
+_FILL_SETTLE_INITIAL_MS = 200
+_FILL_SETTLE_INTERVAL_MS = 200
+_FILL_SETTLE_STABLE_POLLS = 3
+_FILL_SETTLE_BUDGET_MS = 2_000
+_WAIT_DEFAULT_MS = 500
+_WAIT_MAX_MS = 3_000
+# A control can be briefly re-parented by page scripts without changing the
+# observed decision.  Re-read the probe a few times before calling it stale.
+_PROBE_SETTLE_DELAYS_MS = (100, 200, 300)
+_TARGET_KINDS = {"click", "fill", "select"}
 
 _DISPATCHER = r"""
 globalThis.__jevUltrafastRuntime ||= {};
@@ -71,9 +80,11 @@ globalThis.__jevUltrafastDispatch = async request => {
     };
   }
   if (request?.op === "fresh") {
-    const state = await runtime.page.evaluate(globalThis.__jevReadState);
-    if (!state) throw new Error("Ego page is navigating");
-    return {state};
+    const probe = await runtime.page.evaluate(
+      "(" + globalThis.__jevProbeSource + ")(" + JSON.stringify({nodes: payload.nodes || []}) + ")",
+    );
+    if (!probe) throw new Error("Ego page is navigating");
+    return {probe};
   }
   if (request?.op === "act") {
     const action = payload.action || {};
@@ -85,13 +96,22 @@ globalThis.__jevUltrafastDispatch = async request => {
     } else if (action.kind === "fill") {
       if (!ref) throw new Error("unknown ref");
       await runtime.page.fill(ref, String(payload.text ?? ""), {clearFirst: true});
+      /* Typing commonly starts an asynchronous autocomplete that re-renders
+         the surrounding form.  Let that activity finish before the next
+         observation, so the decision is made on the settled page. */
+      await runtime.page.waitForLoadState("networkidle", {timeout: 1200, idleMs: 300}).catch(() => {});
     } else if (action.kind === "select") {
       if (!ref) throw new Error("unknown ref");
-      await runtime.page.selectOption(ref, String(action.value ?? ""));
+      const option = String(action.value ?? "");
+      const marker = String(action.label || "").lastIndexOf(" → ");
+      const choice = option ? {value: option} : marker >= 0 ? {label: action.label.slice(marker + 3)} : option;
+      await runtime.page.selectOption(ref, choice);
     } else if (action.kind === "scroll") {
       await runtime.page.mouse.wheel(0, Number(action.delta || 0), {label});
     } else if (action.kind === "wait") {
-      await runtime.page.waitForTimeout(Number(payload.wait_ms || 100));
+      const wait = Math.min(Math.max(Number(action.wait_ms || payload.wait_ms || 500), 50), 3000);
+      await runtime.page.waitForTimeout(wait);
+      await runtime.page.waitForLoadState("load", {timeout: 1500}).catch(() => {});
     } else {
       throw new Error(`unsupported action kind: ${String(action.kind)}`);
     }
@@ -111,6 +131,9 @@ _CONTROL_ROLES = {
     "button": "button",
     "checkbox": "checkbox",
     "combobox": "combobox",
+    # Ego names an input that owns a popup list by its composite role, while
+    # the page itself declares role="combobox".
+    "comboboxgrouping": "combobox",
     "gridcell": "gridcell",
     "link": "link",
     "menuitem": "menuitem",
@@ -216,6 +239,93 @@ def _action_signature(page: dict[str, Any]) -> str:
     return hashlib.sha256(json.dumps(content, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
+def _target_guard(guard: Any) -> Any:
+    """Keep the code-owned part of a guard and drop nearby container text.
+
+    The trailing scope text is the nearest form/list/article text.  It changes
+    for reasons that have nothing to do with the observed target, so comparing
+    it turned ordinary page churn into a stale decision.
+    """
+    return guard[:-1] if isinstance(guard, list) else guard
+
+
+# Ego resolves a target before it touches the page, so a resolution failure
+# proves no input happened and the decision is safely re-obtainable.
+_RESOLUTION_MARKERS = (
+    "unknown ref",
+    "invalid ref",
+    "take a new snapshot",
+    "matched 0 elements",
+    "no matching element",
+    "no actionable",
+    "elementresolutionerror",
+    "strict mode violation",
+)
+# The action reached the page and failed there.  Replaying it as "stale" would
+# both hide the real fault and risk repeating a partial mutation.
+_ACTION_MARKERS = (
+    "page.fill failed",
+    "page.click failed",
+    "page.selectoption failed",
+    "page.hover failed",
+    "page.dblclick failed",
+    "page.draganddrop failed",
+    "page.press failed",
+    "is not an input",
+    "not an input, textarea, or contenteditable",
+    "intercepts pointer events",
+    "outside of the viewport",
+    "element is not visible",
+    "timed out after",
+    "could not confirm",
+    "could not verify",
+    "unsupported action kind",
+    "not editable",
+)
+_NAVIGATION_MARKERS = ("page is navigating", "document is navigating", "execution context")
+# The target element stopped existing.  That is the page changing under the
+# decision, so the loop re-observes and re-decides; it never replays the
+# mutation.  Reported as stale with the raw Ego message in the timeline.
+_DETACHED_MARKERS = (
+    "element is not connected",
+    "no longer attached",
+    "not attached to the dom",
+    "element is detached",
+)
+
+
+class EgoActionError(RuntimeError):
+    """The page rejected an executed action; this is not a stale target."""
+
+
+def classify_ego_error(error: BaseException, *, phase: str) -> BaseException:
+    """Map one Ego failure to stale, action, or transport semantics.
+
+    ``phase`` is ``"probe"`` for the freshness check and ``"act"`` for the
+    mutation itself, because the same message means different things depending
+    on whether any input was attempted.
+    """
+    if isinstance(error, EgoRemoteError):
+        name = str(getattr(error, "ego_name", "") or "").casefold()
+        message = str(error).casefold()
+        if any(marker in message for marker in _NAVIGATION_MARKERS):
+            return StalePage(str(error))
+        if any(marker in message for marker in _DETACHED_MARKERS):
+            return StalePage(str(error))
+        # Ego resolves a target before it touches the page, so a resolution
+        # failure proves that no input happened and the decision is stale.
+        if any(marker in message for marker in _RESOLUTION_MARKERS) or name == "elementresolutionerror":
+            return StalePage(str(error))
+        if phase == "probe":
+            if any(marker in message for marker in _ACTION_MARKERS):
+                return EgoActionError(str(error))
+            return StalePage(str(error))
+        return EgoActionError(str(error))
+    if isinstance(error, EgoTransportError):
+        return error
+    return EgoTransportError(f"{type(error).__name__}: {error}")
+
+
 class EgoBrowserBackend:
     """One Ego TaskSpace/Page reused by every observe and action in a task."""
 
@@ -240,6 +350,7 @@ class EgoBrowserBackend:
         self._pending_fill_settle = False
         self._closed = False
         self._init_result: dict[str, Any] = {}
+        self.timeline: Any | None = None
         self.timings: dict[str, int] = {"startup_ms": 0, "cleanup_ms": 0}
         self.ego_timings: dict[str, Any] = {
             "observe": {"count": 0, "total_ms": 0, "max_ms": 0, "last_ms": 0},
@@ -278,7 +389,11 @@ class EgoBrowserBackend:
         # submission.  Keep the bootstrap one line even though the source
         # above is formatted for maintenance.
         dispatcher = re.sub(r"\s+", " ", _DISPATCHER).strip()
-        return f"globalThis.__jevReadState={json.dumps(READ_STATE)};{dispatcher}"
+        return (
+            f"globalThis.__jevReadState={json.dumps(READ_STATE)};"
+            f"globalThis.__jevProbeSource={json.dumps(READ_PROBE)};"
+            f"{dispatcher}"
+        )
 
     def _request_raw(self, operation: str, payload: dict[str, Any] | None = None) -> Any:
         return self.transport.request(operation, payload or {}, timeout_ms=self.timeout_ms)
@@ -319,7 +434,13 @@ class EgoBrowserBackend:
             label = _norm(action.get("label", ""))
             base_label = _norm(str(action.get("label", "")).split(" → ", 1)[0])
             value = _norm(action.get("value", ""))
-            candidates = [item for item in refs if item["role"] == role or (role == "link" and item["role"] == "link")]
+            candidates = [item for item in refs if item["role"] == role]
+            if not candidates and label:
+                # A control can carry an explicit ARIA role that Ego renders
+                # under a different name (an option rendered as an anchor, for
+                # example).  Fall back to an unambiguous label match so the
+                # decision still gets a code-owned ref instead of going stale.
+                candidates = [item for item in refs if _norm(item["label"]) == label]
             ranked = sorted(
                 candidates,
                 key=lambda item: (
@@ -340,7 +461,7 @@ class EgoBrowserBackend:
         page.setdefault("text", "")
         page.setdefault("scroll", {"y": 0, "height": 0})
         page.setdefault("guards", {})
-        page["guards"] = {str(key): value for key, value in page["guards"].items()}
+        page["guards"] = {str(key): _target_guard(value) for key, value in page["guards"].items()}
         page["fingerprint"] = page.get("fingerprint") or _state_fingerprint(page)
         page["generation"] = self._generation
         page["ego_space_id"] = self._init_result.get("space_id")
@@ -369,22 +490,24 @@ class EgoBrowserBackend:
         return self._normalize_page(response)
 
     def _settled_fill_observe(self, screenshot: bool) -> dict[str, Any]:
-        # Autocomplete can replace the input form after fill.  Wait for the
-        # action semantics to stop changing, then expose only the final refs.
-        deadline = time.monotonic() + _FILL_OBSERVE_SETTLE_BUDGET_MS / 1000
-        time.sleep(_FILL_OBSERVE_SETTLE_INITIAL_MS / 1000)
+        # A fill can replace the field or open an asynchronous autocomplete
+        # popup well after the input returns.  Observe until the action set has
+        # held still for several consecutive reads, then expose only the final
+        # refs, so the next decision is made on a settled page.
+        deadline = time.monotonic() + _FILL_SETTLE_BUDGET_MS / 1000
+        time.sleep(_FILL_SETTLE_INITIAL_MS / 1000)
         page = self._observe_page(screenshot=screenshot)
         previous = _action_signature(page)
-        while True:
+        stable = 1
+        while stable < _FILL_SETTLE_STABLE_POLLS:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 break
-            time.sleep(min(_FILL_OBSERVE_SETTLE_INTERVAL_MS / 1000, remaining))
+            time.sleep(min(_FILL_SETTLE_INTERVAL_MS / 1000, remaining))
             candidate = self._observe_page(screenshot=screenshot)
             signature = _action_signature(candidate)
             page = candidate
-            if signature == previous:
-                break
+            stable = stable + 1 if signature == previous else 1
             previous = signature
         return page
 
@@ -399,64 +522,100 @@ class EgoBrowserBackend:
         self._generation += 1
         page["generation"] = self._generation
         self._current_page = page
+        mapped = sum(1 for action in page["actions"] if action.get("ref"))
+        unmapped = sum(
+            1 for action in page["actions"] if action.get("kind") in _TARGET_KINDS and not action.get("ref")
+        )
+        self._event(
+            "observe",
+            generation=self._generation,
+            url=page.get("url"),
+            title=page.get("title"),
+            actions=len(page["actions"]),
+            mapped_refs=mapped,
+            unmapped_targets=unmapped,
+        )
         return page
 
-    @staticmethod
-    def _same_page(old: dict[str, Any], current: dict[str, Any]) -> bool:
-        if old.get("fingerprint") and current.get("fingerprint"):
-            return old["fingerprint"] == current["fingerprint"]
-        return _state_fingerprint(old) == _state_fingerprint(current)
+    def _probe(self, page: dict[str, Any], nodes: list[int]) -> dict[str, Any]:
+        response = self._request_timed("fresh", {"nodes": nodes, "observed_epoch": page.get("epoch")})
+        payload = response.get("probe") if isinstance(response, dict) else None
+        if not isinstance(payload, dict):
+            raise EgoMalformedResponse("Ego freshness probe returned no state")
+        return payload
+
+    def _navigated(self, page: dict[str, Any], probe: dict[str, Any]) -> bool:
+        identity = probe.get("identity")
+        if not isinstance(identity, dict):
+            return True
+        return identity.get("epoch") != page.get("epoch") or identity.get("url") != page.get("url")
+
+    def _target_reason(self, page: dict[str, Any], target: dict[str, Any], probe: dict[str, Any]) -> str:
+        node_key = str(target["node"])
+        entry = (probe.get("nodes") or {}).get(node_key)
+        if not isinstance(entry, dict):
+            return "target_detached"
+        if entry.get("guard") != page.get("guards", {}).get(node_key):
+            return "target_changed"
+        if not entry.get("actionable"):
+            return "not_actionable"
+        if target.get("kind") == "fill" and not entry.get("writable"):
+            return "not_writable"
+        return "ok"
 
     def fresh(self, page: dict[str, Any], action: dict[str, Any] | None = None) -> bool:
-        if self._closed or not isinstance(page, dict) or page.get("generation") != self._generation:
+        """Check the observed decision without rebuilding Ego's ref map.
+
+        Same tab, same document, and (for a targeted decision) the same live,
+        usable element.  Unrelated page text, layout, or scroll movement no
+        longer invalidates a decision.
+        """
+        generation = page.get("generation") if isinstance(page, dict) else None
+        url = page.get("url") if isinstance(page, dict) else None
+        if self._closed or not isinstance(page, dict) or generation != self._generation:
+            self._event("fresh", generation=generation, url=url, result=False, reason="generation")
             return False
+        target = action if isinstance(action, dict) and action.get("kind") in _TARGET_KINDS else None
+        if target is not None and (target.get("node") is None or not target.get("ref")):
+            self._event("fresh", generation=generation, url=url, index=str(target.get("id")),
+                        operation=str(target.get("kind")), result=False, reason="missing_ref")
+            return False
+        nodes = [target["node"]] if target is not None else []
         try:
-            response = self._request_timed("fresh", {})
-            current = self._normalize_page(response if isinstance(response, dict) else {})
-        except EgoRemoteError as error:
-            if _looks_stale(str(error)):
-                raise StalePage(str(error)) from error
-            raise
-        if action and action.get("kind") in {"click", "fill", "select"}:
-            node = action.get("node")
-            if action.get("kind") in {"click", "select"}:
-                # The target guard contains the code-owned node identity,
-                # role/name/value state, and nearby semantic context.  Keep
-                # URL as the document boundary, while allowing unrelated
-                # page text and late-added form controls to settle.
-                if page.get("url") != current.get("url"):
-                    return False
-            elif not self._same_page(page, current):
-                return False
-            if node is not None:
-                expected = page.get("guards", {}).get(str(node))
-                actual = current.get("guards", {}).get(str(node))
-                if expected != actual:
-                    if action.get("kind") in {"click", "select"} and expected is not None:
-                        # A fill can briefly hide an autocomplete target while
-                        # its popup settles.  Re-read only; never replay the
-                        # pending mutation.  A replacement or changed target
-                        # remains stale when the bounded settle expires.
-                        for wait_ms in _ACTION_SETTLE_DELAYS_MS:
-                            time.sleep(wait_ms / 1000)
-                            try:
-                                response = self._request_timed("fresh", {})
-                            except EgoRemoteError as error:
-                                if _looks_stale(str(error)):
-                                    raise StalePage(str(error)) from error
-                                raise
-                            current = self._normalize_page(
-                                response if isinstance(response, dict) else {}
-                            )
-                            if page.get("url") != current.get("url"):
-                                return False
-                            actual = current.get("guards", {}).get(str(node))
-                            if expected == actual:
-                                return True
-                    return False
-            return True
-        if not self._same_page(page, current):
+            probe = self._probe(page, nodes)
+        except (EgoRemoteError, EgoTransportError) as error:
+            raise classify_ego_error(error, phase="probe") from error
+        if self._navigated(page, probe):
+            self._event("fresh", generation=generation, url=url, result=False, reason="navigation")
             return False
+        if target is None:
+            self._event("fresh", generation=generation, url=url, result=True, scope="document")
+            return True
+        event = {
+            "generation": generation,
+            "url": url,
+            "index": str(target.get("id")),
+            "ref": target.get("ref"),
+            "operation": str(target.get("kind")),
+        }
+        reason = self._target_reason(page, target, probe)
+        if reason != "ok":
+            # A page can briefly move or re-render a control around the input
+            # without replacing the observed decision.  Re-read a few times,
+            # bounded, and never replay a mutation to do it.
+            for delay_ms in _PROBE_SETTLE_DELAYS_MS:
+                time.sleep(delay_ms / 1000)
+                probe = self._probe(page, nodes)
+                if self._navigated(page, probe):
+                    reason = "navigation"
+                    break
+                reason = self._target_reason(page, target, probe)
+                if reason == "ok":
+                    break
+        if reason != "ok":
+            self._event("fresh", result=False, reason=reason, **event)
+            return False
+        self._event("fresh", result=True, scope="target", **event)
         return True
 
     def act(self, action: dict[str, Any], page: dict[str, Any], text: str | None = None) -> Any:
@@ -464,10 +623,17 @@ class EgoBrowserBackend:
             return {"executed": action.get("id", action.get("kind"))}
         if self._closed:
             raise EgoTransportError("Ego backend is closed")
-        if page.get("generation") != self._generation or not self.fresh(page, action):
-            raise StalePage("Page changed since this decision. Observe again.")
-        if action.get("kind") in {"click", "fill", "select"} and not action.get("ref"):
+        if page.get("generation") != self._generation:
+            raise StalePage("This decision belongs to an older observation. Observe again.")
+        if action.get("kind") in _TARGET_KINDS and not action.get("ref"):
+            self._event("stale", generation=page.get("generation"), index=str(action.get("id")),
+                        operation=str(action.get("kind")), source="act", reason="missing_ref")
             raise StalePage("Observed Ego target has no valid ref")
+        if not self.fresh(page, action):
+            self._event("stale", generation=page.get("generation"), url=page.get("url"),
+                        index=str(action.get("id")), ref=action.get("ref"), operation=str(action.get("kind")),
+                        source="act", reason="fresh_check_failed")
+            raise StalePage("Page changed since this decision. Observe again.")
         try:
             result = self._request_timed(
                 "act",
@@ -475,11 +641,19 @@ class EgoBrowserBackend:
             )
             if action.get("kind") == "fill":
                 self._pending_fill_settle = True
+            self._event("act", generation=page.get("generation"), url=page.get("url"), index=str(action.get("id")),
+                        ref=action.get("ref"), operation=str(action.get("kind")), result="success")
             return result
-        except (EgoRemoteError, EgoProcessExited, EgoTimeout) as error:
-            if _looks_stale(str(error)) or isinstance(error, EgoProcessExited):
-                raise StalePage(str(error)) from error
-            raise
+        except (EgoRemoteError, EgoProcessExited, EgoTimeout, EgoMalformedResponse) as error:
+            classified = classify_ego_error(error, phase="act")
+            self._event("act", generation=page.get("generation"), url=page.get("url"), index=str(action.get("id")),
+                        ref=action.get("ref"), operation=str(action.get("kind")), result="error",
+                        error_class=type(classified).__name__, detail=str(error))
+            if isinstance(classified, StalePage):
+                self._event("stale", generation=page.get("generation"), url=page.get("url"),
+                            index=str(action.get("id")), ref=action.get("ref"), operation=str(action.get("kind")),
+                            source="act", error_class="StalePage", detail=str(error))
+            raise classified from error
 
     def close(self) -> None:
         if self._closed:
@@ -519,6 +693,15 @@ class EgoBrowserBackend:
     def forced_kill(self) -> bool | None:
         return self.cleanup_status.get("forced_kill")
 
+    def attach_timeline(self, timeline: Any | None) -> None:
+        """Record ref/stale lifecycle events into an optional diagnostic timeline."""
+        self.timeline = timeline
+
+    def _event(self, event: str, **fields: Any) -> None:
+        timeline = getattr(self, "timeline", None)
+        if timeline is not None:
+            timeline.record(event, backend=self.backend_name, **fields)
+
     def __enter__(self) -> "EgoBrowserBackend":
         return self
 
@@ -526,36 +709,13 @@ class EgoBrowserBackend:
         self.close()
 
 
-def _looks_stale(message: str) -> bool:
-    value = message.casefold()
-    return any(
-        marker in value
-        for marker in (
-            "unknown ref",
-            "invalid ref",
-            "no element",
-            "no actionable",
-            "no matching",
-            "selector",
-            "stale",
-            "detached",
-            "not found",
-            "does not exist",
-            "target changed",
-            "page changed",
-            "page is navigating",
-            "execution context",
-            "no longer attached",
-        )
-    )
-
-
 def _looks_navigation(message: str) -> bool:
     value = message.casefold()
-    return any(marker in value for marker in ("page is navigating", "document is navigating", "execution context"))
+    return any(marker in value for marker in _NAVIGATION_MARKERS)
 
 
 __all__ = [
+    "EgoActionError",
     "EgoBrowserBackend",
     "EgoMalformedResponse",
     "EgoProcessExited",
@@ -563,4 +723,5 @@ __all__ = [
     "EgoTimeout",
     "EgoTransport",
     "EgoTransportError",
+    "classify_ego_error",
 ]

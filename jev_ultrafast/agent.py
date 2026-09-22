@@ -13,6 +13,7 @@ from .metrics import RunMetrics
 from .model import action_space, choose, field_context, field_text
 from .preflight import preflight, selected_backend
 from .questions import MAX_STALE_RETRIES, MAX_STEPS
+from .timeline import Timeline
 
 
 class Agent:
@@ -31,6 +32,7 @@ class Agent:
             else str(getattr(backend, "backend_name", backend.__class__.__name__)).lower()
         )
         self.metrics = RunMetrics(self.backend_name)
+        self.timeline = Timeline(self.record_dir)
         self.browser = None
         self.state = None
         try:
@@ -41,6 +43,9 @@ class Agent:
             self.browser = backend if hasattr(backend, "observe") else create_backend(url, self.backend_name)
             self.backend_name = str(getattr(self.browser, "backend_name", self.backend_name)).lower()
             self.metrics.backend = self.backend_name
+            attach = getattr(self.browser, "attach_timeline", None)
+            if callable(attach):
+                attach(self.timeline)
             page = self._backend_observe(self.screenshots)
             self.metrics.backend_startup_ms = round((time.perf_counter() - backend_started) * 1000)
         except BaseException as error:
@@ -91,13 +96,16 @@ class Agent:
 
     def _backend_fresh(self, page):
         started = time.perf_counter()
+        generation = page.get("generation") if isinstance(page, dict) else None
         try:
             result = self.browser.fresh(page)
             if result is False:
                 self.metrics.record_stale()
+                self._event("stale", source="fresh_check", generation=generation)
             return result
-        except StalePage:
+        except StalePage as error:
             self.metrics.record_stale()
+            self._event("stale", source="fresh_check", generation=generation, detail=str(error))
             raise
         finally:
             self.metrics.record_backend_operation("fresh", (time.perf_counter() - started) * 1000)
@@ -106,11 +114,19 @@ class Agent:
         started = time.perf_counter()
         try:
             return self.browser.act(action, page, text=text)
-        except StalePage:
+        except StalePage as error:
             self.metrics.record_stale()
+            self._event("stale", source="act", generation=page.get("generation") if isinstance(page, dict) else None,
+                        index=str(action.get("id")), ref=action.get("ref"), operation=str(action.get("kind")),
+                        detail=str(error))
             raise
         finally:
             self.metrics.record_backend_operation("act", (time.perf_counter() - started) * 1000)
+
+    def _event(self, event, **fields):
+        timeline = getattr(self, "timeline", None)
+        if timeline is not None:
+            timeline.record(event, backend=getattr(self, "backend_name", None), **fields)
 
     def _set_elapsed(self):
         if self.state is not None:
@@ -156,8 +172,11 @@ class Agent:
             except StalePage:
                 state["decision"] = None
                 state["stale_retries"] = state.get("stale_retries", 0) + 1
+                self._event("stale_retry", generation=state["page"].get("generation"),
+                            retries=state["stale_retries"], limit=MAX_STALE_RETRIES)
                 if state["stale_retries"] >= MAX_STALE_RETRIES:
                     state["status"] = "blocked"
+                    self._event("fuse", fuse="max_stale_retries", retries=state["stale_retries"])
                     self._finish_metrics("blocked")
                     return self.snapshot()
                 state["status"] = "ready"
@@ -189,6 +208,19 @@ class Agent:
                     "fingerprint": state["page"]["fingerprint"],
                     "elapsed_ms": round((time.perf_counter() - state["started_at"]) * 1000),
                 }
+            )
+            selected_action = next(
+                (item for item in state["page"]["actions"] if item.get("id") == state["decision"].get("choice")),
+                None,
+            )
+            self._event(
+                "decision",
+                generation=state["page"].get("generation"),
+                index=state["decision"].get("target"),
+                ref=(selected_action or {}).get("ref"),
+                operation=state["decision"].get("operation"),
+                confidence=state["decision"].get("confidence"),
+                latency_ms=state["decision"].get("latency_ms"),
             )
             state["status"] = "predicted"
         elif name == "act":
@@ -271,6 +303,7 @@ class Agent:
                 else "ready"
             )
             if state["status"] == "blocked":
+                self._event("fuse", fuse="no_progress", actions=len(state["history"]))
                 self._finish_metrics("blocked")
         else:
             raise ValueError("Unknown command")
@@ -285,6 +318,7 @@ class Agent:
         except BaseException as error:
             if self.state is not None and self.state["status"] not in {"done", "blocked"}:
                 self.state["status"] = "error"
+            self._event("error", error_class=type(error).__name__, detail=str(error))
             try:
                 self._finish_metrics("error", error)
             finally:
@@ -346,6 +380,9 @@ class Agent:
             if error is not None:
                 status = "error"
             self._finish_metrics(status if status in {"done", "blocked", "error"} else "closed", error)
+            timeline = getattr(self, "timeline", None)
+            if timeline is not None:
+                timeline.close()
         if error is not None:
             raise error
 

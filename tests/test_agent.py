@@ -318,3 +318,50 @@ def test_navigation_during_prediction_reobserves_without_action(runner):
     assert runner.state["status"] == "ready"
     assert runner.state["decision"] is None
     runner.state["browser"].act.assert_not_called()
+
+
+def test_action_error_fails_closed_without_a_stale_retry(runner, monkeypatch):
+    from jev_ultrafast.backends.ego import EgoActionError
+
+    monkeypatch.setattr(loop, "field_text", Mock(return_value=("book", {"model": "test", "latency_ms": 1})))
+    runner.state["decision"] = decision("e3")
+    runner.state["browser"].act.side_effect = EgoActionError("page.click failed: element intercepts pointer events")
+    with pytest.raises(EgoActionError):
+        runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
+    assert runner.state["browser"].act.call_count == 1  # Never replayed.
+    assert runner.state["browser"].observe.call_count == 0
+    assert runner.state.get("stale_retries", 0) == 0
+    assert runner.state["history"] == []
+
+
+def test_stale_retry_fuse_still_blocks_after_the_limit(runner, monkeypatch):
+    from jev_ultrafast.questions import MAX_STALE_RETRIES
+
+    monkeypatch.setattr(loop, "choose", Mock(return_value=decision("e3")))
+    runner.state["browser"].act.side_effect = StalePage("Page changed since this decision")
+    runner.state["browser"].observe.return_value = runner.state["page"]
+    for _ in range(MAX_STALE_RETRIES):
+        runner.state["decision"] = decision("e3")
+        runner.command("tick")
+    assert runner.state["status"] == "blocked"
+    assert runner.state["stale_retries"] == MAX_STALE_RETRIES
+    # The fuse stops the loop instead of replaying the mutation again.
+    assert runner.state["browser"].act.call_count == MAX_STALE_RETRIES
+
+
+def test_timeline_records_the_stale_lifecycle_and_the_fuse(runner, monkeypatch):
+    from jev_ultrafast.timeline import Timeline
+
+    monkeypatch.setattr(loop, "choose", Mock(return_value=decision("e3")))
+    events = []
+    runner.timeline = Timeline(None)
+    runner.timeline.record = lambda event, **fields: events.append((event, fields))
+    runner.state["browser"].act.side_effect = StalePage("Page changed since this decision")
+    runner.state["browser"].observe.return_value = runner.state["page"]
+    for _ in range(3):
+        runner.state["decision"] = decision("e3")
+        runner.command("tick")
+    names = [event for event, _fields in events]
+    assert names.count("stale") == 3 and names.count("stale_retry") == 3
+    assert names[-1] == "fuse" and events[-1][1]["fuse"] == "max_stale_retries"
+    assert [fields["source"] for event, fields in events if event == "stale"] == ["act"] * 3
