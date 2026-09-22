@@ -67,7 +67,7 @@ Chrome connects through [Browser Harness](https://github.com/browser-use/browser
 
 `TEXT_MODEL_API_KEY` is an OpenRouter key in the example configuration. The current demo uses `inception/mercury-2.5` with reasoning disabled. Gemini, GLM, and DeepSeek can also use the OpenAI-compatible text helper; configure the appropriate model, endpoint, and reasoning setting.
 
-Jev itself defaults to TypeSafe's own endpoint (`https://api.typesafe.ai`) with `TYPESAFE_API_KEY`. To route through OpenRouter instead, set `TYPESAFE_BASE_URL=https://openrouter.ai/api`, `TYPESAFE_API_KEY` to an OpenRouter key, and optionally `TYPESAFE_MODEL` (e.g. `jev-latest` or `jev-1.13`) — the model id is namespaced to `typesafe/` automatically when the base URL is OpenRouter's.
+Jev itself defaults to TypeSafe's own endpoint (`https://api.typesafe.ai`) with `TYPESAFE_API_KEY`. To route through OpenRouter instead, set `TYPESAFE_BASE_URL=https://openrouter.ai/api`, `TYPESAFE_API_KEY` to an OpenRouter key, and optionally `TYPESAFE_MODEL` (e.g. `jev-latest` or `jev-1.13`) — pass the bare model id; OpenRouter resolves it to the right TypeSafe model on its own (a `typesafe/` prefix returns `400 Model ... does not exist`).
 
 ## Use the library
 

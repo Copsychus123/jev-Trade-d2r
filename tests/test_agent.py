@@ -96,7 +96,7 @@ def test_all_heads_are_one_request_and_only_matching_head_executes(monkeypatch):
     assert set(calls[0]["questions"]) == {"operation", "click_target", "type_text_target"}
 
 
-def test_typesafe_base_url_is_configurable_and_namespaced_for_openrouter(monkeypatch):
+def test_typesafe_base_url_is_configurable_for_openrouter(monkeypatch):
     calls = []
 
     def post(url, _key, body):
@@ -115,7 +115,7 @@ def test_typesafe_base_url_is_configurable_and_namespaced_for_openrouter(monkeyp
     monkeypatch.setenv("TYPESAFE_MODEL", "jev-1.13")
     monkeypatch.setattr(model, "post_json", post)
     model.choose(page(), "Find a book", [])
-    assert calls == [("https://openrouter.ai/api/v1/systemone", "typesafe/jev-1.13")]
+    assert calls == [("https://openrouter.ai/api/v1/systemone", "jev-1.13")]
 
 
 def test_typesafe_base_url_defaults_to_typesafe_api(monkeypatch):
