@@ -251,6 +251,53 @@ def test_executor_rejects_a_stale_page_before_browser_input(monkeypatch):
     operation.assert_not_called()
 
 
+def test_browser_init_closes_created_target_when_setup_fails(monkeypatch):
+    import jev_ultrafast.browser as browser
+
+    calls = []
+
+    def cdp(method, **params):
+        calls.append((method, params))
+        if method == "Target.createTarget":
+            return {"targetId": "target-1"}
+        if method == "Target.attachToTarget":
+            raise RuntimeError("attach failed")
+        if method == "Target.closeTarget":
+            return {"success": True}
+        raise AssertionError(method)
+
+    monkeypatch.setattr(browser, "ensure_daemon", Mock())
+    monkeypatch.setattr(browser, "cdp", cdp)
+
+    with pytest.raises(RuntimeError, match="attach failed"):
+        browser.Browser("https://example.test/")
+
+    assert [method for method, _params in calls] == [
+        "Target.createTarget",
+        "Target.attachToTarget",
+        "Target.closeTarget",
+    ]
+
+
+def test_browser_init_preserves_setup_error_when_cleanup_fails(monkeypatch):
+    import jev_ultrafast.browser as browser
+
+    def cdp(method, **_params):
+        if method == "Target.createTarget":
+            return {"targetId": "target-1"}
+        if method == "Target.attachToTarget":
+            raise RuntimeError("attach failed")
+        if method == "Target.closeTarget":
+            raise RuntimeError("close failed")
+        raise AssertionError(method)
+
+    monkeypatch.setattr(browser, "ensure_daemon", Mock())
+    monkeypatch.setattr(browser, "cdp", cdp)
+
+    with pytest.raises(RuntimeError, match="attach failed"):
+        browser.Browser("https://example.test/")
+
+
 @pytest.mark.parametrize("response", [{"exceptionDetails": {}}, {"result": {}}])
 def test_interrupted_dropdown_mutation_cannot_be_retried_as_stale(monkeypatch, response):
     import jev_ultrafast.browser as browser
