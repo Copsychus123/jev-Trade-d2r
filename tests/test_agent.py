@@ -96,6 +96,48 @@ def test_all_heads_are_one_request_and_only_matching_head_executes(monkeypatch):
     assert set(calls[0]["questions"]) == {"operation", "click_target", "type_text_target"}
 
 
+def test_typesafe_base_url_is_configurable_and_namespaced_for_openrouter(monkeypatch):
+    calls = []
+
+    def post(url, _key, body):
+        calls.append((url, body["model"]))
+        return {
+            "model": "test",
+            "answers": {
+                "operation": choice(body["questions"]["operation"]["criteria"], "TYPE_TEXT"),
+                "type_text_target": choice(["1"], "1"),
+                "click_target": {"choice": "invented"},
+            },
+        }
+
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test")
+    monkeypatch.setenv("TYPESAFE_BASE_URL", "https://openrouter.ai/api")
+    monkeypatch.setenv("TYPESAFE_MODEL", "jev-1.13")
+    monkeypatch.setattr(model, "post_json", post)
+    model.choose(page(), "Find a book", [])
+    assert calls == [("https://openrouter.ai/api/v1/systemone", "typesafe/jev-1.13")]
+
+
+def test_typesafe_base_url_defaults_to_typesafe_api(monkeypatch):
+    calls = []
+
+    def post(url, _key, body):
+        calls.append((url, body["model"]))
+        return {
+            "model": "test",
+            "answers": {
+                "operation": choice(body["questions"]["operation"]["criteria"], "TYPE_TEXT"),
+                "type_text_target": choice(["1"], "1"),
+                "click_target": {"choice": "invented"},
+            },
+        }
+
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test")
+    monkeypatch.setattr(model, "post_json", post)
+    model.choose(page(), "Find a book", [])
+    assert calls == [("https://api.typesafe.ai/v1/systemone", "jev-latest")]
+
+
 def test_click_cannot_consume_a_text_target(monkeypatch):
     def post(_url, _key, body):
         return {
