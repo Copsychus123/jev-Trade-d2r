@@ -75,7 +75,7 @@ uv run --env-file .env python examples/run.py \
   --record-dir artifacts/ego-run
 ```
 
-`ULTRAFAST_BROWSER_BACKEND=ego` is the equivalent environment setting. The explicit `--backend` value wins. Ego starts one task-scoped runtime, reuses it for every observation and action, and closes it when the `Agent` context exits. `metrics.json` contains wall and policy timings, Jev calls, action success, stale counts, and backend operation timings; `trace.json` omits raw model requests, usage payloads, typed values, and full page text. Startup checks report only whether credentials are configured.
+`ULTRAFAST_BROWSER_BACKEND=ego` is the equivalent environment setting. The explicit `--backend` value wins. Ego starts one task-scoped runtime, reuses it for every observation and action, and closes it when the `Agent` context exits. An Ego freshness check is a read-only probe of the decided target — page identity plus that node's trimmed guard, actionable and writable flags — so it never re-snapshots the page or rebuilds the action list; when the target is really gone the loop re-observes and decides again instead of replaying the mutation. `metrics.json` contains wall and policy timings, Jev calls, action success, stale counts, and backend operation timings; `trace.json` omits raw model requests, usage payloads, typed values, and full page text. Startup checks report only whether credentials are configured. The V2 hardening report with its live-run evidence is in [V2_RELIABILITY_HARDENING_REPORT.md](V2_RELIABILITY_HARDENING_REPORT.md).
 
 `TEXT_MODEL_API_KEY` is an OpenRouter key in the example configuration. The current demo uses `inception/mercury-2.5` with reasoning disabled. Gemini, GLM, and DeepSeek can also use the OpenAI-compatible text helper; configure the appropriate model, endpoint, and reasoning setting.
 
@@ -157,7 +157,9 @@ Every executed target is resolved from an observed node. The executor rechecks p
 | File | Job |
 | --- | --- |
 | [agent.py](jev_ultrafast/agent.py) | The complete loop and text-helper handoff |
-| [snapshot.js](jev_ultrafast/snapshot.js) | Atomic DOM snapshot, indexed controls, freshness guards |
+| [snapshot.js](jev_ultrafast/snapshot.js) | Atomic DOM snapshot, indexed controls, action guards |
+| [probe.js](jev_ultrafast/probe.js) | Read-only freshness probe: page identity plus the target's trimmed guard, actionable and writable flags |
+| [timeline.py](jev_ultrafast/timeline.py) | Bounded, redacted JSONL execution timeline for the Ego loop |
 | [browser.py](jev_ultrafast/browser.py) | Browser connection, current geometry, execution |
 | [model.py](jev_ultrafast/model.py) | Dynamic operation/target heads and text generation |
 | [questions.py](jev_ultrafast/questions.py) | Model instructions |
