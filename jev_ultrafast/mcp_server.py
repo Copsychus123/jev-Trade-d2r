@@ -71,6 +71,7 @@ class TraceLog:
     def __init__(self, path: str | Path | None = None):
         raw = str(path) if path is not None else (os.environ.get("JEV_MCP_TRACE_PATH") or "").strip()
         self.path = Path(raw).expanduser() if raw else None
+        self.pid = os.getpid()
         self._lock = threading.Lock()
         self._sequence = 0
         if self.path is not None:
@@ -82,6 +83,8 @@ class TraceLog:
         with self._lock:
             self._sequence += 1
             entry = {
+                # The file is append-only across server processes; the pid separates sessions.
+                "pid": self.pid,
                 "seq": self._sequence,
                 "at": round(time.time(), 6),
                 "direction": direction,

@@ -2,6 +2,7 @@
 
 import io
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -114,6 +115,7 @@ def test_trace_log_records_both_directions(tmp_path):
     entries = [json.loads(line) for line in path.read_text().splitlines()]
     assert [entry["direction"] for entry in entries] == ["request", "response"]
     assert [entry["seq"] for entry in entries] == [1, 2]
+    assert entries[0]["pid"] == entries[1]["pid"] == os.getpid()
     assert entries[0]["payload"]["method"] == "tools/list"
 
 

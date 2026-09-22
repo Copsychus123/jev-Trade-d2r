@@ -103,6 +103,42 @@ uv run --env-file .env python examples/run.py \
 
 `uv run --env-file .env python examples/flights.py --keep-open` performs the flight search, checks the actual route/date/results, and saves its trace. It does not select or book a flight.
 
+## Drive it from an MCP host
+
+`jev_ultrafast/mcp_server.py` is a stdio MCP server over the same agent. It uses
+the standard library only, so it adds no dependency, and it redirects everything
+the agent and its browser backend print to stderr: stdout carries protocol frames
+and nothing else. It reads the ignored `.env` itself, because an MCP host scrubs
+the environment it spawns children in.
+
+| Tool | Job |
+| --- | --- |
+| `run_goal` | One URL and one natural-language goal; returns status, executed steps, metrics, and an independent re-read of the final page. |
+| `browser_status` | Reports whether credentials and the backend are configured. Starts no browser and makes no paid call. |
+
+```bash
+python -m jev_ultrafast.mcp_server --print-tools   # the advertised surface
+python -m jev_ultrafast.mcp_server --check         # configuration only
+```
+
+Register it with any host that speaks MCP over stdio. For a DSH profile:
+
+```yaml
+- insert:
+    - id: mcp-jev-ultrafast
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        transport: stdio
+        serverName: jev-ultrafast
+        command: /absolute/path/to/jev-ultrafast/.venv/bin/python
+        args: [-m, jev_ultrafast.mcp_server]
+        cwd: /absolute/path/to/jev-ultrafast
+        toolCallTimeoutMs: 900000   # above run_goal's 180 s default budget
+        failOnStartupError: false
+```
+
+Tools then appear as `mcp__jev-ultrafast__run_goal` and `mcp__jev-ultrafast__browser_status`. Set `JEV_MCP_TRACE_PATH` to append every protocol frame to a JSONL file; entries carry the server pid, so sessions in one append-only file stay distinguishable. `browser_harness` (Chrome) remains the default backend, and a run still stops on `DONE`, `BLOCKED`, or its time budget. `scripts/mcp_client_run.py` is a minimal client for exercising the server and recording that trace.
+
 ## Why it moves
 
 - **One request per decision cycle.** Operation and target heads share the same observed state.
@@ -126,6 +162,7 @@ Every executed target is resolved from an observed node. The executor rechecks p
 | [model.py](jev_ultrafast/model.py) | Dynamic operation/target heads and text generation |
 | [questions.py](jev_ultrafast/questions.py) | Model instructions |
 | [demo.py](jev_ultrafast/demo.py) | Local inspector |
+| [mcp_server.py](jev_ultrafast/mcp_server.py) | Stdio MCP server over the same loop |
 
 ## Evidence and limits
 
