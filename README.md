@@ -65,6 +65,18 @@ Open **http://127.0.0.1:8766** and click **Start demo → Run automatically**. T
 
 Chrome connects through [Browser Harness](https://github.com/browser-use/browser-harness), installed by `uv sync`. Run `uv run browser-harness --doctor` if it needs connecting. Allow remote debugging in Chrome when prompted.
 
+The default backend is the original Browser Harness session. To use Ego Browser for one task, install its `ego-browser` executable and select it explicitly:
+
+```bash
+uv run --env-file .env python examples/run.py \
+  --backend ego \
+  --url https://en.wikipedia.org/wiki/Main_Page \
+  --goal 'Find and open the Wikipedia article about Gödel’s incompleteness theorems.' \
+  --record-dir artifacts/ego-run
+```
+
+`ULTRAFAST_BROWSER_BACKEND=ego` is the equivalent environment setting. The explicit `--backend` value wins. Ego starts one task-scoped runtime, reuses it for every observation and action, and closes it when the `Agent` context exits. `metrics.json` contains wall and policy timings, Jev calls, action success, stale counts, and backend operation timings; `trace.json` omits raw model requests, usage payloads, typed values, and full page text. Startup checks report only whether credentials are configured.
+
 `TEXT_MODEL_API_KEY` is an OpenRouter key in the example configuration. The current demo uses `inception/mercury-2.5` with reasoning disabled. Gemini, GLM, and DeepSeek can also use the OpenAI-compatible text helper; configure the appropriate model, endpoint, and reasoning setting.
 
 ## Use the library
