@@ -411,9 +411,13 @@ def test_run_once_writes_every_required_artifact(tmp_path, monkeypatch):
         assert evidence["pid_alive_after_close"][str(process.pid)] is False
         assert evidence["surviving_pids"] == []
         assert evidence["post_close_scan"]["pattern"] == "ego-browser nodejs"
-        # Unrelated Ego processes on this machine are reported honestly, not assumed away.
+        # Unrelated Ego processes on this machine are reported honestly, but only
+        # the ones this run started can make it an orphan.
         assert summary["orphan_process_remaining"] == evidence["orphan_process_remaining"]
-        assert evidence["orphan_process_remaining"] is bool(evidence["post_close_scan"]["matches"])
+        assert evidence["post_close_scan"]["baseline"] is not None
+        assert evidence["orphan_process_remaining"] is bool(
+            evidence["post_close_scan"]["attributed"] or evidence["surviving_pids"]
+        )
         for payload in (summary, evidence):
             text = json.dumps(payload).lower()
             assert "api_key" not in text and "authorization" not in text and "bearer" not in text

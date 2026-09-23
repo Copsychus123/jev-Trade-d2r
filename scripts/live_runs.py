@@ -377,9 +377,17 @@ def collect_backend_evidence(agent):
     return evidence
 
 
-def collect_process_evidence(run_id, backend_name, pids, observed_at, metrics=None):
-    """Post-close evidence: which runtime pids survived and what pgrep still sees."""
+def collect_process_evidence(run_id, backend_name, pids, observed_at, metrics=None, baseline_pids=None):
+    """Post-close evidence: which runtime pids survived and what pgrep still sees.
+
+    An orphan is only attributed to this run when it is one of the run's tracked
+    pids or a process the global scan did not already see before the run started.
+    A shared machine keeps unrelated ``ego-browser`` processes around, and this
+    benchmark runs one runtime at a time, so the baseline is what makes the
+    isolation check honest instead of a false positive.
+    """
     observed = sorted({int(pid) for pid in pids if pid})
+    baseline = sorted({int(pid) for pid in (baseline_pids or []) if pid})
     states = system_process_table(observed)
     liveness = {}
     notes = []
@@ -388,15 +396,23 @@ def collect_process_evidence(run_id, backend_name, pids, observed_at, metrics=No
         liveness[str(pid)] = alive
         if alive:
             notes.append(f"pid {pid} is still alive after the Agent closed")
-    scan = {"pattern": EGO_SCAN_PATTERN, "matches": None}
+    scan = {"pattern": EGO_SCAN_PATTERN, "matches": None, "baseline": baseline, "attributed": []}
+    attributed = []
     if backend_name == "ego":
         matches = scan_ego_processes()
         scan["matches"] = matches
-        if matches:
-            notes.append(f"pgrep -f {EGO_SCAN_PATTERN!r} still matches {matches}")
+        attributed = sorted(set(matches) - set(baseline))
+        scan["attributed"] = attributed
+        if attributed:
+            notes.append(f"pgrep -f {EGO_SCAN_PATTERN!r} shows new matches {attributed}")
+        elif matches:
+            notes.append(
+                f"pgrep -f {EGO_SCAN_PATTERN!r} still matches {matches}, "
+                "all of them already present before this run"
+            )
     survivors = sorted(pid for pid, alive in liveness.items() if alive)
     if backend_name == "ego":
-        orphan = bool(survivors) or bool(scan["matches"])
+        orphan = bool(survivors) or bool(attributed)
     else:
         orphan = None
         notes.append("no Ego runtime is started by browser_harness; only this process is observable")
@@ -496,6 +512,9 @@ def run_once(
     record_dir.mkdir(parents=True, exist_ok=True)
     manifest = version_manifest(run["source_root"])
     write_json(record_dir / "version_manifest.json", manifest)
+    # What the Ego scan already sees before this run starts, so an unrelated
+    # runtime on the same machine can never be reported as this run's orphan.
+    process_baseline = scan_ego_processes() if run["backend"] == "ego" else []
     started = time.perf_counter()
     failure = None
     close_started = None
@@ -536,7 +555,9 @@ def run_once(
         status = "not_started"  # the Agent never reached a model outcome
     else:
         status = evidence.get("final_status") or "missing_metrics"
-    process_evidence = collect_process_evidence(run["run_id"], run["backend"], pids, observed_at, metrics)
+    process_evidence = collect_process_evidence(
+        run["run_id"], run["backend"], pids, observed_at, metrics, baseline_pids=process_baseline
+    )
     write_json(record_dir / "process_evidence.json", process_evidence)
     summary = {
         # Recorded metrics first; the harness-derived lifecycle fields below win.

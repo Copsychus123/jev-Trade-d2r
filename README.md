@@ -28,7 +28,7 @@ Every observation produces a new element table:
 ...
 ```
 
-The operations are `CLICK`, `TYPE_TEXT`, `SELECT`, `SCROLL_UP`, `SCROLL_DOWN`, `WAIT`, `DONE`, and `BLOCKED`. Only supported operations and targets are offered.
+The operations are `CLICK`, `TYPE_TEXT`, `SELECT`, `SCROLL_UP`, `SCROLL_DOWN`, `WAIT`, `DONE`, and `BLOCKED`. Only supported operations and targets are offered. `WAIT` is a 800 ms action whose duration is carried by the observation, so both backends spend the same time on the same decision.
 
 ```text
                       one TypeSafe request
@@ -75,7 +75,7 @@ uv run --env-file .env python examples/run.py \
   --record-dir artifacts/ego-run
 ```
 
-`ULTRAFAST_BROWSER_BACKEND=ego` is the equivalent environment setting. The explicit `--backend` value wins. Ego starts one task-scoped runtime, reuses it for every observation and action, and closes it when the `Agent` context exits. An Ego freshness check is a read-only probe of the decided target — page identity plus that node's trimmed guard, actionable and writable flags — so it never re-snapshots the page or rebuilds the action list; when the target is really gone the loop re-observes and decides again instead of replaying the mutation. `metrics.json` contains wall and policy timings, Jev calls, action success, stale counts, and backend operation timings; `trace.json` omits raw model requests, usage payloads, typed values, and full page text. Startup checks report only whether credentials are configured. The V2 hardening report with its live-run evidence is in [V2_RELIABILITY_HARDENING_REPORT.md](V2_RELIABILITY_HARDENING_REPORT.md).
+`ULTRAFAST_BROWSER_BACKEND=ego` is the equivalent environment setting. The explicit `--backend` value wins. Ego starts one task-scoped runtime, reuses it for every observation and action, and closes it when the `Agent` context exits. An Ego freshness check is a read-only probe of the decided target — page identity plus that node's trimmed guard, actionable and writable flags — so it never re-snapshots the page or rebuilds the action list; when the target is really gone the loop re-observes and decides again instead of replaying the mutation. A target Ego's snapshot gives no ref for is never offered as a choice, since choosing it could only burn a stale retry, and after a mutation the next observation waits (bounded and read-only) for the action set to hold still, so a decision is never made on a transitional frame. `metrics.json` contains wall and policy timings, Jev calls, action success, stale counts, and backend operation timings; `trace.json` omits raw model requests, usage payloads, typed values, and full page text. Startup checks report only whether credentials are configured. The V2 hardening report with its live-run evidence is in [V2_RELIABILITY_HARDENING_REPORT.md](V2_RELIABILITY_HARDENING_REPORT.md), and the Ego vs Chrome comparison is in [docs/final_backend_benchmark.md](docs/final_backend_benchmark.md).
 
 `TEXT_MODEL_API_KEY` is an OpenRouter key in the example configuration. The current demo uses `inception/mercury-2.5` with reasoning disabled. Gemini, GLM, and DeepSeek can also use the OpenAI-compatible text helper; configure the appropriate model, endpoint, and reasoning setting.
 
@@ -86,8 +86,9 @@ from jev_ultrafast import Agent
 
 with Agent(
     "https://www.google.com/travel/flights?hl=en",
-    "Find one-way flights from Zurich to London on September 20, 2026, "
-    "for one adult in economy. Stop when matching flight options are visible.",
+    "Find one-way flights from Zurich to London for one adult in economy, "
+    "departing on the first date the calendar offers. Stop once the search is "
+    "committed for that route and date.",
 ) as agent:
     for state in agent.run():
         print(state["elapsed_ms"], state["status"])
@@ -168,7 +169,7 @@ Every executed target is resolved from an observed node. The executor rechecks p
 
 ## Evidence and limits
 
-The current video is a **7,073 ms** Google Flights run. Timing starts after initial page observation and includes model calls, generated text, browser work, stale decisions, and loading waits. A fresh independent check verifies the one-way setting, Zürich, London, September 20, 2026, and visible flight options. The video plays at 1×, with no opening hold and a 0.5-second final hold.
+The current video is a **7,073 ms** Google Flights run. Timing starts after initial page observation and includes model calls, generated text, browser work, stale decisions, and loading waits. That run's own independent check verified the one-way setting, Zürich, London, its dated departure (September 20, 2026), and visible flight options. The shipped example derives the same check differently so it stays runnable: `examples/flights.py` asks for today + 21 days, reads the committed itinerary out of Google's `tfs` payload (the departure date, and the trip type as protobuf field 19), and reports the visible flights without requiring a particular date. The video plays at 1×, with no opening hold and a 0.5-second final hold.
 
 In six alternating runs with identical models and settings, both versions passed **3/3**. Median task time went from **9.450 s → 7.092 s**, a **25% reduction**; median browser protocol calls went from **1,092 → 101**. This is three repeats of one task on one browser profile, not a general reliability benchmark.
 

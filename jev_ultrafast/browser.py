@@ -120,7 +120,10 @@ class Browser:
         if not self.fresh(page, action):
             raise StalePage("Page changed since this decision. Observe again.")
         if action["kind"] == "wait":
-            time.sleep(0.1)
+            # The wait action carries its own bounded duration (snapshot.js), the
+            # same one the Ego bridge reads, so an asynchronous page costs the
+            # same decision on either backend.
+            time.sleep(min(max(action.get("wait_ms") or 800, 50), 3000) / 1000)
         result = browser_operation({"operation": "act", "session": self.session, "action": action, "text": text})
         self.after_input = action if action["kind"] != "wait" else None
         return result

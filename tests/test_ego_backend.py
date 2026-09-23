@@ -6,6 +6,7 @@ import copy
 
 import pytest
 
+from jev_ultrafast.backends import ego as ego_module
 from jev_ultrafast.backends.ego import (
     EgoActionError,
     EgoBrowserBackend,
@@ -155,8 +156,15 @@ def test_observe_retries_only_a_navigation_transient():
 def test_fill_followup_observe_settles_on_a_stable_action_set(monkeypatch):
     value, fake = backend()
     try:
+        clock = [1000.0]
         sleeps = []
-        monkeypatch.setattr("jev_ultrafast.backends.ego.time.sleep", sleeps.append)
+
+        def fake_sleep(seconds):
+            sleeps.append(seconds)
+            clock[0] += seconds
+
+        monkeypatch.setattr("jev_ultrafast.backends.ego.time.sleep", fake_sleep)
+        monkeypatch.setattr("jev_ultrafast.backends.ego.time.monotonic", lambda: clock[0])
         page = value.observe()
         fill = page["actions"][0]
         value.act(fill, page, "Ada")
@@ -166,11 +174,12 @@ def test_fill_followup_observe_settles_on_a_stable_action_set(monkeypatch):
         after["actions"][1]["node"] = 30
         after["guards"].pop("20")
         after["guards"]["30"] = _guard(30, "button", "Go", "scope text after")
-        fake.observe_states = [before, after, after, after]
+        fake.observe_states = [before] + [after] * 8
 
         settled = value.observe()
-        # 200 ms probe delay, then polls until three consecutive reads agree.
-        assert sleeps == [0.2, 0.2, 0.2, 0.2]
+        # 200 ms probe delay, then the action set has to stay unchanged for the
+        # 1.2 s quiet period before it is accepted as the settled page.
+        assert sleeps == [0.2] * 8
         assert settled["generation"] == 2
         assert settled["guards"]["30"] == [30, "button", "Go"]
         assert page["actions"][1]["ref"] == "@38"
@@ -498,3 +507,214 @@ def test_constructor_failure_still_closes_transport():
     with pytest.raises(RuntimeError, match="init failed"):
         EgoBrowserBackend("https://example.test/", transport=fake, task_name="ultrafast:failed")
     assert fake.closed == 1
+
+def test_snapshot_parser_prefers_the_ref_attribute_over_a_name_that_contains_at():
+    """A control named `Email us @support` must not yield ref=@support."""
+    from jev_ultrafast.backends.ego import _snapshot_nodes
+
+    nodes = _snapshot_nodes(
+        'button "Email us @support" [ref=7]\n'
+        'link "Follow @user on X" [ref=88]\n'
+        '  textbox "Search @home" [ref=@3]\n'
+        'button "Plain" [@12]\n'
+    )
+    assert [node["ref"] for node in nodes] == ["@7", "@88", "@3", "@12"]
+    assert [node["label"] for node in nodes] == [
+        "Email us @support",
+        "Follow @user on X",
+        "Search @home",
+        "Plain",
+    ]
+
+
+def test_constructor_failure_does_not_start_the_runtime_a_second_time():
+    """close() after a failed init must not lazily spawn the CLI to say finish."""
+    fake = FakeTransport(fail_init=True)
+    with pytest.raises(RuntimeError, match="init failed"):
+        EgoBrowserBackend("https://example.test/", transport=fake, task_name="ultrafast:failed")
+    assert fake.started == 1
+    assert [operation for operation, _payload in fake.requests].count("finish") == 0
+
+
+def test_successful_close_still_finishes_the_runtime():
+    fake = FakeTransport()
+    value = EgoBrowserBackend("https://example.test/", transport=fake, task_name="ultrafast:ok")
+    try:
+        value.observe()
+    finally:
+        value.close()
+    assert [operation for operation, _payload in fake.requests].count("finish") == 1
+
+
+def test_listbox_options_get_a_ref_from_their_composite_role():
+    """ARIA listbox options arrive as ``listboxoption`` in the semantic tree.
+
+    Google Flights' ticket-type menu is a real example: the state actions carry
+    role="option" while the semantic snapshot names them listboxoption, so with
+    no mapping for that name two of the three options could never be clicked.
+    """
+    semantic = (
+        'listbox "Select your ticket type."\n'
+        "  listboxoption [ref=29]\n"
+        '    svg_root\n'
+        '    text "Round trip"\n'
+        "  listboxoption [ref=30]\n"
+        '    text "One way"\n'
+        "  listboxoption [ref=31]\n"
+        '    text "Multi-city"\n'
+    )
+    nodes = ego_module._snapshot_nodes(semantic)
+    assert [node["ref"] for node in nodes] == ["@29", "@30", "@31"]
+    assert [node["role"] for node in nodes] == ["option", "option", "option"]
+    assert [node["label"] for node in nodes] == ["Round trip", "One way", "Multi-city"]
+
+
+def test_refs_are_attached_by_role_and_label_not_by_position():
+    response = {
+        "state": {
+            "url": "https://example.test/",
+            "actions": [
+                {"node": 30, "role": "option", "label": "Round trip", "kind": "click", "id": "e1"},
+                {"node": 31, "role": "option", "label": "One way", "kind": "click", "id": "e2"},
+                {"node": 32, "role": "option", "label": "Multi-city", "kind": "click", "id": "e3"},
+            ],
+        },
+        "semantic": (
+            'listboxoption [ref=29]\n  text "Round trip"\n'
+            'listboxoption [ref=30]\n  text "One way"\n'
+            'listboxoption [ref=31]\n  text "Multi-city"\n'
+        ),
+    }
+    backend = EgoBrowserBackend.__new__(EgoBrowserBackend)
+    backend.url = "https://example.test/"
+    backend.page_label = "probe"
+    backend._generation = 1
+    backend._init_result = {"space_id": "space"}
+    page = backend._normalize_page(response)
+    assert [action["ref"] for action in page["actions"]] == ["@29", "@30", "@31"]
+    assert page["unmapped_targets"] == []
+
+
+def test_an_unmapped_target_is_never_offered_as_a_choice():
+    """A control Ego's tree does not name at all cannot be acted on.
+
+    This is the pre-fix Google Flights menu exactly: no node in the semantic
+    tree carried the option role, so "One way" and "Multi-city" had no ref.
+    Offering them only burned stale retries until the fuse blocked the run.
+    """
+    response = {
+        "state": {
+            "url": "https://example.test/",
+            "actions": [
+                {"node": 31, "role": "option", "label": "One way", "kind": "click", "id": "e2"},
+                {"node": 9, "role": "button", "label": "Continue", "kind": "click", "id": "e9"},
+            ],
+        },
+        "semantic": 'button "Continue" [ref=7]\n',
+    }
+    backend = EgoBrowserBackend.__new__(EgoBrowserBackend)
+    backend.url = "https://example.test/"
+    backend.page_label = "probe"
+    backend._generation = 1
+    backend._init_result = {"space_id": "space"}
+    page = backend._normalize_page(response)
+    assert [action["label"] for action in page["actions"]] == ["Continue"]
+    assert page["unmapped_targets"] == ["One way"]
+
+
+def test_a_related_candidate_wins_over_an_unrelated_one():
+    """Two options are named "Round trip"; only one of them shows "One way"."""
+    response = {
+        "state": {
+            "url": "https://example.test/",
+            "actions": [
+                {"node": 31, "role": "option", "label": "One way", "kind": "click", "id": "e2"},
+            ],
+        },
+        "semantic": (
+            'listboxoption [ref=29]\n  text "Round trip"\n'
+            'listboxoption [ref=30]\n  text "One way"\n'
+        ),
+    }
+    backend = EgoBrowserBackend.__new__(EgoBrowserBackend)
+    backend.url = "https://example.test/"
+    backend.page_label = "probe"
+    backend._generation = 1
+    backend._init_result = {"space_id": "space"}
+    page = backend._normalize_page(response)
+    assert [action["ref"] for action in page["actions"]] == ["@30"]
+    assert page["unmapped_targets"] == []
+
+
+def test_an_unrelated_semantic_name_still_yields_a_usable_ref():
+    """Ego names the fixture input "City or route"; the page calls it otherwise."""
+    response = {
+        "state": {
+            "url": "https://example.test/",
+            "actions": [
+                {"node": 6, "role": "textbox", "label": "Destination city", "kind": "fill", "id": "e7"},
+            ],
+        },
+        "semantic": 'textbox [ref=6]\n  text "City or route"\n',
+    }
+    backend = EgoBrowserBackend.__new__(EgoBrowserBackend)
+    backend.url = "https://example.test/"
+    backend.page_label = "probe"
+    backend._generation = 1
+    backend._init_result = {"space_id": "space"}
+    page = backend._normalize_page(response)
+    assert [action["ref"] for action in page["actions"]] == ["@6"]
+
+
+def test_a_nameless_semantic_node_still_supplies_a_ref():
+    """Icon-only controls have no accessible name; they must stay usable."""
+    response = {
+        "state": {
+            "url": "https://example.test/",
+            "actions": [
+                {"node": 7, "role": "combobox", "label": "Category → Flights", "kind": "select", "id": "e10"},
+            ],
+        },
+        "semantic": "combobox [ref=7]\n",
+    }
+    backend = EgoBrowserBackend.__new__(EgoBrowserBackend)
+    backend.url = "https://example.test/"
+    backend.page_label = "probe"
+    backend._generation = 1
+    backend._init_result = {"space_id": "space"}
+    page = backend._normalize_page(response)
+    assert [action["ref"] for action in page["actions"]] == ["@7"]
+    assert page["unmapped_targets"] == []
+
+
+def test_a_churning_frame_runs_to_the_settle_budget_instead_of_ending_early(monkeypatch):
+    """A popup animating into place must not be accepted on a quiet reading."""
+    value, fake = backend()
+    try:
+        clock = [1000.0]
+        sleeps = []
+
+        def fake_sleep(seconds):
+            sleeps.append(seconds)
+            clock[0] += seconds
+
+        monkeypatch.setattr("jev_ultrafast.backends.ego.time.sleep", fake_sleep)
+        monkeypatch.setattr("jev_ultrafast.backends.ego.time.monotonic", lambda: clock[0])
+        page = value.observe()
+        value.act(page["actions"][0], page)
+
+        states = []
+        for node in (30, 31, 32, 33):
+            state = copy.deepcopy(fake.current)
+            state["actions"][1]["node"] = node
+            state["guards"][str(node)] = _guard(node, "button", f"Option {node}", "scope")
+            states.append(state)
+        # Every read differs, so no quiet period is ever reached: only the
+        # budget ends the settle, and the newest reading is the one returned.
+        fake.observe_states = states * 8
+
+        settled = value.observe()
+        assert 19 <= len(sleeps) <= 21  # 200 ms probe plus the 4 s budget
+        assert settled["actions"][1]["node"] == 33
+    finally:
+        value.close()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import time
 import uuid
@@ -24,10 +25,20 @@ READ_STATE = Path(__file__).resolve().parents[1].joinpath("snapshot.js").read_te
 READ_PROBE = Path(__file__).resolve().parents[1].joinpath("probe.js").read_text().strip()
 # A fill can replace the field or open an asynchronous autocomplete popup.  Wait
 # until the observed action set stops changing instead of guessing one delay.
-_FILL_SETTLE_INITIAL_MS = 200
-_FILL_SETTLE_INTERVAL_MS = 200
-_FILL_SETTLE_STABLE_POLLS = 3
-_FILL_SETTLE_BUDGET_MS = 2_000
+# A mutation can re-render the page well after the call returns: a fill starts
+# an autocomplete popup, and a click that opens or dismisses a popup animates one
+# into place.  The next observation waits, bounded and read-only, until the
+# action set has been quiet for long enough to be the real page.
+#
+# The quiet period is measured.  Google Flights' ticket-type menu animates for
+# about two seconds (31 actions -> 34 -> partial frames -> the 5-action menu),
+# and the popup it dismisses stays in the tree for about 2.5s after the one-way
+# search is committed.  A short "three identical reads" rule accepts those
+# transitional frames because each one is stable for hundreds of milliseconds.
+_SETTLE_INITIAL_MS = 200
+_SETTLE_INTERVAL_MS = 200
+_SETTLE_QUIET_MS = 1_200
+_SETTLE_BUDGET_MS = 4_000
 _WAIT_DEFAULT_MS = 500
 _WAIT_MAX_MS = 3_000
 # A control can be briefly re-parented by page scripts without changing the
@@ -90,9 +101,32 @@ globalThis.__jevUltrafastDispatch = async request => {
     const action = payload.action || {};
     const ref = action.ref;
     const label = String(action.label || action.kind || "browser action");
+    /* The observed action set, as a cheap identity for "what the page shows
+       right now".  It is only compared with itself, never acted on. */
+    const readActionSignature = async (page) => {
+      const state = await page.evaluate(globalThis.__jevReadState).catch(() => null);
+      if (!state) return "navigating";
+      return JSON.stringify((state.actions || []).map((item) => item.id || item.label || item.role || ""));
+    };
     if (action.kind === "click") {
       if (!ref) throw new Error("unknown ref");
+      const before = await runtime.page.url().catch(() => "");
+      const signature = await readActionSignature(runtime.page);
       await runtime.page.click(ref, {label});
+      const after = await runtime.page.url().catch(() => "");
+      if (after && after !== before) {
+        /* A click that changes the URL replaces the view.  The document it
+           navigated away from can stay in the tree for seconds — Google
+           Flights keeps its ticket-type popup for ~2.5s after the one-way
+           search is committed — and that popup is a *stable* frame, so
+           waiting for stability alone would return it.  Wait instead until
+           the observation actually reflects the navigation, bounded. */
+        const deadline = Date.now() + 2500;
+        while (Date.now() < deadline) {
+          await runtime.page.waitForTimeout(150);
+          if ((await readActionSignature(runtime.page)) !== signature) break;
+        }
+      }
     } else if (action.kind === "fill") {
       if (!ref) throw new Error("unknown ref");
       await runtime.page.fill(ref, String(payload.text ?? ""), {clearFirst: true});
@@ -117,6 +151,14 @@ globalThis.__jevUltrafastDispatch = async request => {
     }
     return {executed: action.id || action.kind};
   }
+  if (request?.op === "evaluate") {
+    /* A code-owned, read-only DOM read.  It exists for independent outcome
+       verification after a run (and for the benchmark validator); the agent
+       loop never sends model output here. */
+    const expression = String(payload.expression || "");
+    if (!expression) throw new Error("evaluate needs an expression");
+    return {value: await runtime.page.evaluate(expression)};
+  }
   if (request?.op === "finish") {
     if (runtime.task) return await runtime.task.finish({keep: []});
     return null;
@@ -136,6 +178,7 @@ _CONTROL_ROLES = {
     "comboboxgrouping": "combobox",
     "gridcell": "gridcell",
     "link": "link",
+    "listboxoption": "option",
     "menuitem": "menuitem",
     "menuitemradio": "menuitemradio",
     "option": "option",
@@ -145,10 +188,24 @@ _CONTROL_ROLES = {
     "switch": "switch",
     "tab": "tab",
     "textbox": "textbox",
+    "treeitem": "treeitem",
 }
 _ROLE_RE = re.compile(r"^\s*([A-Za-z][A-Za-z0-9_-]*)\b")
-_REF_RE = re.compile(r"(?:\[|,|\s)(?:ref=|@)(@?[A-Za-z0-9_-]+)")
+# Ego prints the quoted accessible name before the attribute block, so a name
+# containing " @word" (for example `button "Email us @support" [ref=7]`) must not
+# be mistaken for a ref. Prefer the authoritative ref= attribute and only then a
+# bare numeric @N, which is only valid inside the bracketed attribute block.
+_REF_RE = re.compile(r"ref=(@?[A-Za-z0-9_-]+)")
+_BARE_REF_RE = re.compile(r"\[[^\]]*?@(\d+)\b")
 _QUOTE_RE = re.compile(r'\s"((?:\\.|[^"\\])*)"')
+
+
+def _ref_match(line: str):
+    """Return the ref match for one Ego snapshot line, attribute form first."""
+    match = _REF_RE.search(line)
+    if match:
+        return match
+    return _BARE_REF_RE.search(line)
 
 
 def _unquote(value: str) -> str:
@@ -156,6 +213,23 @@ def _unquote(value: str) -> str:
         return str(json.loads('"' + value + '"'))
     except (TypeError, ValueError):
         return value.replace('\\"', '"')
+
+
+def _label_relates(action_label: str, candidate_label: str) -> bool:
+    """True when a semantic node may name this control.
+
+    Ego's state labels describe the control's job ("Change ticket type. Round
+    trip") while the semantic tree names what it shows ("Round trip").  A
+    nameless candidate never contradicts, and one name containing the other
+    (both already normalized to single-spaced casefolded text) is the same
+    control.  Two unrelated names must not match: attaching the wrong ref would
+    click the wrong element, which is worse than leaving the target unmapped.
+    """
+    candidate = _norm(candidate_label)
+    if not candidate:
+        return True
+    action = _norm(action_label)
+    return action == candidate or candidate in action or action in candidate
 
 
 def _snapshot_nodes(snapshot: str | None) -> list[dict[str, str]]:
@@ -172,7 +246,7 @@ def _snapshot_nodes(snapshot: str | None) -> list[dict[str, str]]:
         role = _CONTROL_ROLES.get(raw_role)
         if role is None:
             continue
-        ref_match = _REF_RE.search(line)
+        ref_match = _ref_match(line)
         if not ref_match:
             continue
         label_match = _QUOTE_RE.search(line)
@@ -189,7 +263,7 @@ def _snapshot_nodes(snapshot: str | None) -> list[dict[str, str]]:
                     child_text.append(_unquote(text_match.group(1)))
         if child_text:
             label = " ".join(child_text).strip()
-        attrs = ref_match.group(0)
+        attrs = ref_match.group(0).lstrip("[")
         value_match = re.search(r'value="((?:\\.|[^"\\])*)"', line)
         nodes.append(
             {
@@ -343,11 +417,15 @@ class EgoBrowserBackend:
         self.url = url
         self.timeout_ms = timeout_ms
         self.page_label = page_label
-        self.task_name = task_name or f"ultrafast:{uuid.uuid4().hex}"
+        # Every backend instance creates its own Ego TaskSpace, so a named
+        # space is still isolated.  A benchmark can name the space per run so
+        # the evidence records which space belonged to which run; the default
+        # stays unique and never touches a space a person is using.
+        self.task_name = task_name or os.environ.get("ULTRAFAST_EGO_TASK_NAME") or f"ultrafast:{uuid.uuid4().hex}"
         self.transport = transport or EgoTransport(timeout_ms=timeout_ms)
         self._generation = 0
         self._current_page: dict[str, Any] | None = None
-        self._pending_fill_settle = False
+        self._pending_settle = False
         self._closed = False
         self._init_result: dict[str, Any] = {}
         self.timeline: Any | None = None
@@ -441,6 +519,15 @@ class EgoBrowserBackend:
                 # example).  Fall back to an unambiguous label match so the
                 # decision still gets a code-owned ref instead of going stale.
                 candidates = [item for item in refs if _norm(item["label"]) == label]
+            if label and candidates:
+                # Prefer a candidate whose name agrees with the control instead
+                # of attaching a ref that contradicts it.  Ego's semantic names
+                # are often the field's own placeholder ("City or route" for the
+                # page's "Destination city"), so an unrelated name is ranked
+                # last rather than rejected: the node is usually still the same
+                # live element, and leaving it unmapped would make a real
+                # control impossible to use.
+                candidates = sorted(candidates, key=lambda item: not _label_relates(label, item["label"]))
             ranked = sorted(
                 candidates,
                 key=lambda item: (
@@ -455,7 +542,18 @@ class EgoBrowserBackend:
                 action["ref"] = selected["ref"]
                 by_node[node_key] = selected["ref"]
                 used.add(selected["ref"])
-        page["actions"] = actions
+        offered: list[dict[str, Any]] = []
+        unmapped: list[str] = []
+        for action in actions:
+            # A target this adapter cannot act on must never be offered as a
+            # choice: selecting it can only burn a stale retry and fuse the run.
+            # It stays visible as evidence of what the page contained.
+            if action.get("kind") in _TARGET_KINDS and not action.get("ref"):
+                unmapped.append(str(action.get("label") or action.get("id") or ""))
+            else:
+                offered.append(action)
+        page["actions"] = offered
+        page["unmapped_targets"] = unmapped
         page.setdefault("url", response.get("url", self.url))
         page.setdefault("title", response.get("title", ""))
         page.setdefault("text", "")
@@ -489,43 +587,42 @@ class EgoBrowserBackend:
             raise EgoMalformedResponse("Ego observe response is not an object")
         return self._normalize_page(response)
 
-    def _settled_fill_observe(self, screenshot: bool) -> dict[str, Any]:
-        # A fill can replace the field or open an asynchronous autocomplete
-        # popup well after the input returns.  Observe until the action set has
-        # held still for several consecutive reads, then expose only the final
-        # refs, so the next decision is made on a settled page.
-        deadline = time.monotonic() + _FILL_SETTLE_BUDGET_MS / 1000
-        time.sleep(_FILL_SETTLE_INITIAL_MS / 1000)
+    def _settled_observe(self, screenshot: bool) -> dict[str, Any]:
+        # A mutation can replace the view or animate a popup well after the call
+        # returns.  Observe until the action set has been unchanged for the quiet
+        # period, so the next decision is made on the page as it ends up and not
+        # on a transitional frame with a partial action list.
+        deadline = time.monotonic() + _SETTLE_BUDGET_MS / 1000
+        time.sleep(_SETTLE_INITIAL_MS / 1000)
         page = self._observe_page(screenshot=screenshot)
         previous = _action_signature(page)
-        stable = 1
-        while stable < _FILL_SETTLE_STABLE_POLLS:
+        changed_at = time.monotonic()
+        while time.monotonic() - changed_at < _SETTLE_QUIET_MS / 1000:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 break
-            time.sleep(min(_FILL_SETTLE_INTERVAL_MS / 1000, remaining))
+            time.sleep(min(_SETTLE_INTERVAL_MS / 1000, remaining))
             candidate = self._observe_page(screenshot=screenshot)
             signature = _action_signature(candidate)
+            if signature != previous:
+                changed_at = time.monotonic()
+                previous = signature
             page = candidate
-            stable = stable + 1 if signature == previous else 1
-            previous = signature
         return page
 
     def observe(self, screenshot: bool = False) -> dict[str, Any]:
         if self._closed:
             raise EgoTransportError("Ego backend is closed")
-        if self._pending_fill_settle:
-            page = self._settled_fill_observe(screenshot)
-            self._pending_fill_settle = False
+        if self._pending_settle:
+            page = self._settled_observe(screenshot)
+            self._pending_settle = False
         else:
             page = self._observe_page(screenshot)
         self._generation += 1
         page["generation"] = self._generation
         self._current_page = page
         mapped = sum(1 for action in page["actions"] if action.get("ref"))
-        unmapped = sum(
-            1 for action in page["actions"] if action.get("kind") in _TARGET_KINDS and not action.get("ref")
-        )
+        unmapped = len(page.get("unmapped_targets") or [])
         self._event(
             "observe",
             generation=self._generation,
@@ -639,8 +736,11 @@ class EgoBrowserBackend:
                 "act",
                 {"action": {key: value for key, value in action.items() if key != "rect"}, "text": text},
             )
-            if action.get("kind") == "fill":
-                self._pending_fill_settle = True
+            if action.get("kind") in {"fill", "click", "select"}:
+                # A click that dismisses a popup, and a select that closes one,
+                # leave the overlay in the tree for a moment: the very next
+                # observation would otherwise be a transitional frame.
+                self._pending_settle = True
             self._event("act", generation=page.get("generation"), url=page.get("url"), index=str(action.get("id")),
                         ref=action.get("ref"), operation=str(action.get("kind")), result="success")
             return result
@@ -655,13 +755,29 @@ class EgoBrowserBackend:
                             source="act", error_class="StalePage", detail=str(error))
             raise classified from error
 
+    def evaluate_script(self, expression: str) -> Any:
+        """Run one code-owned, read-only expression and return its JSON value.
+
+        Used for independent outcome verification outside the decision loop.
+        ``Browser.evaluate`` is the equivalent on the Browser Harness backend.
+        """
+        if self._closed:
+            raise EgoTransportError("Ego backend is closed")
+        response = self._request_timed("evaluate", {"expression": str(expression)})
+        if isinstance(response, dict) and "value" in response:
+            return response["value"]
+        raise EgoMalformedResponse("Ego evaluate response contained no value")
+
     def close(self) -> None:
         if self._closed:
             return
         self._closed = True
         started = time.perf_counter()
         try:
-            if hasattr(self.transport, "request"):
+            # Only a runtime that actually finished init owns a live REPL. After a
+            # failed construction the transport has never started, and sending
+            # finish would lazily spawn the CLI a second time.
+            if self._init_result and hasattr(self.transport, "request"):
                 try:
                     self.transport.request("finish", {}, timeout_ms=min(self.timeout_ms, 2_000))
                 except BaseException:

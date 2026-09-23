@@ -17,14 +17,17 @@ from .timeline import Timeline
 
 
 class Agent:
-    def __init__(self, url, goals, *, record_dir=None, screenshots=False, backend=None, preflight_check=True):
+    def __init__(self, url, goals, *, record_dir=None, screenshots=None, backend=None, preflight_check=True):
         task = goals.strip() if isinstance(goals, str) else "\n".join(goals).strip()
         if not task:
             raise ValueError("Supply a task")
         plan = [task]
         self.pending_text = None
         self.record_dir = Path(record_dir) if record_dir else None
-        self.screenshots = screenshots or bool(record_dir)
+        # Screenshots default to on while recording. A measured run can turn
+        # them off explicitly: they are optional, the model never reads them,
+        # and capturing them costs a different amount of time per backend.
+        self.screenshots = bool(self.record_dir) if screenshots is None else bool(screenshots)
         self._closed = False
         self.backend_name = (
             selected_backend(backend)

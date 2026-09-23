@@ -1,5 +1,6 @@
 """Offline contracts for a dynamic operation/target policy. No paid APIs."""
 
+import base64
 import json
 import time
 from copy import deepcopy
@@ -276,30 +277,60 @@ def test_fingerprint_tracks_values_and_identity_not_screenshots():
     assert fingerprint(p) != fingerprint(other)
 
 
-@pytest.mark.parametrize("changed", ["Departure", "Where from?", "Where to?", "year"])
-def test_flight_verification_rejects_wrong_trip(changed):
-    from examples.flights import verify
+def _flights_page(*, one_way=True, departure=None, origin="Z\u00fcrich", destination="London",
+                  path="/travel/flights"):
+    """A page shaped like the real one: the itinerary lives in the tfs payload."""
+    from examples import flights
 
-    actual = {
-        "url": "https://www.google.com/travel/flights/search?tfs=example",
-        "text": "Track prices from Zürich to London departing 2026-09-20",
-        "actions": [
-            {"label": k, "value": v}
-            for k, v in [
-                ("Change ticket type. One way", "One way"),
-                ("Where from?", "Zürich"),
-                ("Where to?", "London"),
-                ("Departure", "Sun, Sep 20"),
-                ("Nonstop flight on Sunday, September 20. Select flight", ""),
-            ]
-        ],
+    date = (departure or flights.DEPARTURE).isoformat().encode()
+    tail = b"\x98\x01\x02" if one_way else b"\x98\x01\x01"
+    payload = (
+        b"\x08\x1c\x10\x01\x1a(\x12\n" + date
+        + b"j\x0c\x08\x03\x12\x08/m/08966r\x0c\x08\x03\x12\x08/m/04jpl@\x01H\x01p\x01"
+        + tail
+    )
+    raw = base64.urlsafe_b64encode(payload).decode().rstrip("=")
+    return {
+        "url": f"https://www.google.com{path}?tfs={raw}&hl=en",
+        "text": f"Cheap flights from {origin} to {destination}",
+        "actions": [{"label": "Nonstop flight. Select flight", "value": ""}],
     }
-    assert verify(actual)["passed"]
-    if changed == "year":
-        actual["text"] = actual["text"].replace("2026", "2027")
+
+
+@pytest.mark.parametrize("changed", ["one_way", "date", "origin", "destination", "site"])
+def test_flight_verification_rejects_wrong_trip(changed):
+    from datetime import timedelta
+
+    from examples import flights
+
+    actual = _flights_page()
+    result = flights.verify(actual)
+    assert result["passed"]
+    assert result["visible_flights"] == ["Nonstop flight. Select flight"]
+
+    if changed == "one_way":
+        actual = _flights_page(one_way=False)
+    elif changed == "date":
+        actual = _flights_page(departure=flights.DEPARTURE + timedelta(days=1))
+    elif changed == "origin":
+        actual = _flights_page(origin="Basel")
+    elif changed == "destination":
+        actual = _flights_page(destination="Paris")
     else:
-        next(a for a in actual["actions"] if a["label"] == changed)["value"] = "wrong"
-    assert not verify(actual)["passed"]
+        actual = _flights_page(path="/travel/hotels")
+    assert not flights.verify(actual)["passed"]
+
+
+def test_flight_verification_uses_a_future_departure_date():
+    """The example must stay runnable: a hardcoded date would age into the past."""
+    from datetime import date
+
+    from examples import flights
+
+    assert flights.DEPARTURE > date.today()
+    written = f"{flights.DEPARTURE:%B} {flights.DEPARTURE.day}, {flights.DEPARTURE:%Y}"
+    assert written in flights.GOALS  # the goal is natural language, the check is ISO
+    assert flights.verify(_flights_page())["passed"]
 
 
 @pytest.mark.parametrize(
