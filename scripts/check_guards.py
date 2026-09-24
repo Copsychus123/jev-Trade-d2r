@@ -1,5 +1,6 @@
 """Local-browser freshness/execution regressions. No model calls or external websites."""
 
+import time
 from urllib.parse import quote
 
 from jev_ultrafast.browser import Browser, StalePage
@@ -164,7 +165,10 @@ def main():
         assert browser.evaluate("document.querySelector('input[value=\"1\"]').checked") is True
         passed.append("clicking an opacity-0 checkbox toggles it")
 
+        started = time.monotonic()
         page = browser.observe(screenshot=False)
+        assert time.monotonic() - started >= 0.7
+        passed.append("checkbox click waits for filter chips")
         far = next(a for a in page["actions"] if a.get("label") == "Airline 20")
         y0 = browser.evaluate("window.scrollY")
         top0 = browser.evaluate("document.querySelector('#airlines').scrollTop")
@@ -239,6 +243,41 @@ def main():
         assert browser.evaluate("document.querySelector('input[value=\"20\"]').checked") is True
         assert browser.evaluate("document.querySelector('#hidden-list').scrollTop") > top0
         passed.append("overflow:hidden checkbox rows index and reveal")
+
+        browser.evaluate("""
+          const sw=document.createElement('div');
+          sw.setAttribute('role','switch');
+          sw.setAttribute('aria-checked','true');
+          sw.setAttribute('aria-label','Select all airlines');
+          sw.tabIndex=0;
+          sw.style.cssText='position:absolute;left:8px;top:160px;width:200px;height:28px';
+          sw.addEventListener('click',()=>sw.setAttribute('aria-checked',
+            sw.getAttribute('aria-checked')==='true'?'false':'true'));
+          document.body.append(sw);
+        """)
+        page = browser.observe(screenshot=False)
+        select_all = next(a for a in page["actions"] if a.get("label") == "Select all airlines")
+        assert select_all["checked"] == "true"
+        browser.act(select_all, page)
+        page = browser.observe(screenshot=False)
+        assert not any(a.get("label") == "Select all airlines" for a in page["actions"])
+        passed.append("off select-all switch is not a click target")
+
+        browser.evaluate("""
+          const dlg=document.createElement('div');
+          dlg.setAttribute('role','dialog');
+          dlg.setAttribute('aria-label','Airlines');
+          dlg.innerHTML='<button type="button">Close dialog</button>'
+            +'<div role="checkbox" aria-checked="false" style="width:80px;height:24px">United</div>';
+          dlg.style.cssText='position:absolute;left:300px;top:8px;width:220px;height:80px;background:#fff';
+          document.body.append(dlg);
+        """)
+        page = browser.observe(screenshot=False)
+        assert not any(a.get("label") == "Close dialog" for a in page["actions"])
+        browser.evaluate("document.querySelector('[role=dialog] [role=checkbox]').setAttribute('aria-checked','true')")
+        page = browser.observe(screenshot=False)
+        assert any(a.get("label") == "Close dialog" for a in page["actions"])
+        passed.append("close is omitted until a dialog checkbox is checked")
 
         browser.call("Page.navigate", url="about:blank")
         assert not browser.fresh(page, field)

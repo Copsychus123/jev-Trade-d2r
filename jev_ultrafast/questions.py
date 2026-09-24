@@ -6,17 +6,19 @@ Do not repeat satisfied steps. Fill required fields before submitting. A typed q
 its matching autocomplete suggestion selected. For date pickers, CLICK the field, date, then confirmation.
 Set every requested filter/control; a matching result alone does not prove a requested filter was set.
 Do not toggle a checkbox, switch, or radio already in the requested state.
-A requested option that is already checked is not isolation while other options are also checked.
-Uncheck the other listed options. If the requested option or remaining competitors are not listed and
-the list can scroll, SCROLL that list, including back up. Do not toggle a select-all control to
-find a missing option.
+A checked select-all or all-options switch means no filter is applied yet, even when every row is
+checked and the chip still reads unset. Turn that switch off so the rows uncheck, then check only
+the requested option. If that option is not listed, SCROLL the list, including back up.
+Do not check a different option as a stand-in. Do not isolate by unchecking already-checked rows
+while select-all remains on.
 Submit populated search fields before opening a result; a populated field alone is not an applied search.
 Do not dismiss a filter while it still reads unset. Do not clear a filter you are in the middle of setting.
 WAIT only when the needed control is absent/disabled, or submitted results are still loading.
 If Search/Submit is visible and the required fields are ready, CLICK it immediately.
 Recent WAIT actions are not evidence of loading. Prefer a useful visible control over WAIT.
 DONE requires visible evidence that ALL requirements are satisfied. If asked to open a result,
-a matching link is not enough. BLOCKED means no supported operation can make progress."""
+a matching link is not enough. Do not choose DONE while a dialog still covers the results.
+Close it first so the result list is visible. BLOCKED means no supported operation can make progress."""
 
 TARGET = """Choose the best observed target if the next operation is the one specified in this question.
 Use the user's entire goal, field values, nearby text, and recent actions. This question chooses only

@@ -113,6 +113,14 @@
     if (!safe(e) || !visible(e) || e.matches(':disabled') || e.closest('[aria-disabled="true"]')) continue;
     const rname=role(e), target=indexNode(e);
     if (!rname || !target || seen.has(target)) continue;
+    if (rname==='switch' && e.getAttribute('aria-checked')==='false' && /select all/i.test(name(e))) continue;
+    if ((rname==='checkbox' || e.type==='checkbox') && /alliance|oneworld|skyteam/i.test(name(e))) continue;
+    if (rname==='button' && /^(close dialog|close)$/i.test(name(e).trim())) {
+      const dlg=e.closest('dialog,[role="dialog"]');
+      const boxes=[...(dlg?dlg.querySelectorAll('[role="checkbox"],input[type="checkbox"]'):[])]
+        .filter(b=>visible(b));
+      if (boxes.length && boxes.every(b=>(b.getAttribute('aria-checked')||String(b.checked))==='false')) continue;
+    }
     seen.add(target);
     const r=target.getBoundingClientRect();
     if (rname==='gridcell' && e.querySelector('button,[role="button"]')) continue;
