@@ -45,12 +45,46 @@ def validate_choice(answer, ids):
     return answer
 
 
+def action_result(entry, history):
+    result = "changed" if entry.get("page_changed") else "no_change"
+    fingerprint, step = entry.get("fingerprint"), entry.get("step")
+    if fingerprint is None or step is None:
+        return result
+    for earlier in history:
+        if earlier.get("step") >= step:
+            continue
+        if (earlier.get("kind"), earlier.get("action")) == (entry.get("kind"), entry.get("action")) and earlier.get(
+            "fingerprint"
+        ) == fingerprint:
+            return f"repeat_of_step_{earlier['step']}"
+    return result
+
+
 def action_space(actions):
     """One index per observed element; each operation has its own valid target choices."""
     elements, indices, targets, controls = [], {}, {}, {}
     operations = {"click": "CLICK", "fill": "TYPE_TEXT", "select": "SELECT"}
     for action in actions:
         kind = action["kind"]
+        if kind == "scroll":
+            operation = "SCROLL_DOWN" if action.get("direction") == "down" else "SCROLL_UP"
+            group = targets.setdefault(operation, {})
+            node = action.get("node")
+            if node is None:
+                group["page"] = action
+                continue
+            if node not in indices:
+                index = str(len(elements) + 1)
+                indices[node] = index
+                element = {k: action[k] for k in ("role", "more_below", "more_above") if k in action}
+                element.update(index=index, label=action["label"].split(" → ")[0], operations=[])
+                elements.append(element)
+            index = indices[node]
+            element = elements[int(index) - 1]
+            if operation not in element["operations"]:
+                element["operations"].append(operation)
+            group[index] = action
+            continue
         if kind not in operations:
             controls[action["id"].upper()] = action
             continue
@@ -84,6 +118,8 @@ def choose(state, goal, history):
         "CLICK": "Click an element, button, menu option, autocomplete suggestion, or calendar day.",
         "TYPE_TEXT": "Enter or replace text in an editable field. A small LLM will supply the value from the goal.",
         "SELECT": "Select an observed dropdown value.",
+        "SCROLL_DOWN": "Scroll down the page or a dialog, list, or panel.",
+        "SCROLL_UP": "Scroll up the page or a dialog, list, or panel.",
     }
     operations = {key: labels[key] for key in targets}
     operations.update({key: value["label"] for key, value in controls.items()})
@@ -98,7 +134,11 @@ def choose(state, goal, history):
                 index: {
                     "element": f"[{index}] {a['label']}",
                     "current_value": a.get("current_value", a.get("value", "")),
-                    **{k: a[k] for k in ("role", "checked", "selected", "expanded") if k in a},
+                    **{
+                        k: a[k]
+                        for k in ("role", "checked", "selected", "expanded", "more_below", "more_above")
+                        if k in a
+                    },
                 }
                 for index, a in candidates.items()
             },
@@ -110,7 +150,8 @@ def choose(state, goal, history):
             "page": {k: state[k] for k in ("url", "title", "text")},
             "elements": elements,
             "recent_actions": [
-                {k: h.get(k) for k in ("action", "kind", "text", "page_changed")} for h in history[-10:]
+                {**{k: h.get(k) for k in ("action", "kind", "text")}, "result": action_result(h, history)}
+                for h in history[-10:]
             ],
         },
         "questions": questions,

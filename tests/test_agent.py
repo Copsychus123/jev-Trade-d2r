@@ -318,3 +318,154 @@ def test_navigation_during_prediction_reobserves_without_action(runner):
     assert runner.state["status"] == "ready"
     assert runner.state["decision"] is None
     runner.state["browser"].act.assert_not_called()
+
+
+def scroll_actions():
+    return [
+        {"id": "e1", "kind": "click", "label": "Go", "role": "button", "value": "", "node": 20},
+        {
+            "id": "e2",
+            "kind": "scroll",
+            "direction": "down",
+            "label": "Scroll down page",
+            "node": None,
+            "delta": 560,
+            "more_below": True,
+            "more_above": False,
+        },
+        {
+            "id": "e3",
+            "kind": "scroll",
+            "direction": "down",
+            "label": "Scroll down Airlines",
+            "node": 50,
+            "delta": 560,
+            "more_below": True,
+            "more_above": False,
+        },
+        {
+            "id": "e4",
+            "kind": "scroll",
+            "direction": "up",
+            "label": "Scroll up Airlines",
+            "node": 50,
+            "delta": -560,
+            "more_below": True,
+            "more_above": True,
+        },
+        {"id": "wait", "kind": "wait", "label": "Wait"},
+    ]
+
+
+def test_scroll_heads_include_page_and_container_and_only_chosen_target_runs(monkeypatch):
+    elements, targets, controls = model.action_space(scroll_actions())
+    assert "WAIT" in controls
+    assert "SCROLL_DOWN" not in controls
+    assert targets["SCROLL_DOWN"]["page"]["id"] == "e2"
+    assert targets["SCROLL_DOWN"]["2"]["id"] == "e3"
+    assert targets["SCROLL_UP"]["2"]["id"] == "e4"
+    assert elements[1]["operations"] == ["SCROLL_DOWN", "SCROLL_UP"]
+    assert elements[1]["more_below"] is True
+
+    def post(_url, _key, body):
+        questions = body["questions"]
+        return {
+            "model": "test",
+            "answers": {
+                "operation": choice(questions["operation"]["criteria"], "SCROLL_DOWN"),
+                "scroll_down_target": choice(questions["scroll_down_target"]["criteria"], "2"),
+                "scroll_up_target": {"choice": "invented"},
+                "click_target": {"choice": "invented"},
+            },
+        }
+
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test")
+    monkeypatch.setattr(model, "post_json", post)
+    state = {**page(), "actions": scroll_actions()}
+    d = model.choose(state, "Open United flights", [])
+    assert d["operation"] == "SCROLL_DOWN" and d["target"] == "2" and d["choice"] == "e3"
+
+
+def test_repeated_cycle_detects_abcabc_not_next_or_waits():
+    def steps(*labels, kind="click"):
+        return [{"kind": kind, "action": label} for label in labels]
+
+    assert loop.repeated_cycle(steps("A", "B", "C", "A", "B", "C")) == "repeated cycle: A -> B -> C"
+    assert loop.repeated_cycle(steps(*["Next"] * 5)) is None
+    assert loop.repeated_cycle([{"kind": "wait", "action": "Wait"}] * 6) is None
+    mixed = [
+        {"kind": "click", "action": "A"},
+        {"kind": "wait", "action": "Wait"},
+        {"kind": "click", "action": "B"},
+        {"kind": "click", "action": "A"},
+        {"kind": "wait", "action": "Wait"},
+        {"kind": "click", "action": "B"},
+    ]
+    assert loop.repeated_cycle(mixed) == "repeated cycle: A -> B"
+
+
+def test_recent_actions_report_result_and_repeat_of_step(monkeypatch):
+    history = [
+        {"step": 1, "action": "Stops", "kind": "click", "text": None, "page_changed": True, "fingerprint": "aaa"},
+        {"step": 2, "action": "Close", "kind": "click", "text": None, "page_changed": False, "fingerprint": "bbb"},
+        {"step": 3, "action": "Stops", "kind": "click", "text": None, "page_changed": True, "fingerprint": "aaa"},
+    ]
+    captured = []
+
+    def post(_url, _key, body):
+        captured.append(body)
+        questions = body["questions"]
+        return {
+            "model": "test",
+            "answers": {
+                "operation": choice(questions["operation"]["criteria"], "CLICK"),
+                "click_target": choice(questions["click_target"]["criteria"], "2"),
+            },
+        }
+
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test")
+    monkeypatch.setattr(model, "post_json", post)
+    model.choose(page(), "Set filters", history)
+    recent = captured[0]["state"]["recent_actions"]
+    assert recent[0]["result"] == "changed"
+    assert recent[1]["result"] == "no_change"
+    assert recent[2]["result"] == "repeat_of_step_1"
+    assert "page_changed" not in recent[2]
+
+
+def test_repeated_cycle_blocks_run(runner):
+    p = runner.state["page"]
+    p["actions"] = [
+        {"id": "a", "kind": "click", "label": "Stops", "role": "button", "value": "", "node": 1},
+        {"id": "b", "kind": "click", "label": "Close dialog", "role": "button", "value": "", "node": 2},
+        {"id": "c", "kind": "click", "label": "Airlines", "role": "button", "value": "", "node": 3},
+        {"id": "wait", "kind": "wait", "label": "Wait"},
+    ]
+    n = [0]
+
+    def observe(**_kwargs):
+        n[0] += 1
+        q = deepcopy(p)
+        q["text"] = f"page {n[0]}"
+        q["fingerprint"] = fingerprint(q)
+        return q
+
+    runner.state["browser"].observe.side_effect = observe
+    for selected in ("a", "b", "c", "a", "b", "c"):
+        runner.state["decision"] = {
+            **decision(selected),
+            "operation": "CLICK",
+            "target": "1",
+            "probabilities": {selected: 1.0},
+        }
+        runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
+    assert runner.state["status"] == "blocked"
+    assert runner.state["stop_reason"] == "repeated cycle: Stops -> Close dialog -> Airlines"
+
+
+def test_no_progress_sets_stop_reason(runner):
+    for _ in range(3):
+        runner.state["decision"] = decision("e3")
+        runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
+    assert runner.state["status"] == "blocked"
+    assert runner.state["stop_reason"] == "no page change for 3 steps"

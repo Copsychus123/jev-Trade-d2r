@@ -84,7 +84,7 @@ function render() {
     ready: "Page observed · ready for a decision",
     predicted: "Choice ready · inspect or execute",
     done: "Jev reports complete · inspect the page",
-    blocked: "Stopped · no supported next action",
+    blocked: state.stop_reason ? `Stopped · ${state.stop_reason}` : "Stopped · no supported next action",
   };
   $("status").textContent = labels[state.status] || state.status;
   if (!page) {

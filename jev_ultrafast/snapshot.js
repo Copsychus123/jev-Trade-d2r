@@ -7,8 +7,6 @@
   };
   for (const [id,e] of cache.nodes) if (!e.isConnected) cache.nodes.delete(id);
   const safe = e => !['password','file','hidden'].includes(e.type);
-  const visible = e => !e.closest('[aria-hidden="true"],[inert]') &&
-    e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true});
   const name = (e,seen=new Set()) => {
     if (!e || seen.has(e)) return '';
     seen.add(e);
@@ -41,6 +39,64 @@
     }
     return null;
   };
+  const scrolls = (el, axis) => {
+    const s=getComputedStyle(el), size=axis==='y' ? el.scrollHeight-el.clientHeight : el.scrollWidth-el.clientWidth;
+    const overflow=axis==='y' ? s.overflowY : s.overflowX;
+    return size>2 && ['auto','scroll','hidden','overlay'].includes(overflow);
+  };
+  const isFilterControl = e => {
+    if (['checkbox','radio','switch'].includes(role(e))) return true;
+    const control=e.control;
+    return !!control && (['checkbox','radio'].includes(control.type) ||
+      ['checkbox','radio','switch'].includes(control.getAttribute('role')));
+  };
+  cache.visible = e => {
+    if (e.closest('[aria-hidden="true"],[inert]')) return false;
+    const native=e.tagName==='INPUT' && ['checkbox','radio'].includes(e.type);
+    if (e.checkVisibility({checkOpacity:!native, checkVisibilityCSS:true})) return true;
+    const r=e.getBoundingClientRect();
+    return isFilterControl(e) && r.width>0 && r.height>0;
+  };
+  const visible = e => cache.visible(e);
+  const inView = (e, r=e.getBoundingClientRect()) => {
+    const x=r.x+r.width/2, y=r.y+r.height/2;
+    if (!(r.width>0 && r.height>0 && x>=0 && y>=0 && x<innerWidth && y<innerHeight)) return false;
+    const skipOverflow=isFilterControl(e);
+    for (let p=e.parentElement; p && p!==document.documentElement; p=p.parentElement) {
+      const clipY=skipOverflow ? false : scrolls(p, 'y') || getComputedStyle(p).overflowY==='hidden';
+      const clipX=skipOverflow ? false : scrolls(p, 'x') || getComputedStyle(p).overflowX==='hidden';
+      if (clipX || clipY) {
+        const pr=p.getBoundingClientRect();
+        if ((clipX && (x<pr.left || x>=pr.right)) || (clipY && (y<pr.top || y>=pr.bottom))) return false;
+      }
+    }
+    return true;
+  };
+  cache.reveal = e => {
+    for (let p=e.parentElement; p && p!==document.documentElement; p=p.parentElement) {
+      const oy=scrolls(p, 'y'), ox=scrolls(p, 'x');
+      if (!oy && !ox) continue;
+      const pr=p.getBoundingClientRect(), r=e.getBoundingClientRect();
+      const x=r.x+r.width/2, y=r.y+r.height/2;
+      if (oy) p.scrollTop += y-(pr.top+pr.height/2);
+      if (ox) p.scrollLeft += x-(pr.left+pr.width/2);
+    }
+  };
+  const indexNode = e => {
+    const r=e.getBoundingClientRect();
+    const native=e.tagName==='INPUT' && ['checkbox','radio'].includes(e.type);
+    const x=r.x+r.width/2, y=r.y+r.height/2, hit=document.elementFromPoint(x,y);
+    const covered=hit && !e.contains(hit) && [...(e.labels||[])].some(l=>l===hit||l.contains(hit));
+    const tiny=r.width<=1 || r.height<=1 || !inView(e, r);
+    if (native && (tiny || covered)) {
+      return [...(e.labels||[])].find(l=>{
+        if (!visible(l)) return false;
+        const lr=l.getBoundingClientRect();
+        return inView(l, lr) && lr.width>1 && lr.height>1;
+      }) || null;
+    }
+    return inView(e, r) ? e : null;
+  };
   cache.pageKey=()=>[performance.timeOrigin,location.href,scrollX,scrollY,innerWidth,innerHeight,
     [...document.querySelectorAll('input,textarea,select')].filter(safe)
       .map(e=>[identity(e),e.value,e.checked,e.selectedIndex,e.disabled,e.readOnly])];
@@ -52,13 +108,15 @@
       e.getAttribute('aria-expanded'),e.getAttribute('aria-checked'),e.getAttribute('aria-selected'),
       e.getAttribute('href'),scope?.innerText?.slice(0,6000)||''];
   };
-  const actions=[];
+  const actions=[], seen=new Set();
   for (const e of document.querySelectorAll(selector)) {
     if (!safe(e) || !visible(e) || e.matches(':disabled') || e.closest('[aria-disabled="true"]')) continue;
-    const r=e.getBoundingClientRect(), x=r.x+r.width/2, y=r.y+r.height/2, rname=role(e);
-    if (!rname || r.width<=0 || r.height<=0 || x<0 || y<0 || x>=innerWidth || y>=innerHeight) continue;
+    const rname=role(e), target=indexNode(e);
+    if (!rname || !target || seen.has(target)) continue;
+    seen.add(target);
+    const r=target.getBoundingClientRect();
     if (rname==='gridcell' && e.querySelector('button,[role="button"]')) continue;
-    const base={node:identity(e),role:rname,label:name(e)||rname,
+    const base={node:identity(target),role:rname,label:name(e)||rname,
       rect:{x:r.x,y:r.y,w:r.width,h:r.height}};
     for (const key of ['checked','selected','expanded']) {
       const value=e.getAttribute('aria-'+key);
@@ -90,17 +148,35 @@
     }
   }
   const text=words.join('\n').slice(0,6000), height=document.documentElement.scrollHeight;
+  const omitted_actions=Math.max(0,actions.length-250);
+  actions.splice(250);
+  const scrollTitle = e => {
+    const host=e?.closest('dialog,[role="dialog"],[role="listbox"],[aria-label]');
+    return (host && (host.getAttribute('aria-label') || name(host).trim().split(/\s+/).slice(0,6).join(' '))) || 'page';
+  };
+  const pushScroll = (el, id) => {
+    const top=el ? el.scrollTop : scrollY, client=el ? el.clientHeight : innerHeight;
+    const sh=el ? el.scrollHeight : height;
+    const more_below=top+client<sh-2, more_above=top>0;
+    const title=el ? scrollTitle(el) : 'page';
+    const delta=el ? Math.max(48, Math.round(0.85*client)) : 560;
+    const base={kind:'scroll', node:id, more_below, more_above};
+    if (more_below) actions.push({...base, direction:'down', delta, label:'Scroll down '+title});
+    if (more_above) actions.push({...base, direction:'up', delta:-delta, label:'Scroll up '+title});
+  };
+  pushScroll(null, null);
+  for (const e of document.querySelectorAll('*')) {
+    if (e===document.documentElement || e===document.body) continue;
+    if (scrolls(e, 'y') && visible(e)) pushScroll(e, identity(e));
+  }
   const page_key=cache.pageKey(), guards={};
-  for (const a of actions) if (!(a.node in guards)) guards[a.node]=cache.guard(cache.nodes.get(a.node));
+  for (const a of actions)
+    if (a.node!=null && !(a.node in guards)) guards[a.node]=cache.guard(cache.nodes.get(a.node));
   // Compare meaning and identity. Geometry is always resolved and hit-tested just before input.
   const semantics=actions.map(({rect,...action})=>action);
   const marker=[performance.timeOrigin,location.href,scrollX,scrollY,innerWidth,innerHeight,
     document.title,text,semantics,page_key[6]];
-  const omitted_actions=Math.max(0,actions.length-250);
-  actions.splice(250);
   actions.forEach((a,i)=>a.id='e'+(i+1));
-  if (scrollY+innerHeight<height-2) actions.push({id:'scroll_down',kind:'scroll',label:'Scroll down',delta:560});
-  if (scrollY>0) actions.push({id:'scroll_up',kind:'scroll',label:'Scroll up',delta:-560});
   actions.push({id:'wait',kind:'wait',label:'Wait for the page to update'});
   return {url:location.href,title:document.title,w:innerWidth,h:innerHeight,text,
     scroll:{y:scrollY,height},actions,marker,page_key,guards,omitted_actions};

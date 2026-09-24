@@ -124,6 +124,111 @@ def main():
         assert value == "Generated", repr(value)
         assert any(a.get("role") == "option" for a in page["actions"])
         passed.append("real text input waits for asynchronous combobox suggestions")
+
+        rows = "".join(
+            f'<label class="row"><input type="checkbox" name="al" value="{i}">Airline {i}</label>'
+            + ('<button type="button" class="row">More filters</button>' if i == 6 else '')
+            for i in range(1, 21)
+        )
+        rows += '<button type="button" class="row">Apply extra</button>'
+        browser.evaluate("document.body.innerHTML=" + repr(f"""
+          <style>
+            #airlines {{ position:absolute; left:8px; top:8px; width:260px; height:140px;
+              overflow:auto; border:1px solid #000; background:#fff; }}
+            #airlines .row {{ display:block; position:relative; height:28px; line-height:28px; }}
+            #airlines input[type=checkbox] {{
+              opacity:0; position:absolute; inset:0; width:100%; height:100%; margin:0;
+            }}
+            #clip {{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }}
+            #pagefill {{ height:4000px; }}
+          </style>
+          <div role="dialog" id="airlines" aria-label="Airlines">
+            <input type="radio" id="clip" name="stops">
+            <label for="clip">Nonstop</label>
+            {rows}
+          </div>
+          <div id="pagefill">page filler</div>
+        """))
+        page = browser.observe(screenshot=False)
+        checks = [a for a in page["actions"] if a.get("role") == "checkbox"]
+        radio = next(a for a in page["actions"] if a.get("role") == "radio")
+        labels = {a.get("label") for a in page["actions"]}
+        assert {a["label"] for a in checks} >= {"Airline 1", "Airline 20"}
+        assert "More filters" not in labels and "Apply extra" not in labels
+        assert all("checked" in a for a in checks)
+        assert radio["label"] == "Nonstop" and radio["checked"] == "false"
+        passed.append("opacity-0 checkboxes and clipped radio are indexed")
+
+        first = next(a for a in checks if a["label"] == "Airline 1")
+        browser.act(first, page)
+        assert browser.evaluate("document.querySelector('input[value=\"1\"]').checked") is True
+        passed.append("clicking an opacity-0 checkbox toggles it")
+
+        page = browser.observe(screenshot=False)
+        far = next(a for a in page["actions"] if a.get("label") == "Airline 20")
+        y0 = browser.evaluate("window.scrollY")
+        top0 = browser.evaluate("document.querySelector('#airlines').scrollTop")
+        browser.act(far, page)
+        assert browser.evaluate("document.querySelector('input[value=\"20\"]').checked") is True
+        assert browser.evaluate("document.querySelector('#airlines').scrollTop") > top0
+        assert browser.evaluate("window.scrollY") == y0
+        passed.append("clipped checkbox click scrolls its overflow ancestor")
+
+        browser.evaluate("document.querySelector('#airlines').scrollTop=0")
+        page = browser.observe(screenshot=False)
+        dialog_scroll = next(
+            a for a in page["actions"]
+            if a["kind"] == "scroll" and a.get("direction") == "down" and a.get("node") is not None
+        )
+        page_scroll = next(
+            a for a in page["actions"]
+            if a["kind"] == "scroll" and a.get("direction") == "down" and a.get("node") is None
+        )
+        assert "Airlines" in dialog_scroll["label"]
+        assert 48 <= dialog_scroll["delta"] <= 140
+        assert page_scroll["delta"] == 560
+        assert not any(a.get("label") in {"More filters", "Apply extra"} for a in page["actions"])
+        browser.act(dialog_scroll, page)
+        page = browser.observe(screenshot=False)
+        labels = {a.get("label") for a in page["actions"]}
+        assert "More filters" in labels
+        assert "Apply extra" not in labels
+        passed.append("container scroll uses a short delta and still clips buttons")
+
+        top = browser.evaluate("document.querySelector('#airlines').scrollTop")
+        page_scroll = next(
+            a for a in page["actions"]
+            if a["kind"] == "scroll" and a.get("direction") == "down" and a.get("node") is None
+        )
+        browser.act(page_scroll, page)
+        assert browser.evaluate("document.querySelector('#airlines').scrollTop") == top
+        passed.append("document scroll does not move the dialog")
+
+        hidden_rows = "".join(
+            f'<label class="row"><input type="checkbox" name="hid" value="{i}">Hidden {i}</label>'
+            for i in range(1, 21)
+        )
+        browser.evaluate("document.body.innerHTML=" + repr(f"""
+          <style>
+            #hidden-list {{ position:absolute; left:8px; top:8px; width:260px; height:140px;
+              overflow:hidden; border:1px solid #000; background:#fff; }}
+            #hidden-list .row {{ display:block; position:relative; height:28px; line-height:28px; }}
+            #hidden-list input[type=checkbox] {{
+              opacity:0; position:absolute; inset:0; width:100%; height:100%; margin:0;
+            }}
+          </style>
+          <div role="dialog" id="hidden-list" aria-label="Airlines">{hidden_rows}</div>
+        """))
+        page = browser.observe(screenshot=False)
+        hidden_checks = {a["label"] for a in page["actions"] if a.get("role") == "checkbox"}
+        assert "Hidden 1" in hidden_checks and "Hidden 20" in hidden_checks
+        far = next(a for a in page["actions"] if a.get("label") == "Hidden 20")
+        top0 = browser.evaluate("document.querySelector('#hidden-list').scrollTop")
+        browser.act(far, page)
+        assert browser.evaluate("document.querySelector('input[value=\"20\"]').checked") is True
+        assert browser.evaluate("document.querySelector('#hidden-list').scrollTop") > top0
+        passed.append("overflow:hidden checkbox rows index and reveal")
+
         browser.call("Page.navigate", url="about:blank")
         assert not browser.fresh(page, field)
         passed.append("navigation invalidates the old document")

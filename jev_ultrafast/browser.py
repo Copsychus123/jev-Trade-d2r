@@ -136,7 +136,26 @@ def browser_operation(request):
         action = request["action"]
         kind = action["kind"]
         if kind == "scroll":
-            call("Input.dispatchMouseEvent", type="mouseWheel", x=550, y=650, deltaX=0, deltaY=action["delta"])
+            node = action.get("node")
+            if node is None:
+                x, y = 550, 650
+            else:
+                if type(node) is not int:
+                    raise ValueError("Invalid observed node")
+                target = evaluate("""(action => {
+                  const e=window.__jevFast?.nodes.get(action.node);
+                  if (!e?.isConnected || !window.__jevFast.visible(e)) return null;
+                  const r=e.getBoundingClientRect();
+                  if (!r.width || !r.height) return null;
+                  return {
+                    x: Math.min(Math.max(r.x+r.width/2, 1), innerWidth-1),
+                    y: Math.min(Math.max(r.y+r.height/2, 1), innerHeight-1),
+                  };
+                })(""" + json.dumps(action) + ")")
+                if target is None:
+                    raise StalePage("Target changed or is covered. Observe again.")
+                x, y = target["x"], target["y"]
+            call("Input.dispatchMouseEvent", type="mouseWheel", x=x, y=y, deltaX=0, deltaY=action["delta"])
         elif kind != "wait":
             if type(action["node"]) is not int:
                 raise ValueError("Invalid observed node")
@@ -144,8 +163,9 @@ def browser_operation(request):
             target = evaluate("""(action => {
               const e=window.__jevFast?.nodes.get(action.node);
               if (!e?.isConnected || e.matches(':disabled') || e.closest('[aria-disabled="true"],[inert]') ||
-                  !e.checkVisibility({checkOpacity:true,checkVisibilityCSS:true})) return null;
+                  !window.__jevFast.visible(e)) return null;
               if (action.kind==='fill' && (e.readOnly || e.getAttribute('aria-readonly')==='true')) return null;
+              window.__jevFast.reveal(e);
               const r=e.getBoundingClientRect(), x=r.x+r.width/2, y=r.y+r.height/2;
               if (!r.width || !r.height || x<0 || y<0 || x>=innerWidth || y>=innerHeight) return null;
               if (!e.contains(document.elementFromPoint(x,y))) return null;

@@ -9,6 +9,19 @@ from .model import action_space, choose, field_context, field_text
 from .questions import MAX_STEPS
 
 
+def repeated_cycle(history):
+    entries = [h for h in history if h.get("kind") != "wait"]
+    for k in range(2, 5):
+        if len(entries) < 2 * k:
+            continue
+        recent = entries[-2 * k :]
+        keys = [(h.get("kind"), h.get("action")) for h in recent]
+        first, second = keys[:k], keys[k:]
+        if first == second and len(set(first)) > 1:
+            return "repeated cycle: " + " -> ".join(h["action"] for h in recent[:k])
+    return None
+
+
 class Agent:
     def __init__(self, url, goals, *, record_dir=None, screenshots=False):
         task = goals.strip() if isinstance(goals, str) else "\n".join(goals).strip()
@@ -31,6 +44,7 @@ class Agent:
             decision=None,
             history=[],
             status="ready",
+            stop_reason=None,
             plan=plan,
             plan_index=0,
             decisions=[],
@@ -133,6 +147,7 @@ class Agent:
                     "operation": decision["operation"],
                     "target": decision["target"],
                     "page_changed": None,
+                    "fingerprint": page["fingerprint"],
                     "url": page["url"],
                     "usage": decision["usage"],
                     "executed_ms": round((time.perf_counter() - state["started_at"]) * 1000),
@@ -150,12 +165,19 @@ class Agent:
                 (self.record_dir / f"{state['elapsed_ms']:06d}.jpg").write_bytes(
                     base64.b64decode(state["page"]["screenshot"])
                 )
-            repeated = state["history"][-3:]
-            state["status"] = (
-                "blocked"
-                if len(repeated) == 3 and all(h["page_changed"] is False and h["kind"] != "wait" for h in repeated)
-                else "ready"
+            cycle = repeated_cycle(state["history"])
+            stuck = len(state["history"]) >= 3 and all(
+                h["page_changed"] is False and h["kind"] != "wait" for h in state["history"][-3:]
             )
+            if cycle:
+                state["status"] = "blocked"
+                state["stop_reason"] = cycle
+            elif stuck:
+                state["status"] = "blocked"
+                state["stop_reason"] = "no page change for 3 steps"
+            else:
+                state["status"] = "ready"
+                state["stop_reason"] = None
         else:
             raise ValueError("Unknown command")
         return self.snapshot()
