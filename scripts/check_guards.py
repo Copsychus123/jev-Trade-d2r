@@ -222,6 +222,17 @@ def main():
         page = browser.observe(screenshot=False)
         hidden_checks = {a["label"] for a in page["actions"] if a.get("role") == "checkbox"}
         assert "Hidden 1" in hidden_checks and "Hidden 20" in hidden_checks
+        hidden_scroll = next(
+            a for a in page["actions"]
+            if a["kind"] == "scroll" and a.get("direction") == "down" and a.get("node") is not None
+        )
+        top0 = browser.evaluate("document.querySelector('#hidden-list').scrollTop")
+        browser.act(hidden_scroll, page)
+        assert browser.evaluate("document.querySelector('#hidden-list').scrollTop") > top0
+        passed.append("overflow:hidden list scroll moves scrollTop")
+
+        browser.evaluate("document.querySelector('#hidden-list').scrollTop=0")
+        page = browser.observe(screenshot=False)
         far = next(a for a in page["actions"] if a.get("label") == "Hidden 20")
         top0 = browser.evaluate("document.querySelector('#hidden-list').scrollTop")
         browser.act(far, page)
