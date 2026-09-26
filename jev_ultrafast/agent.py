@@ -75,6 +75,12 @@ class Agent:
             if len(state["decisions"]) >= MAX_STEPS * 2:
                 raise ValueError("Reached the demo's model-call budget")
             state["decision"] = choose(state["page"], state["goal"], state["history"])
+            # Record the node at decision time so act can detect stale-id reuse (#132).
+            _sid = state["decision"]["choice"]
+            if _sid not in {"DONE", "BLOCKED"}:
+                _match = next((a for a in state["page"]["actions"] if a["id"] == _sid), None)
+                if _match is not None:
+                    state["decision"]["expected_node"] = _match.get("node")
             state["decisions"].append(
                 {
                     **state["decision"],
@@ -99,6 +105,11 @@ class Agent:
                 state["elapsed_ms"] = round((time.perf_counter() - state["started_at"]) * 1000)
                 return self.snapshot()
             action = next(a for a in page["actions"] if a["id"] == selected)
+            # Verify node identity matches decision-time node; stale ids must not silently
+            # resolve to a different control (#132).
+            _expected = decision.get("expected_node")
+            if _expected is not None and action.get("node") != _expected:
+                raise StalePage("Selected action resolved to a different control. Choose again.")
             if len(state["history"]) >= MAX_STEPS:
                 state["status"] = "blocked"
                 raise ValueError(f"Stopped at the {MAX_STEPS}-action demo budget")
