@@ -25,12 +25,7 @@ class Browser:
         self.call("Emulation.setDeviceMetricsOverride", width=1120, height=780, deviceScaleFactor=1, mobile=False)
         # Keep rAF/menus rendering in an owned background tab, without activating the user's Chrome tab.
         self.call("Emulation.setFocusEmulationEnabled", enabled=True)
-        self.call("Page.navigate", url=url)
-        deadline = time.monotonic() + 15
-        while time.monotonic() < deadline:
-            if self.evaluate("document.readyState") == "complete":
-                break
-            time.sleep(0.02)
+        self.navigate(url)
 
     def call(self, method, **params):
         return cdp(method, session_id=self.session, **params)
@@ -40,6 +35,15 @@ class Browser:
         if response.get("exceptionDetails"):
             raise StalePage("Document changed during evaluation")
         return response.get("result", {}).get("value")
+
+    def navigate(self, url, *, timeout=15):
+        self.call("Page.navigate", url=url)
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if self.evaluate("document.readyState") == "complete":
+                return
+            time.sleep(0.02)
+        raise TimeoutError(f"Navigation to {url} did not finish")
 
     def observe(self, screenshot=True):
         if getattr(self, "after_input", None):
