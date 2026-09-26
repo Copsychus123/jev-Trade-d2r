@@ -161,7 +161,7 @@ def field_text(context):
     key = os.environ.get("TEXT_MODEL_API_KEY")
     if not key:
         raise ValueError("TYPE_TEXT needs TEXT_MODEL_API_KEY; no text is hardcoded or guessed by the executor.")
-    base = os.environ.get("TEXT_MODEL_BASE_URL", "https://api.deepseek.com/v1").rstrip("/")
+    base = os.environ.get("TEXT_MODEL_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
     model = os.environ.get("TEXT_MODEL", "deepseek-chat")
     reasoning = {"thinking": {"type": "disabled"}} if "api.deepseek.com/" in base else {"reasoning": {"effort": "low"}}
     if os.environ.get("TEXT_MODEL_REASONING") == "none":
