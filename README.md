@@ -91,6 +91,14 @@ uv run --env-file .env python examples/run.py \
 
 `uv run --env-file .env python examples/flights.py --keep-open` performs the flight search, checks the actual route/date/results, and saves its trace. It does not select or book a flight.
 
+Traderie has a live D2R example as well:
+
+```bash
+uv run --env-file .env python examples/traderie.py "Reinforced Mace" --keep-open
+```
+
+It starts at Traderie's Diablo II: Resurrected market, finds the requested item page, then independently checks the product page plus its `Trading` and `Recent Trades` views before saving `state.json`.
+
 ## Why it moves
 
 - **One request per decision cycle.** Operation and target heads share the same observed state.
