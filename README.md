@@ -1,150 +1,148 @@
-<img src="docs/banner.svg" alt="Jev Ultrafast · Browser Use × TypeSafe" width="100%" />
+# Jev-Trade-D2R
 
-# Jev Ultrafast ⚡
+用瀏覽器 Agent 查詢《暗黑破壞神 2：獄火重生》(D2R) 在 [Traderie](https://www.traderie.com/diablo2resurrected) 上某件裝備的**目前掛單**與**近期成交**，並整理成兩張表格。
 
-> [!IMPORTANT]
-> **The Browser Use Cloud waitlist is open.** Get early access to ultrafast browser agents in the cloud.
-> **[Join the waitlist →](https://browser-use.com/ultrafast?utm_source=github&utm_medium=readme&utm_campaign=jev-ultrafast)**
+## 專案目的（本階段）
 
-**A browser agent with a dynamic, indexed action space.**
+本階段只專心完成這一條流程：
 
-Give it one goal. [TypeSafe's Jev](https://docs.typesafe.ai/introduction) picks an operation and an element. A small LLM writes text only when the operation is `TYPE_TEXT`.
+> 搜尋 → 進商品頁 → 讀取所有掛單資料 → 切到近期成交 → 讀取所有成交資料
 
-**Zürich → London on Google Flights in 7.1 seconds.** One natural-language goal, actual text generation, and loading waits included.
+規則：
 
-<a href="docs/demo.mp4"><img src="docs/demo.gif" alt="A real Google Flights search at 1× speed, with generated city names and dynamic operation/target decisions" width="100%" /></a>
+- 只有 **Jev（TypeSafe）** 負責決定瀏覽器要做什麼動作（點擊、輸入、捲動）。
+- 本階段**不做**任何 LLM 資料分析（沒有價格統計、沒有行情判讀）。
+- 表格是用**固定規則的文字解析**（`jev_ultrafast/traderie/parsing.py`）從網頁文字整理出來的，不是 AI 產生的。
+- 顯示的是 Traderie 網頁上看得到的內容，不代表官方定價，也不保證涵蓋全部成交。
 
-[Watch the MP4](docs/demo.mp4) · [Measurements](docs/performance.md) · [Read the loop](jev_ultrafast/agent.py)
+## 流程與分工
 
-## The action space
+1. 從 `https://www.traderie.com/diablo2resurrected` 開始。
+2. Agent 自己找到搜尋框，輸入裝備名稱，進入商品頁。
+3. Agent 讀取 **Trading（目前掛單）**：捲到頁面底部、按「Load More」，最多 `LOAD_MORE_LIMIT` = 5 次，程式會自己數按了幾次，「捲到底」和「Load More」的輪流也由程式照規則執行，數到上限就直接結束這一段（不再問 Jev，決策紀錄會標示「規則」）。
+4. Agent 自己點擊 **Recent Trades（近期成交）** 分頁。
+5. Agent 用同樣方式讀取所有成交資料（最多按 5 次 Load More）。
+6. 網頁 demo 顯示兩張表格（每筆資料一列）；「產生報告」按鈕只負責把結果存成檔案。
 
-Every observation produces a new element table:
-
-```text
-[1] button    Change ticket type · Round trip
-[2] combobox  Where from?        · San Francisco
-[3] combobox  Where to?          · empty
-[4] textbox   Departure          · empty
-...
-```
-
-The operations are `CLICK`, `TYPE_TEXT`, `SELECT`, `SCROLL_UP`, `SCROLL_DOWN`, `WAIT`, `DONE`, and `BLOCKED`. Only supported operations and targets are offered.
-
-```text
-                      one TypeSafe request
-                     ┌───────────────────────────┐
-page → element table → operation                 │
-                     │ click_target              │
-                     │ type_text_target          │
-                     │ select_target, if present │
-                     └─────────────┬─────────────┘
-                         use the matching target
-                                   │
-                    CLICK [7] ─────┤──→ browser
-                TYPE_TEXT [3] ─────┘
-                          ↓
-                   small LLM → text → browser
-```
-
-Target questions are speculative. If the operation is `CLICK`, only `click_target` can execute. Two decisions, **one network round trip**. Each target head contains only compatible elements. Native dropdown choices carry an observed element/option index.
-
-There are no site-specific action scripts or prepared field strings in the policy. The Flights example supplies a goal and independently verifies the outcome. The screenshot renderer adds labels afterward; it does not drive the browser.
-
-## Try it
-
-```bash
-git clone https://github.com/browser-use/jev-ultrafast.git
-cd jev-ultrafast
-uv sync
-cp .env.example .env
-# Add TYPESAFE_API_KEY and TEXT_MODEL_API_KEY.
-uv run jev
-```
-
-Open **http://127.0.0.1:8766** and click **Start demo → Run automatically**. The inspector shows numbered elements, operation probabilities, target probabilities, and executed actions. **Choose next** pauses before execution.
-
-Chrome connects through [Browser Harness](https://github.com/browser-use/browser-harness), installed by `uv sync`. Run `uv run browser-harness --doctor` if it needs connecting. Allow remote debugging in Chrome when prompted.
-
-`TEXT_MODEL_API_KEY` is an OpenRouter key in the example configuration. The current demo uses `inception/mercury-2.5` with reasoning disabled. Gemini, GLM, and DeepSeek can also use the OpenAI-compatible text helper; configure the appropriate model, endpoint, and reasoning setting.
-
-## Use the library
-
-```python
-from jev_ultrafast import Agent
-
-with Agent(
-    "https://www.google.com/travel/flights?hl=en",
-    "Find one-way flights from Zurich to London on September 20, 2026, "
-    "for one adult in economy. Stop when matching flight options are visible.",
-) as agent:
-    for state in agent.run():
-        print(state["elapsed_ms"], state["status"])
-```
-
-Run with `uv run --env-file .env python your_script.py`. The same policy can run a different task:
-
-```bash
-uv run --env-file .env python examples/run.py \
-  --url https://en.wikipedia.org/wiki/Main_Page \
-  --goal 'Find and open the Wikipedia article about Gödel’s incompleteness theorems.'
-```
-
-`uv run --env-file .env python examples/flights.py --keep-open` performs the flight search, checks the actual route/date/results, and saves its trace. It does not select or book a flight.
-
-Traderie has a live D2R example as well:
-
-```bash
-uv run --env-file .env python examples/traderie.py "Reinforced Mace" --keep-open
-```
-
-It starts at Traderie's Diablo II: Resurrected market, finds the requested item page, then independently checks the product page plus its `Trading` and `Recent Trades` views before saving `state.json`.
-
-## Why it moves
-
-- **One request per decision cycle.** Operation and target heads share the same observed state.
-- **No screenshots in the default agent loop.** Jev consumes structured state. The inspector opts into screenshots; the video uses a separate continuous screencast.
-- **One browser call per snapshot.** Read visible controls, their names, values, and text atomically. Keep references to the actual DOM nodes.
-- **Validate the selected target.** Clicks check the document, form values, target, and nearby context. Animation alone does not force another prediction. Resolve current geometry and reject covered controls before input.
-- **Wait for useful state.** After typing into a combobox, wait for visible suggestions, capped at 200 ms. Other interactions get at most two animation frames or 50 ms. These reads happen after execution is logged.
-- **Keep hidden tabs rendering.** Focus emulation prevents background animation throttling without switching Chrome's visible tab.
-- **Send visible text.** Offscreen article bodies and footers do not fill the model context.
-- **Reuse an interrupted text request.** A generated value survives a stale-page retry only if the entire text-helper input is unchanged.
-
-Every executed target is resolved from an observed node. The executor rechecks page freshness and click occlusion. Model output never becomes selectors, coordinates, shell commands, or executable JavaScript. Text-helper output must parse as a small JSON object before typing.
-
-## Small enough to read
-
-| File | Job |
+| 誰 | 做什麼 |
 | --- | --- |
-| [agent.py](jev_ultrafast/agent.py) | The complete loop and text-helper handoff |
-| [snapshot.js](jev_ultrafast/snapshot.js) | Atomic DOM snapshot, indexed controls, freshness guards |
-| [browser.py](jev_ultrafast/browser.py) | Browser connection, current geometry, execution |
-| [model.py](jev_ultrafast/model.py) | Dynamic operation/target heads and text generation |
-| [questions.py](jev_ultrafast/questions.py) | Model instructions |
-| [demo.py](jev_ultrafast/demo.py) | Local inspector |
+| Agent（Jev 決策） | 搜尋、進商品頁、捲動、按 Load More、切到近期成交，每一步都由它決定 |
+| 程式（controller） | Agent 每完成一個視圖的那一刻，就讀取它**當下所在**的頁面並整理成表格；不會自己換頁、也不重試 |
+| 「產生報告」按鈕 | 只把已讀到的結果存檔，不再讀網頁 |
 
-## Evidence and limits
+## 快速開始
 
-The current video is a **7,073 ms** Google Flights run. Timing starts after initial page observation and includes model calls, generated text, browser work, stale decisions, and loading waits. A fresh independent check verifies the one-way setting, Zürich, London, September 20, 2026, and visible flight options. The video plays at 1×, with no opening hold and a 0.5-second final hold.
+### 1. 環境需求
 
-In six alternating runs with identical models and settings, both versions passed **3/3**. Median task time went from **9.450 s → 7.092 s**, a **25% reduction**; median browser protocol calls went from **1,092 → 101**. This is three repeats of one task on one browser profile, not a general reliability benchmark.
+- Python 3.12 以上、[uv](https://docs.astral.sh/uv/)
+- Google Chrome。預設由程式自己啟動一個無畫面的專用 Chrome（port 9355，資料放在 `.tmp-jev-chrome`），不會動到你自己的 Chrome。
+  - 環境變數 `JEV_CHROME` 可切換：`headless`（預設，無畫面）、`window`（專用 Chrome 但看得到視窗）、`existing`（改用你自己的 Chrome，需開啟遠端除錯 port 9222；若 Chrome 詢問是否允許遠端除錯，需要你自己按「允許」）。
+  - 專用 Chrome 為了省記憶體會擋掉廣告與追蹤程式；命令列和測試（不看截圖時）也不載入圖片，demo 畫面維持有圖。你自己的 Chrome 模式不受影響。
+- `.env`（由 `.env.example` 複製）。主要欄位名稱：
+  - `TYPESAFE_API_KEY`：Jev（TypeSafe）決策用，必填；`TYPESAFE_MODEL` 可選
+  - `TYPESAFE_DEMO_PORT`（選填，預設 8766）
+  - `JEV_INPUT_USD_PER_MILLION`、`JEV_OUTPUT_USD_PER_MILLION`（選填，預設 0.042 / 0，單位：美元／百萬 token，用來估算 demo 上顯示的費用；預設是 TypeSafe 公開價目，你的實際帳單可能不同）
+  - `TRADERIE_COOKIE`、`TRADERIE_SESSION_TOKEN`、`TRADERIE_SESSION_COOKIE_NAME`（選填，登入用）
 
-The same policy opened the requested Wikipedia article in **2.798 s** and passed a local hotel search/filter task in **1.896 s**. Runs, failures, source hashes, and measurement boundaries are in [performance.md](docs/performance.md).
+### 2. 安裝
 
-A `DONE` choice still requires independent outcome verification. The DOM reader handles common HTML and ARIA controls, not the full accessible-name specification. Shadow roots, frames, canvas, uploads, pop-up tabs, nested scrolling, and arbitrary keyboard widgets remain outside this MVP. Owned tabs share the existing Chrome profile.
+```bash
+uv sync
+```
 
-## Development
+### 3. 啟動網頁 demo
+
+```bash
+uv run python jev_ultrafast/demo.py
+```
+
+開啟 http://127.0.0.1:8766，然後：
+
+1. 在「裝備英文名稱」輸入（例如 `Harlequin Crest`）。
+2. 按「開始查詢」。Agent 會自己走完整個流程，想中途停下可按「停止」。頁面上方有三個分頁：「查詢過程」（截圖與步驟）、「查詢結果」（兩張表格）、「用量與決策」（token、費用、Jev 每一步的決策）。
+3. 兩個視圖都讀完時，畫面會自動切到「查詢結果」（寬度 1000 像素以上時掛單在左、成交在右並排，畫面上「高符文價值」顯示在「要價」下方；較窄時上下堆疊，欄位照舊）（如果你自己切到別的分頁，就不會被拉回，只在「查詢結果」旁出現紅點提示）。「用量與決策」分頁的每一行是 Jev 的一次決策，只顯示機率：選了什麼、操作機率與目標機率、兩個次高的選項；第一名與第二名只差 15 個百分點內會標「（接近）」。每個視圖會按「載入更多」（輸入框旁的下拉選單可選 0～5 次，預設 2 次；預設值在 `jev_ultrafast/traderie/site.py` 的 `LOAD_MORE_LIMIT`；命令列用 `--load-more N`）。實測：0 次約 50 筆掛單、20 筆成交、約 19 秒、約 $0.0008；2 次約 150／60 筆、約 31 秒、約 $0.0018；4 次約 250／100 筆、約 50 秒、約 $0.0028。選單旁會顯示預估，表格說明列會標示「網站上還有更多」或「已全部載入」。每張表格右上角有「匯出 CSV」（Excel 可直接開啟；以 = + - @ 開頭的內容前面會加一個 '，避免被當成公式）。
+4. 兩個視圖都通過檢查後，按「產生報告」存檔，並可在頁面下載報告。
+
+### 4. 命令列（同樣的流程）
+
+```bash
+uv run python examples/traderie.py "Harlequin Crest"
+```
+
+可加 `--output <資料夾>`（預設 `artifacts/traderie/latest`）與 `--keep-open`（結束後保留瀏覽器）。檢查未通過時指令以非零狀態結束。
+
+## 輸出檔案
+
+寫入 `artifacts/traderie/latest/`（不進版本庫）：
+
+| 檔案 | 內容 |
+| --- | --- |
+| `verification.json` | 每次存檔都會寫；各項檢查結果、失敗項目與原因 |
+| `market.json` | 兩個視圖的網址、標題、讀取時間與表格資料；僅在全部檢查通過時寫入 |
+| `market_report.md` | 兩張表格的 Markdown 報告（目前掛單、近期成交）；僅在全部檢查通過時寫入 |
+
+檢查未通過時，舊的 `market.json` 與 `market_report.md` 會被移除。命令列另外寫 `state.json`（步驟歷程與讀取結果）與 `session.json`（瀏覽器分頁識別）。
+
+每個視圖的狀態：
+
+- **PASSED**：讀到資料，且表格筆數與網頁上的筆數一致、商品名稱正確。
+- **FAILED**：沒讀到、筆數不一致、Agent 停在錯的頁面或商品不符；原因會寫在 `verification.json`。
+- **BLOCKED**：被網站擋下（Cloudflare／驗證碼／登入牆等）。
+- **NOT_RUN**：尚未輪到讀取。
+
+Agent 說「完成」不等於成功；是否成功只看上面的獨立檢查。
+
+### 遇到登入牆
+
+專用 Chrome 沒登入時，Traderie 不讓人按「Load More」，近期成交也可能要求登入。第一次請登入一次，之後專用 Chrome 會記得：
+
+1. 執行 `uv run python scripts/login_traderie.py`，會開出一個看得到的 Chrome 視窗。
+2. 在視窗裡登入 Traderie；若看到「Patch Notes」之類的公告視窗，請按右上角 × 關掉（專用 Chrome 會記得，網站出新公告時可能需要再關一次）；登入後回到終端機按 Enter。
+3. 重新執行查詢。
+
+若改用 `JEV_CHROME=existing`，則在你自己的 Chrome 登入 traderie.com 即可（把 Chrome 登入資料匯出到 `.env` 的舊腳本已移到 `future/scripts/`）。
+
+## 檔案地圖（本階段流程）
+
+| 檔案 | 職責 |
+| --- | --- |
+| `jev_ultrafast/demo.py` | 網頁 demo 伺服器（`127.0.0.1:8766`），指令 `reset`／`tick`／`report`，`GET /api/report` 取得報告 |
+| `jev_ultrafast/static/` | demo 介面（`index.html`、`app.js`、`style.css`、`csv.js`） |
+| `jev_ultrafast/agent.py` | Agent 主迴圈：觀察 → 決策 → 執行 |
+| `jev_ultrafast/browser.py` | 透過 Chrome DevTools Protocol 操作瀏覽器 |
+| `jev_ultrafast/chrome.py` | 啟動與關閉專用 Chrome（`JEV_CHROME` 模式） |
+| `jev_ultrafast/snapshot.js` | 在頁面內擷取可操作元素與捲動控制（含捲到底、捲到頂、等待） |
+| `jev_ultrafast/model.py`、`questions.py` | 呼叫 Jev（TypeSafe）做決策 |
+| `jev_ultrafast/config.py` | 設定與 `.env` 讀取 |
+| `jev_ultrafast/traderie/site.py` | 網址、Agent 目標文字（`build_goal`）、`LOAD_MORE_LIMIT`、防護頁偵測 |
+| `jev_ultrafast/traderie/controller.py` | 每個視圖讀一次、檢查、存檔（`read_view`、`verify_views`、`advance`、`run_agent`、`save_report`） |
+| `jev_ultrafast/traderie/parsing.py` | 固定規則的掛單／成交文字解析 |
+| `jev_ultrafast/traderie/verification.py` | 獨立檢查（`verify_market`、`read_settled_page`） |
+| `jev_ultrafast/traderie/auth.py` | 憑證與 cookie 處理 |
+| `examples/traderie.py` | 命令列入口 |
+| `scripts/login_traderie.py` | 開啟專用 Chrome 視窗，讓你登入 Traderie 一次 |
+
+## 測試
 
 ```bash
 uv run ruff check .
-uv run pytest
+uv run pytest                          # 離線，預設不含 live
+uv run pytest -m live                  # 真實網站、Chrome、TypeSafe（計費）
 node --check jev_ultrafast/static/app.js
-node --check jev_ultrafast/snapshot.js
+node --check jev_ultrafast/static/csv.js
 uv build
 ```
 
-Tests are offline. `uv run python scripts/check_guards.py` checks real controls in a local browser without model calls. Live examples and recording scripts make paid API calls. `scripts/record_flights.py <new-folder>` captures original browser timestamps; `scripts/render_demo.py <recording-folder>` renders that verified run at 1× and crops out the Google account strip. Credentials and raw traces stay ignored.
+Agent 每次執行結果並不固定（非決定性）。單次 live 測試失敗（例如搜尋到錯的結果、被網站擋下）不代表程式有 bug，請重跑再判斷。
 
----
+## 安全與規範（摘自 AGENTS.md）
 
-[Browser Use](https://github.com/browser-use/browser-use) · [Browser Harness](https://github.com/browser-use/browser-harness) · [TypeSafe speculative fan-out](https://docs.typesafe.ai/patterns/fan-out)
+- 不寫網站專屬的步驟計畫，也不寫死輸入值或點擊目標；模型不產生選擇器或可執行程式碼。
+- 永遠不重試瀏覽器的「改動」動作。
+- 憑證只放在伺服器端與 `.env`，`.env` 不進版本庫；測試不得呼叫付費 API。
+- Agent 選擇 `DONE` 不是成功的證據，結果必須獨立驗證。
+- 只讀取，不聯絡賣家、不出價、不離開 Traderie D2R 商品／搜尋頁。
+
+## 未來擴展（本階段不做）
+
+下列模組與腳本屬於日後的資料分析／報告擴展，**不是目前流程的一部分**，已搬到 `future/` 資料夾（不維護、不測試、不打包），詳見 `future/README.md`。別的工具留下的舊檔案則放在 `archive/`（不進版本庫）。

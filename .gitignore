@@ -8,3 +8,6 @@ artifacts/
 *.egg-info/
 
 dist/
+api-ocr-2025/
+.tmp-*/
+archive/

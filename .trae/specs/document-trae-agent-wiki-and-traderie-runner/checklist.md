@@ -1,9 +1,0 @@
-- [x] 已產出 `trae-agent` 的 Markdown Code Wiki 文件
-- [x] Code Wiki 已涵蓋專案整體架構、主要模組職責、關鍵類別與函式、依賴關係、執行方式、開發與測試方式
-- [x] Code Wiki 中的重點模組與符號可追溯到對應原始碼或可信來源
-- [x] `jev-ultrafast` 可接受一個 D2R 裝備名稱作為輸入目標
-- [x] 代理流程可到達 Traderie 上對應裝備的頁面或可驗證的結果頁
-- [x] 系統可同時取得 `Trading` 與 `Recent Trades` 兩類資訊
-- [x] 查詢結果以結構化格式輸出，並包含頁面 URL 與證據片段
-- [x] 成功判定包含獨立驗證，而不是僅依賴代理選擇 `DONE`
-- [x] 關鍵測試與專案驗證指令已執行完成，且已明確記錄目前沙箱缺少 Chrome 與 `.env`，因此無法在此環境完成 Traderie live run

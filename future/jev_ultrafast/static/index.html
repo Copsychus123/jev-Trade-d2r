@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="demo-token" content="__TOKEN__" />
+    <title>Jev Ultrafast · Traderie 決策展示</title>
+    <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main class="inspector-shell">
+      <nav id="tabs" class="tabs" role="tablist" aria-label="畫面分頁">
+        <button type="button" role="tab" id="tab-btn-run" data-tab="run" aria-controls="tab-run" aria-selected="true">
+          <span id="tab-run-label">查詢過程</span>
+        </button>
+        <button type="button" role="tab" id="tab-btn-results" data-tab="results" aria-controls="tab-results" aria-selected="false">
+          <span id="tab-results-label">查詢結果</span><i id="tab-results-dot" class="tab-dot" hidden></i>
+        </button>
+        <button type="button" role="tab" id="tab-btn-usage" data-tab="usage" aria-controls="tab-usage" aria-selected="false">
+          <span id="tab-usage-label">用量與決策</span>
+        </button>
+        <div class="tabs-status">
+          <div class="status-chip">
+            <span class="dot" id="status-dot"></span>
+            <span id="status" role="status">準備開始探索</span>
+          </div>
+          <button type="button" id="stop" hidden>停止</button>
+        </div>
+      </nav>
+
+      <section id="tab-run" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-run">
+            <section class="workspace-controls" aria-label="Run controls">
+            <form id="task-form" class="workspace-form">
+              <label class="field field--goal" for="goal">
+                <span>裝備英文名稱</span>
+                <textarea id="goal" name="goal" rows="2">Harlequin Crest</textarea>
+              </label>
+              <div class="workspace-actions">
+                <label class="overlay-control" for="load-more"
+                  >載入更多次數
+                  <select id="load-more" name="load-more">
+                    <option>0</option>
+                    <option>1</option>
+                    <option selected>2</option>
+                    <option>3</option>
+                    <option>4</option>
+                    <option>5</option>
+                  </select></label
+                >
+                <span id="load-more-estimate" class="muted"></span>
+                <label class="overlay-control"
+                  ><input name="overlays" id="overlays" type="checkbox" checked />
+                  標籤覆蓋</label
+                >
+                <button type="submit" id="start" class="primary">
+                  開始查詢 <span>↗</span>
+                </button>
+              </div>
+            </form>
+              <p id="error" hidden></p>
+            </section>
+        <section class="workspace">
+        <div class="browser-panel panel">
+          <div class="browser-bar">
+            <div class="traffic"><b></b><b></b><b></b></div>
+            <span id="url">本機展示瀏覽器</span><span class="live">即時</span>
+          </div>
+          <div class="viewport" id="viewport">
+            <div class="empty" id="empty">
+              <p class="empty-symbol">[ ↗ ]</p>
+              <h2>觀察決策即時產生</h2>
+              <p>
+                開始任務以檢視受控瀏覽器、編號動作，<br />以及模型的選擇。
+              </p>
+            </div>
+            <img
+              id="screenshot"
+              alt="Live screenshot of the controlled browser"
+              hidden
+            />
+            <div id="targets"></div>
+          </div>
+          <div class="browser-footer">
+            <span id="page-title">獨立展示分頁</span>
+            <span>AX 樹 → 具型別動作 → CDP</span>
+          </div>
+        </div>
+
+          <aside class="inspector-panel panel">
+          <div id="plan" class="plan"></div>
+          <details id="goal-details" class="goal-details" hidden>
+            <summary>完整任務說明</summary>
+            <pre id="goal-full"></pre>
+          </details>
+            <section class="trace">
+            <div class="trace-heading">
+              <h2>決策軌跡 <span id="step-count">0 次動作</span></h2>
+              <button type="button" id="download" disabled>匯出軌跡 ↓</button>
+            </div>
+            <div id="history">
+              <p class="muted">每次執行的動作都會留下觀察結果。</p>
+            </div>
+            </section>
+          </aside>
+        </section>
+      </section>
+
+      <section id="tab-results" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-results" hidden>
+        <div class="results-toolbar">
+          <button type="button" id="report">產生報告</button>
+          <span class="muted">兩段都通過檢查才能產生；只負責存檔</span>
+        </div>
+        <section class="capture-band" aria-label="Captured Traderie data">
+        <article class="capture-card" id="trading-card">
+          <div class="capture-head">
+            <p class="eyebrow">目前掛單</p>
+            <span id="trading-status" class="status-pill">NOT_RUN</span>
+            <button type="button" id="trading-csv" class="secondary csv" disabled title="以 = + - @ 開頭的內容前面會加一個 '，避免 Excel 當成公式">匯出 CSV ↓</button>
+          </div>
+          <h2>Trading 刊登中</h2>
+          <p id="trading-meta" class="capture-meta">尚未讀取。</p>
+          <div class="market-scroll"><table id="trading-table" class="market-table" hidden></table></div>
+          <details><summary>網頁原文</summary><pre id="trading-raw" class="capture-lines"></pre></details>
+        </article>
+        <article class="capture-card" id="recent-trades-card">
+          <div class="capture-head">
+            <p class="eyebrow">近期成交</p>
+            <span id="recent-trades-status" class="status-pill">NOT_RUN</span>
+            <button type="button" id="recent-trades-csv" class="secondary csv" disabled title="以 = + - @ 開頭的內容前面會加一個 '，避免 Excel 當成公式">匯出 CSV ↓</button>
+          </div>
+          <h2>Recent Trades 成交紀錄</h2>
+          <p id="recent-trades-meta" class="capture-meta">尚未讀取。</p>
+          <div class="market-scroll"><table id="recent-trades-table" class="market-table" hidden></table></div>
+          <details><summary>網頁原文</summary><pre id="recent-trades-raw" class="capture-lines"></pre></details>
+        </article>
+        </section>
+
+      <section class="report-band panel" id="report-section" hidden>
+        <div class="report-head">
+          <div>
+            <p class="eyebrow">市場資料報告</p>
+            <h2 id="report-title">市場資料</h2>
+          </div>
+          <button type="button" id="download-report" class="secondary">下載報告 ↓</button>
+        </div>
+        <pre id="report-content" class="report-body"></pre>
+        <p id="release-check-reason" class="capture-meta" hidden></p>
+      </section>
+      </section>
+
+      <section id="tab-usage" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-usage" hidden>
+        <div class="panel usage-panel">
+          <div class="aside-header">
+            <div>
+              <p class="eyebrow">下一步動作</p>
+              <h2 id="choice-title">等候頁面中</h2>
+            </div>
+            <span class="header-meta"><span id="action-count">0 個選項</span> · 決策耗時 <span id="latency">—</span></span>
+          </div>
+          <div id="usage" class="metrics usage" hidden></div>
+          <section class="trace">
+            <h3 class="decision-heading">Jev 決策紀錄</h3>
+            <div id="decision-log" class="decision-log"></div>
+          </section>
+          <details id="ranking-details" class="ranking-details" hidden>
+            <summary>這一步的動作機率與元素排名</summary>
+            <div id="operation-choices" class="operation-choices"></div>
+            <p class="distribution-label">
+              元素清單
+              <span id="ranking-note">查詢開始後由 Jev 排序</span>
+            </p>
+            <div id="choices" class="choices">
+              <p class="muted">可執行的動作將顯示於此。</p>
+            </div>
+          </details>
+          <p class="aside-note">
+            動作類型與點選目標在同一次請求中決定。輸入的文字就是你填的名稱，不會呼叫任何文字模型。
+          </p>
+          <details class="model-details">
+            <summary>模型觀察視圖</summary>
+            <pre id="model-state">
+啟動展示以檢視結構化狀態。</pre>
+          </details>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="/app.js"></script>
+  </body>
+ </html>
