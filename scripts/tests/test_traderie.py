@@ -1,3 +1,4 @@
+import re
 import sys
 import types
 
@@ -34,15 +35,10 @@ def test_build_goal_requires_item_name():
     assert "Stormshield" in build_goal("Stormshield")
 
 
-def test_goal_states_the_load_more_limit_and_the_scroll_loop():
-    goal = build_goal("Stormshield")
-    assert f"after {LOAD_MORE_LIMIT} Load More presses" in goal
-    assert "action_counts" in goal and "Scroll to bottom of page" in goal
-    assert "after 4 Load More presses" in build_goal("Stormshield", 4)
-
-
-def test_goal_says_the_program_ends_a_phase_after_the_presses_and_the_rule_matches():
-    assert "The program itself ends the phase after 3 Load More presses" in build_goal("Stormshield", 3)
+def test_goal_tells_jev_exactly_the_requested_number_of_presses_and_the_rule_matches():
+    for presses in (1, 3, 5):
+        assert re.findall(r"\b\d+\b", build_goal("Stormshield", presses)) == [str(presses)]
+    assert re.findall(r"\b\d+\b", build_goal("Stormshield")) == [str(LOAD_MORE_LIMIT)]
     assert phase_finish_rule(3) == ("Load More", 3) and phase_finish_rule(0) is None
 
 

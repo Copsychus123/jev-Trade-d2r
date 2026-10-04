@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-CSV_JS = (Path(__file__).resolve().parent.parent.parent / "future" / "jev_ultrafast" / "static" / "csv.js").as_uri()
+CSV_JS = (Path(__file__).resolve().parent.parent.parent / "core" / "jev_ultrafast" / "static" / "csv.js").as_uri()
 pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
 
 

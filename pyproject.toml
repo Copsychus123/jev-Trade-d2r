@@ -18,29 +18,26 @@ exclude = [
     "/.tmp-*",
     "/artifacts",
     "/archive",
-    "/future/analysis",
-    "/future/api-ocr-2025",
-    "/future/scripts",
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["future/jev_ultrafast"]
-sources = ["future"]
+packages = ["core/jev_ultrafast"]
+sources = ["core"]
 
 [dependency-groups]
 dev = ["pytest>=8.4,<9", "ruff>=0.14,<1"]
 
 [tool.ruff]
 line-length = 120
-src = ["future"]
-exclude = ["archive", "future/analysis", "future/api-ocr-2025", "future/scripts"]
+src = [".", "core", "services"]
+exclude = ["archive", "services/.build"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
 
 [tool.pytest.ini_options]
-testpaths = ["scripts/tests"]
-pythonpath = [".", "future"]
+testpaths = ["scripts/tests", "services/tests"]
+pythonpath = [".", "core", "services"]
 addopts = ["-m", "not live"]
 
 markers = [

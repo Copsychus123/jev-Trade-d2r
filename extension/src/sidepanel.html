@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Jev Traderie</title>
+    <link rel="stylesheet" href="sidepanel.css" />
+  </head>
+  <body>
+    <h1>Jev Traderie</h1>
+
+    <section class="card" id="ocr-drop">
+      <label for="invite">邀請碼</label>
+      <div class="row">
+        <input id="invite" type="password" autocomplete="off" placeholder="jev-…" />
+        <button id="save-invite" type="button">儲存</button>
+      </div>
+
+      <label for="item">裝備名稱</label>
+      <div class="field">
+        <input id="item" type="text" placeholder="輸入名稱，或貼上截圖" autocomplete="off" />
+        <button id="ocr-pick" type="button" class="field-icon" aria-label="用截圖查名稱">📷<i id="ocr-dot" hidden></i></button>
+        <div id="ocr-hint" class="tooltip" hidden>用截圖查名稱<br /><small>或按 Ctrl+V、拖圖進來</small></div>
+      </div>
+      <span id="ocr-tag" class="tag" hidden>● 來自截圖，請確認（改名後消失）</span>
+      <div id="ocr-dropzone" class="dropzone" hidden>把圖片拖到這裡放開</div>
+      <input id="ocr-file" type="file" accept="image/*" hidden />
+
+      <div id="ocr-panel" class="ocr-panel" hidden>
+        <div class="ocr-bar">
+          <select id="ocr-lang" aria-label="截圖上的遊戲語言"></select>
+          <button id="ocr-go" type="button" class="primary" disabled>辨識</button>
+          <button id="ocr-close" type="button" aria-label="收起">✕</button>
+        </div>
+        <div class="ocr-frame"><img id="ocr-preview" alt="預覽（點一下放大或縮小）" hidden /><div id="ocr-box" hidden></div></div>
+        <div id="ocr-consent" hidden>
+          <p id="ocr-consent-text"></p>
+          <div class="row">
+            <button id="ocr-agree" type="button" class="primary">同意並下載</button>
+            <button id="ocr-decline" type="button">不下載</button>
+          </div>
+        </div>
+        <p id="ocr-status" role="status"></p>
+        <p id="ocr-time" class="muted"></p>
+        <div id="ocr-candidates" class="row"></div>
+        <details>
+          <summary class="muted">⚙ 進階</summary>
+          <label class="check"><input id="ocr-auto" type="checkbox" checked /> 放入圖片後自動辨識（只在已有該語言模型時）</label>
+          <p class="muted small">每種語言第一次用才下載（約 0.7 到 3 MB），下載後存在這個瀏覽器，之後可離線使用。</p>
+          <details>
+            <summary class="muted">看辨識出的文字</summary>
+            <pre id="ocr-text"></pre>
+          </details>
+          <details>
+            <summary class="muted">下載不了？手動匯入模型</summary>
+            <p class="muted small">選對應的 <code>語言代碼.traineddata.gz</code>（例如 chi_tra.traineddata.gz）。會檢查檢查碼，不符的檔案會被拒絕。</p>
+            <input id="ocr-model-file" type="file" accept=".gz" multiple />
+          </details>
+        </details>
+      </div>
+
+      <label for="load-more">載入更多次數</label>
+      <select id="load-more">
+        <option selected>0</option>
+        <option>1</option>
+        <option>2</option>
+        <option>3</option>
+        <option>4</option>
+        <option>5</option>
+      </select>
+
+      <div class="row">
+        <button id="start" type="button" class="primary">開始查詢</button>
+        <button id="stop" type="button" disabled>停止</button>
+      </div>
+      <p id="status" role="status"></p>
+      <p id="quota" class="muted"></p>
+      <p id="lookup" class="muted"></p>
+      <p id="usage" class="muted"></p>
+    </section>
+
+    <section class="card">
+      <h2>進度</h2>
+      <ol id="log"></ol>
+    </section>
+
+    <section class="card">
+      <div class="head">
+        <h2>目前掛單 <span id="trading-status" class="pill">NOT_RUN</span></h2>
+        <div class="actions">
+          <button id="trading-copy" type="button" disabled>複製</button>
+          <button id="trading-open" type="button" disabled>前往網站</button>
+          <button id="trading-csv" type="button" disabled>下載 CSV</button>
+        </div>
+      </div>
+      <p id="trading-meta" class="muted"></p>
+      <div class="scroll"><table id="trading-table" hidden></table></div>
+      <nav id="trading-pager" class="pager" hidden>
+        <button id="trading-prev" type="button">上一頁</button>
+        <span id="trading-page"></span>
+        <button id="trading-next" type="button">下一頁</button>
+      </nav>
+    </section>
+
+    <section class="card">
+      <div class="head">
+        <h2>近期成交 <span id="recent-trades-status" class="pill">NOT_RUN</span></h2>
+        <div class="actions">
+          <button id="recent-trades-copy" type="button" disabled>複製</button>
+          <button id="recent-trades-open" type="button" disabled>前往網站</button>
+          <button id="recent-trades-csv" type="button" disabled>下載 CSV</button>
+        </div>
+      </div>
+      <p id="recent-trades-meta" class="muted"></p>
+      <div class="scroll"><table id="recent-trades-table" hidden></table></div>
+      <nav id="recent-trades-pager" class="pager" hidden>
+        <button id="recent-trades-prev" type="button">上一頁</button>
+        <span id="recent-trades-page"></span>
+        <button id="recent-trades-next" type="button">下一頁</button>
+      </nav>
+    </section>
+
+    <section class="card">
+      <h2>檢查結果</h2>
+      <p id="verification" class="muted">尚未檢查。</p>
+    </section>
+
+    <script type="module" src="sidepanel.js"></script>
+  </body>
+</html>

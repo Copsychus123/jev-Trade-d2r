@@ -26,6 +26,10 @@ The initial prototype used five manually prepared steps and copied quoted string
 
 The audit also found that treating every INPUT as editable misclassified checkboxes. Editable roles now control TYPE_TEXT availability. Tests cover checkbox/radio/button distinction, invalid operation/target outputs, stale decisions, missing credentials, waits, and final-route verification.
 
+## Finding the product (extension)
+
+Three layers, one attempt each (`extension/src/traderie/finder.js`). (1) Table jump: a name found in `data/items.json` opens `/product/<slug>` directly; the page title must contain the item name as whole words, otherwise the run falls back to layer 2 on the home page. (2) Search: Jev types the cleaned English name and picks the result. (3) Base list: only when the results page says "No results could be found" for a well-formed name, `pick_base` asks Jev for the plain item type from a fixed list (TypeSafe allows 255 choices per question, so a long list is split over several questions of one request and the most probable answer wins; below 0.8 it answers "none"), then one more search; otherwise "not found". The tables are snapshots made by `scripts/build_item_tables.py`; a stale table only loses the shortcut. A base result is labelled as such because the quality word was not applied.
+
 ## Boundaries
 
 Sixty browser actions and 120 decision requests bound a run. Up to 250 action candidates are retained; truncated candidates cannot be selected. The service stays loopback-only, serializes inspector actions, and checks Host, Origin, and a local request token. Credentials remain server-side. Tabs share the existing Chrome profile.

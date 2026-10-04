@@ -1,0 +1,9510 @@
+{
+ "generated_at": "2026-10-04T08:15:14+00:00",
+ "sources": {
+  "products": "https://traderie.com/diablo2resurrected/products/<category>",
+  "chinese": "https://d2r.world/zh-TW/info/item"
+ },
+ "products": [
+  {
+   "name": "A Jade Figurine",
+   "slug": "a-jade-figurine",
+   "category": "misc"
+  },
+  {
+   "name": "Aegis",
+   "slug": "aegis",
+   "category": "base"
+  },
+  {
+   "name": "Aerin Shield",
+   "slug": "aerin-shield",
+   "category": "base"
+  },
+  {
+   "name": "Akaran Rondache",
+   "slug": "akaran-rondache",
+   "category": "base"
+  },
+  {
+   "name": "Akaran Targe",
+   "slug": "akaran-targe",
+   "category": "base"
+  },
+  {
+   "name": "Aldur's Advance",
+   "slug": "aldurs-advance",
+   "category": "sets"
+  },
+  {
+   "name": "Aldur's Deception",
+   "slug": "aldurs-deception",
+   "category": "sets"
+  },
+  {
+   "name": "Aldur's Rhythm",
+   "slug": "aldurs-rhythm",
+   "category": "sets"
+  },
+  {
+   "name": "Aldur's Stony Gaze",
+   "slug": "aldurs-stony-gaze",
+   "category": "sets"
+  },
+  {
+   "name": "Aldur's Watchtower",
+   "slug": "aldurs-watchtower",
+   "category": "sets"
+  },
+  {
+   "name": "Alma Negra",
+   "slug": "alma-negra",
+   "category": "uniques"
+  },
+  {
+   "name": "Alpha Helm",
+   "slug": "alpha-helm",
+   "category": "base"
+  },
+  {
+   "name": "Amethyst",
+   "slug": "amethyst",
+   "category": "gems"
+  },
+  {
+   "name": "Amn Rune",
+   "slug": "amn-rune",
+   "category": "runes"
+  },
+  {
+   "name": "Amulet",
+   "slug": "amulet",
+   "category": "misc"
+  },
+  {
+   "name": "Amulet Of The Viper",
+   "slug": "amulet-of-the-viper",
+   "category": "uniques"
+  },
+  {
+   "name": "Ancient Armor",
+   "slug": "ancient-armor",
+   "category": "base"
+  },
+  {
+   "name": "Ancient Axe",
+   "slug": "ancient-axe",
+   "category": "base"
+  },
+  {
+   "name": "Ancient Shield",
+   "slug": "ancient-shield",
+   "category": "base"
+  },
+  {
+   "name": "Ancient Sword",
+   "slug": "ancient-sword",
+   "category": "base"
+  },
+  {
+   "name": "Ancients' Pledge",
+   "slug": "ancients-pledge",
+   "category": "runewords"
+  },
+  {
+   "name": "Andariel's Visage",
+   "slug": "andariels-visage",
+   "category": "uniques"
+  },
+  {
+   "name": "Angelic Halo",
+   "slug": "angelic-halo",
+   "category": "sets"
+  },
+  {
+   "name": "Angelic Mantle",
+   "slug": "angelic-mantle",
+   "category": "sets"
+  },
+  {
+   "name": "Angelic Raiment",
+   "slug": "angelic-raiment",
+   "category": "sets"
+  },
+  {
+   "name": "Angelic Sickle",
+   "slug": "angelic-sickle",
+   "category": "sets"
+  },
+  {
+   "name": "Angelic Wings",
+   "slug": "angelic-wings",
+   "category": "sets"
+  },
+  {
+   "name": "Annihilus",
+   "slug": "annihilus",
+   "category": "uniques"
+  },
+  {
+   "name": "Antidote Potion",
+   "slug": "antidote-potion",
+   "category": "misc"
+  },
+  {
+   "name": "Antlers",
+   "slug": "antlers",
+   "category": "base"
+  },
+  {
+   "name": "Arachnid Mesh",
+   "slug": "arachnid-mesh",
+   "category": "uniques"
+  },
+  {
+   "name": "Arbalest",
+   "slug": "arbalest",
+   "category": "base"
+  },
+  {
+   "name": "Arcanna's Deathwand",
+   "slug": "arcannas-deathwand",
+   "category": "sets"
+  },
+  {
+   "name": "Arcanna's Flesh",
+   "slug": "arcannas-flesh",
+   "category": "sets"
+  },
+  {
+   "name": "Arcanna's Head",
+   "slug": "arcannas-head",
+   "category": "sets"
+  },
+  {
+   "name": "Arcanna's Sign",
+   "slug": "arcannas-sign",
+   "category": "sets"
+  },
+  {
+   "name": "Arcanna's Tricks",
+   "slug": "arcannas-tricks",
+   "category": "sets"
+  },
+  {
+   "name": "Archon Plate",
+   "slug": "archon-plate",
+   "category": "base"
+  },
+  {
+   "name": "Archon Staff",
+   "slug": "archon-staff",
+   "category": "base"
+  },
+  {
+   "name": "Arctic Binding",
+   "slug": "arctic-binding",
+   "category": "sets"
+  },
+  {
+   "name": "Arctic Furs",
+   "slug": "arctic-furs",
+   "category": "sets"
+  },
+  {
+   "name": "Arctic Gear",
+   "slug": "arctic-gear",
+   "category": "sets"
+  },
+  {
+   "name": "Arctic Horn",
+   "slug": "arctic-horn",
+   "category": "sets"
+  },
+  {
+   "name": "Arctic Mitts",
+   "slug": "arctic-mitts",
+   "category": "sets"
+  },
+  {
+   "name": "Arioc's Needle",
+   "slug": "ariocs-needle",
+   "category": "uniques"
+  },
+  {
+   "name": "Arkaine's Valor",
+   "slug": "arkaines-valor",
+   "category": "uniques"
+  },
+  {
+   "name": "Arm Of King Leoric",
+   "slug": "arm-of-king-leoric",
+   "category": "uniques"
+  },
+  {
+   "name": "Armet",
+   "slug": "armet",
+   "category": "base"
+  },
+  {
+   "name": "Arreat's Face",
+   "slug": "arreats-face",
+   "category": "uniques"
+  },
+  {
+   "name": "Arrows",
+   "slug": "arrows",
+   "category": "misc"
+  },
+  {
+   "name": "Ars Al'Diabolos",
+   "slug": "ars-aldiabolos",
+   "category": "uniques"
+  },
+  {
+   "name": "Ars Dul'Mephistos",
+   "slug": "ars-dulmephistos",
+   "category": "uniques"
+  },
+  {
+   "name": "Ars Tor'Baalos",
+   "slug": "ars-torbaalos",
+   "category": "uniques"
+  },
+  {
+   "name": "Ashwood Bow",
+   "slug": "ashwood-bow",
+   "category": "base"
+  },
+  {
+   "name": "Assault Helmet",
+   "slug": "assault-helmet",
+   "category": "base"
+  },
+  {
+   "name": "Astreon's Iron Ward",
+   "slug": "astreons-iron-ward",
+   "category": "uniques"
+  },
+  {
+   "name": "Ataghan",
+   "slug": "ataghan",
+   "category": "base"
+  },
+  {
+   "name": "Athena's Wrath",
+   "slug": "athenas-wrath",
+   "category": "uniques"
+  },
+  {
+   "name": "Atma's Scarab",
+   "slug": "atmas-scarab",
+   "category": "uniques"
+  },
+  {
+   "name": "Atma's Wail",
+   "slug": "atmas-wail",
+   "category": "uniques"
+  },
+  {
+   "name": "Authority",
+   "slug": "authority",
+   "category": "runewords"
+  },
+  {
+   "name": "Avenger Guard",
+   "slug": "avenger-guard",
+   "category": "base"
+  },
+  {
+   "name": "Axe",
+   "slug": "axe",
+   "category": "base"
+  },
+  {
+   "name": "Axe Of Fechmar",
+   "slug": "axe-of-fechmar",
+   "category": "uniques"
+  },
+  {
+   "name": "Azurewrath",
+   "slug": "azurewrath",
+   "category": "uniques"
+  },
+  {
+   "name": "Baal's Eye",
+   "slug": "baals-eye",
+   "category": "misc"
+  },
+  {
+   "name": "Baezil's Vortex",
+   "slug": "baezils-vortex",
+   "category": "uniques"
+  },
+  {
+   "name": "Balanced Axe",
+   "slug": "balanced-axe",
+   "category": "base"
+  },
+  {
+   "name": "Balanced Knife",
+   "slug": "balanced-knife",
+   "category": "base"
+  },
+  {
+   "name": "Ballista",
+   "slug": "ballista",
+   "category": "base"
+  },
+  {
+   "name": "Balrog Blade",
+   "slug": "balrog-blade",
+   "category": "base"
+  },
+  {
+   "name": "Balrog Skin",
+   "slug": "balrog-skin",
+   "category": "base"
+  },
+  {
+   "name": "Balrog Spear",
+   "slug": "balrog-spear",
+   "category": "base"
+  },
+  {
+   "name": "Bane Ash",
+   "slug": "bane-ash",
+   "category": "uniques"
+  },
+  {
+   "name": "Bane's Authority",
+   "slug": "banes-authority",
+   "category": "sets"
+  },
+  {
+   "name": "Bane's Oathmaker",
+   "slug": "banes-oathmaker",
+   "category": "sets"
+  },
+  {
+   "name": "Bane's Wraithskin",
+   "slug": "banes-wraithskin",
+   "category": "sets"
+  },
+  {
+   "name": "Baranar's Star",
+   "slug": "baranars-star",
+   "category": "uniques"
+  },
+  {
+   "name": "Barbed Club",
+   "slug": "barbed-club",
+   "category": "base"
+  },
+  {
+   "name": "Barbed Shield",
+   "slug": "barbed-shield",
+   "category": "base"
+  },
+  {
+   "name": "Bardiche",
+   "slug": "bardiche",
+   "category": "base"
+  },
+  {
+   "name": "Bartuc's Cut-Throat",
+   "slug": "bartucs-cut-throat",
+   "category": "uniques"
+  },
+  {
+   "name": "Basinet",
+   "slug": "basinet",
+   "category": "base"
+  },
+  {
+   "name": "Bastard Sword",
+   "slug": "bastard-sword",
+   "category": "base"
+  },
+  {
+   "name": "Battle Axe",
+   "slug": "battle-axe",
+   "category": "base"
+  },
+  {
+   "name": "Battle Belt",
+   "slug": "battle-belt",
+   "category": "base"
+  },
+  {
+   "name": "Battle Boots",
+   "slug": "battle-boots",
+   "category": "base"
+  },
+  {
+   "name": "Battle Cestus",
+   "slug": "battle-cestus",
+   "category": "base"
+  },
+  {
+   "name": "Battle Dart",
+   "slug": "battle-dart",
+   "category": "base"
+  },
+  {
+   "name": "Battle Gauntlets",
+   "slug": "battle-gauntlets",
+   "category": "base"
+  },
+  {
+   "name": "Battle Hammer",
+   "slug": "battle-hammer",
+   "category": "base"
+  },
+  {
+   "name": "Battle Scythe",
+   "slug": "battle-scythe",
+   "category": "base"
+  },
+  {
+   "name": "Battle Staff",
+   "slug": "battle-staff",
+   "category": "base"
+  },
+  {
+   "name": "Battle Sword",
+   "slug": "battle-sword",
+   "category": "base"
+  },
+  {
+   "name": "Bearded Axe",
+   "slug": "bearded-axe",
+   "category": "base"
+  },
+  {
+   "name": "Beast",
+   "slug": "beast",
+   "category": "runewords"
+  },
+  {
+   "name": "Bec-De-Corbin",
+   "slug": "bec-de-corbin",
+   "category": "base"
+  },
+  {
+   "name": "Belt",
+   "slug": "belt",
+   "category": "base"
+  },
+  {
+   "name": "Ber Rune",
+   "slug": "ber-rune",
+   "category": "runes"
+  },
+  {
+   "name": "Berserker Axe",
+   "slug": "berserker-axe",
+   "category": "base"
+  },
+  {
+   "name": "Berserker's Arsenal",
+   "slug": "berserkers-arsenal",
+   "category": "sets"
+  },
+  {
+   "name": "Berserker's Hatchet",
+   "slug": "berserkers-hatchet",
+   "category": "sets"
+  },
+  {
+   "name": "Berserker's Hauberk",
+   "slug": "berserkers-hauberk",
+   "category": "sets"
+  },
+  {
+   "name": "Berserker's Headgear",
+   "slug": "berserkers-headgear",
+   "category": "sets"
+  },
+  {
+   "name": "Biggin's Bonnet",
+   "slug": "biggins-bonnet",
+   "category": "uniques"
+  },
+  {
+   "name": "Bill",
+   "slug": "bill",
+   "category": "base"
+  },
+  {
+   "name": "Bing Sz Wang",
+   "slug": "bing-sz-wang",
+   "category": "uniques"
+  },
+  {
+   "name": "Black",
+   "slug": "black",
+   "category": "runewords"
+  },
+  {
+   "name": "Black Hades",
+   "slug": "black-hades",
+   "category": "uniques"
+  },
+  {
+   "name": "Blackbog's Sharp",
+   "slug": "blackbogs-sharp",
+   "category": "uniques"
+  },
+  {
+   "name": "Blackhand Key",
+   "slug": "blackhand-key",
+   "category": "uniques"
+  },
+  {
+   "name": "Blackhorn's Face",
+   "slug": "blackhorns-face",
+   "category": "uniques"
+  },
+  {
+   "name": "Blackleach Blade",
+   "slug": "blackleach-blade",
+   "category": "uniques"
+  },
+  {
+   "name": "Blackoak Shield",
+   "slug": "blackoak-shield",
+   "category": "uniques"
+  },
+  {
+   "name": "Blacktongue",
+   "slug": "blacktongue",
+   "category": "uniques"
+  },
+  {
+   "name": "Blade",
+   "slug": "blade",
+   "category": "base"
+  },
+  {
+   "name": "Blade Barrier",
+   "slug": "blade-barrier",
+   "category": "base"
+  },
+  {
+   "name": "Blade Bow",
+   "slug": "blade-bow",
+   "category": "base"
+  },
+  {
+   "name": "Blade Of Ali Baba",
+   "slug": "blade-of-ali-baba",
+   "category": "uniques"
+  },
+  {
+   "name": "Blade Talons",
+   "slug": "blade-talons",
+   "category": "base"
+  },
+  {
+   "name": "Bladebone",
+   "slug": "bladebone",
+   "category": "uniques"
+  },
+  {
+   "name": "Bladebuckle",
+   "slug": "bladebuckle",
+   "category": "uniques"
+  },
+  {
+   "name": "Blasphemous Compendium",
+   "slug": "blasphemous-compendium",
+   "category": "base"
+  },
+  {
+   "name": "Blasphemous Grimoire",
+   "slug": "blasphemous-grimoire",
+   "category": "base"
+  },
+  {
+   "name": "Blastbark",
+   "slug": "blastbark",
+   "category": "uniques"
+  },
+  {
+   "name": "Blinkbat's Form",
+   "slug": "blinkbats-form",
+   "category": "uniques"
+  },
+  {
+   "name": "Blood Amulet",
+   "slug": "blood-amulet",
+   "category": "crafted"
+  },
+  {
+   "name": "Blood Belt",
+   "slug": "blood-belt",
+   "category": "crafted"
+  },
+  {
+   "name": "Blood Body",
+   "slug": "blood-body",
+   "category": "crafted"
+  },
+  {
+   "name": "Blood Boots",
+   "slug": "blood-boots",
+   "category": "crafted"
+  },
+  {
+   "name": "Blood Crescent",
+   "slug": "blood-crescent",
+   "category": "uniques"
+  },
+  {
+   "name": "Blood Gloves",
+   "slug": "blood-gloves",
+   "category": "crafted"
+  },
+  {
+   "name": "Blood Helm",
+   "slug": "blood-helm",
+   "category": "crafted"
+  },
+  {
+   "name": "Blood Raven's Charge",
+   "slug": "blood-ravens-charge",
+   "category": "uniques"
+  },
+  {
+   "name": "Blood Ring",
+   "slug": "blood-ring",
+   "category": "crafted"
+  },
+  {
+   "name": "Blood Shield",
+   "slug": "blood-shield",
+   "category": "crafted"
+  },
+  {
+   "name": "Blood Spirit",
+   "slug": "blood-spirit",
+   "category": "base"
+  },
+  {
+   "name": "Blood Weapon",
+   "slug": "blood-weapon",
+   "category": "crafted"
+  },
+  {
+   "name": "Bloodfist",
+   "slug": "bloodfist",
+   "category": "uniques"
+  },
+  {
+   "name": "Bloodletter",
+   "slug": "bloodletter",
+   "category": "uniques"
+  },
+  {
+   "name": "Bloodlord Skull",
+   "slug": "bloodlord-skull",
+   "category": "base"
+  },
+  {
+   "name": "Bloodmoon",
+   "slug": "bloodmoon",
+   "category": "uniques"
+  },
+  {
+   "name": "Bloodpact Shard",
+   "slug": "bloodpact-shard",
+   "category": "uniques"
+  },
+  {
+   "name": "Bloodrise",
+   "slug": "bloodrise",
+   "category": "uniques"
+  },
+  {
+   "name": "Bloodthief",
+   "slug": "bloodthief",
+   "category": "uniques"
+  },
+  {
+   "name": "Bloodtree Stump",
+   "slug": "bloodtree-stump",
+   "category": "uniques"
+  },
+  {
+   "name": "Bolts",
+   "slug": "bolts",
+   "category": "misc"
+  },
+  {
+   "name": "Bone",
+   "slug": "bone",
+   "category": "runewords"
+  },
+  {
+   "name": "Bone Helm",
+   "slug": "bone-helm",
+   "category": "base"
+  },
+  {
+   "name": "Bone Knife",
+   "slug": "bone-knife",
+   "category": "base"
+  },
+  {
+   "name": "Bone Shield",
+   "slug": "bone-shield",
+   "category": "base"
+  },
+  {
+   "name": "Bone Visage",
+   "slug": "bone-visage",
+   "category": "base"
+  },
+  {
+   "name": "Bone Wand",
+   "slug": "bone-wand",
+   "category": "base"
+  },
+  {
+   "name": "Boneflame",
+   "slug": "boneflame",
+   "category": "uniques"
+  },
+  {
+   "name": "Boneflesh",
+   "slug": "boneflesh",
+   "category": "uniques"
+  },
+  {
+   "name": "Bonehew",
+   "slug": "bonehew",
+   "category": "uniques"
+  },
+  {
+   "name": "Boneshade",
+   "slug": "boneshade",
+   "category": "uniques"
+  },
+  {
+   "name": "Boneslayer Blade",
+   "slug": "boneslayer-blade",
+   "category": "uniques"
+  },
+  {
+   "name": "Bonesnap",
+   "slug": "bonesnap",
+   "category": "uniques"
+  },
+  {
+   "name": "Boneweave",
+   "slug": "boneweave",
+   "category": "base"
+  },
+  {
+   "name": "Boneweave Boots",
+   "slug": "boneweave-boots",
+   "category": "base"
+  },
+  {
+   "name": "Book Of Skill",
+   "slug": "book-of-skill",
+   "category": "misc"
+  },
+  {
+   "name": "Boots",
+   "slug": "boots",
+   "category": "base"
+  },
+  {
+   "name": "Brainhew",
+   "slug": "brainhew",
+   "category": "uniques"
+  },
+  {
+   "name": "Bramble",
+   "slug": "bramble",
+   "category": "runewords"
+  },
+  {
+   "name": "Bramble Mitts",
+   "slug": "bramble-mitts",
+   "category": "base"
+  },
+  {
+   "name": "Brand",
+   "slug": "brand",
+   "category": "runewords"
+  },
+  {
+   "name": "Brandistock",
+   "slug": "brandistock",
+   "category": "base"
+  },
+  {
+   "name": "Breast Plate",
+   "slug": "breast-plate",
+   "category": "base"
+  },
+  {
+   "name": "Breath Of The Dying",
+   "slug": "breath-of-the-dying",
+   "category": "runewords"
+  },
+  {
+   "name": "Broad Axe",
+   "slug": "broad-axe",
+   "category": "base"
+  },
+  {
+   "name": "Broad Sword",
+   "slug": "broad-sword",
+   "category": "base"
+  },
+  {
+   "name": "Buckler",
+   "slug": "buckler",
+   "category": "base"
+  },
+  {
+   "name": "Bul-Kathos' Children",
+   "slug": "bul-kathos-children",
+   "category": "sets"
+  },
+  {
+   "name": "Bul-Kathos' Nightmare",
+   "slug": "bul-kathos-nightmare",
+   "category": "misc"
+  },
+  {
+   "name": "Bul-Kathos' Sacred Charge",
+   "slug": "bul-kathos-sacred-charge",
+   "category": "sets"
+  },
+  {
+   "name": "Bul-Kathos' Tribal Guardian",
+   "slug": "bul-kathos-tribal-guardian",
+   "category": "sets"
+  },
+  {
+   "name": "Bul-Kathos' Wedding Band",
+   "slug": "bul-kathos-wedding-band",
+   "category": "uniques"
+  },
+  {
+   "name": "Bulwark",
+   "slug": "bulwark",
+   "category": "runewords"
+  },
+  {
+   "name": "Buriza-Do Kyanon",
+   "slug": "buriza-do-kyanon",
+   "category": "uniques"
+  },
+  {
+   "name": "Burning Essence Of Terror",
+   "slug": "burning-essence-of-terror",
+   "category": "misc"
+  },
+  {
+   "name": "Burnt Text",
+   "slug": "burnt-text",
+   "category": "base"
+  },
+  {
+   "name": "Burnt Wand",
+   "slug": "burnt-wand",
+   "category": "base"
+  },
+  {
+   "name": "Butcher's Pupil",
+   "slug": "butchers-pupil",
+   "category": "uniques"
+  },
+  {
+   "name": "Bverrit Keep",
+   "slug": "bverrit-keep",
+   "category": "uniques"
+  },
+  {
+   "name": "Caduceus",
+   "slug": "caduceus",
+   "category": "base"
+  },
+  {
+   "name": "Call To Arms",
+   "slug": "call-to-arms",
+   "category": "runewords"
+  },
+  {
+   "name": "Cantor Trophy",
+   "slug": "cantor-trophy",
+   "category": "base"
+  },
+  {
+   "name": "Cap",
+   "slug": "cap",
+   "category": "base"
+  },
+  {
+   "name": "Carin Shard",
+   "slug": "carin-shard",
+   "category": "uniques"
+  },
+  {
+   "name": "Carnage Helm",
+   "slug": "carnage-helm",
+   "category": "base"
+  },
+  {
+   "name": "Carrion Wind",
+   "slug": "carrion-wind",
+   "category": "uniques"
+  },
+  {
+   "name": "Casque",
+   "slug": "casque",
+   "category": "base"
+  },
+  {
+   "name": "Caster Amulet",
+   "slug": "caster-amulet",
+   "category": "crafted"
+  },
+  {
+   "name": "Caster Belt",
+   "slug": "caster-belt",
+   "category": "crafted"
+  },
+  {
+   "name": "Caster Body",
+   "slug": "caster-body",
+   "category": "crafted"
+  },
+  {
+   "name": "Caster Boots",
+   "slug": "caster-boots",
+   "category": "crafted"
+  },
+  {
+   "name": "Caster Gloves",
+   "slug": "caster-gloves",
+   "category": "crafted"
+  },
+  {
+   "name": "Caster Helm",
+   "slug": "caster-helm",
+   "category": "crafted"
+  },
+  {
+   "name": "Caster Ring",
+   "slug": "caster-ring",
+   "category": "crafted"
+  },
+  {
+   "name": "Caster Shield",
+   "slug": "caster-shield",
+   "category": "crafted"
+  },
+  {
+   "name": "Caster Weapon",
+   "slug": "caster-weapon",
+   "category": "crafted"
+  },
+  {
+   "name": "Cathan's Mesh",
+   "slug": "cathans-mesh",
+   "category": "sets"
+  },
+  {
+   "name": "Cathan's Rule",
+   "slug": "cathans-rule",
+   "category": "sets"
+  },
+  {
+   "name": "Cathan's Seal",
+   "slug": "cathans-seal",
+   "category": "sets"
+  },
+  {
+   "name": "Cathan's Sigil",
+   "slug": "cathans-sigil",
+   "category": "sets"
+  },
+  {
+   "name": "Cathan's Traps",
+   "slug": "cathans-traps",
+   "category": "sets"
+  },
+  {
+   "name": "Cathan's Visage",
+   "slug": "cathans-visage",
+   "category": "sets"
+  },
+  {
+   "name": "Cedar Bow",
+   "slug": "cedar-bow",
+   "category": "base"
+  },
+  {
+   "name": "Cedar Staff",
+   "slug": "cedar-staff",
+   "category": "base"
+  },
+  {
+   "name": "Cerebus' Bite",
+   "slug": "cerebus-bite",
+   "category": "uniques"
+  },
+  {
+   "name": "Ceremonial Bow",
+   "slug": "ceremonial-bow",
+   "category": "base"
+  },
+  {
+   "name": "Ceremonial Javelin",
+   "slug": "ceremonial-javelin",
+   "category": "base"
+  },
+  {
+   "name": "Ceremonial Pike",
+   "slug": "ceremonial-pike",
+   "category": "base"
+  },
+  {
+   "name": "Ceremonial Spear",
+   "slug": "ceremonial-spear",
+   "category": "base"
+  },
+  {
+   "name": "Cestus",
+   "slug": "cestus",
+   "category": "base"
+  },
+  {
+   "name": "Chain Boots",
+   "slug": "chain-boots",
+   "category": "base"
+  },
+  {
+   "name": "Chain Gloves",
+   "slug": "chain-gloves",
+   "category": "base"
+  },
+  {
+   "name": "Chain Mail",
+   "slug": "chain-mail",
+   "category": "base"
+  },
+  {
+   "name": "Chains Of Honor",
+   "slug": "chains-of-honor",
+   "category": "runewords"
+  },
+  {
+   "name": "Cham Rune",
+   "slug": "cham-rune",
+   "category": "runes"
+  },
+  {
+   "name": "Champion Axe",
+   "slug": "champion-axe",
+   "category": "base"
+  },
+  {
+   "name": "Champion Sword",
+   "slug": "champion-sword",
+   "category": "base"
+  },
+  {
+   "name": "Chance Guards",
+   "slug": "chance-guards",
+   "category": "uniques"
+  },
+  {
+   "name": "Chaos",
+   "slug": "chaos",
+   "category": "runewords"
+  },
+  {
+   "name": "Chaos Armor",
+   "slug": "chaos-armor",
+   "category": "base"
+  },
+  {
+   "name": "Charged Essence Of Hatred",
+   "slug": "charged-essence-of-hatred",
+   "category": "misc"
+  },
+  {
+   "name": "Chipped Amethyst",
+   "slug": "chipped-amethyst",
+   "category": "gems"
+  },
+  {
+   "name": "Chipped Diamond",
+   "slug": "chipped-diamond",
+   "category": "gems"
+  },
+  {
+   "name": "Chipped Emerald",
+   "slug": "chipped-emerald",
+   "category": "gems"
+  },
+  {
+   "name": "Chipped Ruby",
+   "slug": "chipped-ruby",
+   "category": "gems"
+  },
+  {
+   "name": "Chipped Sapphire",
+   "slug": "chipped-sapphire",
+   "category": "gems"
+  },
+  {
+   "name": "Chipped Skull",
+   "slug": "chipped-skull",
+   "category": "gems"
+  },
+  {
+   "name": "Chipped Topaz",
+   "slug": "chipped-topaz",
+   "category": "gems"
+  },
+  {
+   "name": "Choking Gas Potion",
+   "slug": "choking-gas-potion",
+   "category": "base"
+  },
+  {
+   "name": "Chromatic Ire",
+   "slug": "chromatic-ire",
+   "category": "uniques"
+  },
+  {
+   "name": "Chu-Ko-Nu",
+   "slug": "chu-ko-nu",
+   "category": "base"
+  },
+  {
+   "name": "Cinquedeas",
+   "slug": "cinquedeas",
+   "category": "base"
+  },
+  {
+   "name": "Circlet",
+   "slug": "circlet",
+   "category": "base"
+  },
+  {
+   "name": "Civerb's Cudgel",
+   "slug": "civerbs-cudgel",
+   "category": "sets"
+  },
+  {
+   "name": "Civerb's Icon",
+   "slug": "civerbs-icon",
+   "category": "sets"
+  },
+  {
+   "name": "Civerb's Vestments",
+   "slug": "civerbs-vestments",
+   "category": "sets"
+  },
+  {
+   "name": "Civerb's Ward",
+   "slug": "civerbs-ward",
+   "category": "sets"
+  },
+  {
+   "name": "Clasped Orb",
+   "slug": "clasped-orb",
+   "category": "base"
+  },
+  {
+   "name": "Claws",
+   "slug": "claws",
+   "category": "base"
+  },
+  {
+   "name": "Claymore",
+   "slug": "claymore",
+   "category": "base"
+  },
+  {
+   "name": "Cleaver",
+   "slug": "cleaver",
+   "category": "base"
+  },
+  {
+   "name": "Cleglaw's Brace",
+   "slug": "cleglaws-brace",
+   "category": "sets"
+  },
+  {
+   "name": "Cleglaw's Claw",
+   "slug": "cleglaws-claw",
+   "category": "sets"
+  },
+  {
+   "name": "Cleglaw's Pincers",
+   "slug": "cleglaws-pincers",
+   "category": "sets"
+  },
+  {
+   "name": "Cleglaw's Tooth",
+   "slug": "cleglaws-tooth",
+   "category": "sets"
+  },
+  {
+   "name": "Cliffkiller",
+   "slug": "cliffkiller",
+   "category": "uniques"
+  },
+  {
+   "name": "Cloudcrack",
+   "slug": "cloudcrack",
+   "category": "uniques"
+  },
+  {
+   "name": "Cloudy Sphere",
+   "slug": "cloudy-sphere",
+   "category": "base"
+  },
+  {
+   "name": "Club",
+   "slug": "club",
+   "category": "base"
+  },
+  {
+   "name": "Codex",
+   "slug": "codex",
+   "category": "base"
+  },
+  {
+   "name": "Coif Of Glory",
+   "slug": "coif-of-glory",
+   "category": "uniques"
+  },
+  {
+   "name": "Coldkill",
+   "slug": "coldkill",
+   "category": "uniques"
+  },
+  {
+   "name": "Coldsteel Eye",
+   "slug": "coldsteel-eye",
+   "category": "uniques"
+  },
+  {
+   "name": "Colossus Blade",
+   "slug": "colossus-blade",
+   "category": "base"
+  },
+  {
+   "name": "Colossus Crossbow",
+   "slug": "colossus-crossbow",
+   "category": "base"
+  },
+  {
+   "name": "Colossus Girdle",
+   "slug": "colossus-girdle",
+   "category": "base"
+  },
+  {
+   "name": "Colossus Sword",
+   "slug": "colossus-sword",
+   "category": "base"
+  },
+  {
+   "name": "Colossus Voulge",
+   "slug": "colossus-voulge",
+   "category": "base"
+  },
+  {
+   "name": "Compendium",
+   "slug": "compendium",
+   "category": "base"
+  },
+  {
+   "name": "Composite Bow",
+   "slug": "composite-bow",
+   "category": "base"
+  },
+  {
+   "name": "Conqueror Crown",
+   "slug": "conqueror-crown",
+   "category": "base"
+  },
+  {
+   "name": "Conquest Sword",
+   "slug": "conquest-sword",
+   "category": "base"
+  },
+  {
+   "name": "Constricting Ring",
+   "slug": "constricting-ring",
+   "category": "uniques"
+  },
+  {
+   "name": "Corona",
+   "slug": "corona",
+   "category": "base"
+  },
+  {
+   "name": "Coronet",
+   "slug": "coronet",
+   "category": "base"
+  },
+  {
+   "name": "Corpsemourn",
+   "slug": "corpsemourn",
+   "category": "uniques"
+  },
+  {
+   "name": "Coven",
+   "slug": "coven",
+   "category": "runewords"
+  },
+  {
+   "name": "Cow King's Hide",
+   "slug": "cow-kings-hide",
+   "category": "sets"
+  },
+  {
+   "name": "Cow King's Hooves",
+   "slug": "cow-kings-hooves",
+   "category": "sets"
+  },
+  {
+   "name": "Cow King's Horns",
+   "slug": "cow-kings-horns",
+   "category": "sets"
+  },
+  {
+   "name": "Cow King's Leathers",
+   "slug": "cow-kings-leathers",
+   "category": "sets"
+  },
+  {
+   "name": "Crainte Vomir",
+   "slug": "crainte-vomir",
+   "category": "uniques"
+  },
+  {
+   "name": "Cranebeak",
+   "slug": "cranebeak",
+   "category": "uniques"
+  },
+  {
+   "name": "Credendum",
+   "slug": "credendum",
+   "category": "sets"
+  },
+  {
+   "name": "Crescent Moon",
+   "slug": "crescent-moon",
+   "category": "runewords"
+  },
+  {
+   "name": "Crescent Moon",
+   "slug": "crescent-moon-amulet",
+   "category": "uniques"
+  },
+  {
+   "name": "Crossbow",
+   "slug": "crossbow",
+   "category": "base"
+  },
+  {
+   "name": "Crow Caw",
+   "slug": "crow-caw",
+   "category": "uniques"
+  },
+  {
+   "name": "Crowbill",
+   "slug": "crowbill",
+   "category": "base"
+  },
+  {
+   "name": "Crown",
+   "slug": "crown",
+   "category": "base"
+  },
+  {
+   "name": "Crown Of Ages",
+   "slug": "crown-of-ages",
+   "category": "uniques"
+  },
+  {
+   "name": "Crown Of Thieves",
+   "slug": "crown-of-thieves",
+   "category": "uniques"
+  },
+  {
+   "name": "Crown Shield",
+   "slug": "crown-shield",
+   "category": "base"
+  },
+  {
+   "name": "Crusader Bow",
+   "slug": "crusader-bow",
+   "category": "base"
+  },
+  {
+   "name": "Crusader Gauntlets",
+   "slug": "crusader-gauntlets",
+   "category": "base"
+  },
+  {
+   "name": "Crushflange",
+   "slug": "crushflange",
+   "category": "uniques"
+  },
+  {
+   "name": "Cryptic Axe",
+   "slug": "cryptic-axe",
+   "category": "base"
+  },
+  {
+   "name": "Cryptic Sword",
+   "slug": "cryptic-sword",
+   "category": "base"
+  },
+  {
+   "name": "Crystal Sword",
+   "slug": "crystal-sword",
+   "category": "base"
+  },
+  {
+   "name": "Crystalline Globe",
+   "slug": "crystalline-globe",
+   "category": "base"
+  },
+  {
+   "name": "Cudgel",
+   "slug": "cudgel",
+   "category": "base"
+  },
+  {
+   "name": "Cuirass",
+   "slug": "cuirass",
+   "category": "base"
+  },
+  {
+   "name": "Culwen's Point",
+   "slug": "culwens-point",
+   "category": "uniques"
+  },
+  {
+   "name": "Cure",
+   "slug": "cure",
+   "category": "runewords"
+  },
+  {
+   "name": "Cutlass",
+   "slug": "cutlass",
+   "category": "base"
+  },
+  {
+   "name": "Dacian Falx",
+   "slug": "dacian-falx",
+   "category": "base"
+  },
+  {
+   "name": "Dagger",
+   "slug": "dagger",
+   "category": "base"
+  },
+  {
+   "name": "Dangoon's Teaching",
+   "slug": "dangoons-teaching",
+   "category": "sets"
+  },
+  {
+   "name": "Dark Adherent",
+   "slug": "dark-adherent",
+   "category": "sets"
+  },
+  {
+   "name": "Dark Clan Crusher",
+   "slug": "dark-clan-crusher",
+   "category": "uniques"
+  },
+  {
+   "name": "Dark Codex",
+   "slug": "dark-codex",
+   "category": "base"
+  },
+  {
+   "name": "Dark Tome",
+   "slug": "dark-tome",
+   "category": "base"
+  },
+  {
+   "name": "Darkforce Spawn",
+   "slug": "darkforce-spawn",
+   "category": "uniques"
+  },
+  {
+   "name": "Darkglow",
+   "slug": "darkglow",
+   "category": "uniques"
+  },
+  {
+   "name": "Darksight Helm",
+   "slug": "darksight-helm",
+   "category": "uniques"
+  },
+  {
+   "name": "Death",
+   "slug": "death",
+   "category": "runewords"
+  },
+  {
+   "name": "Death Cleaver",
+   "slug": "death-cleaver",
+   "category": "uniques"
+  },
+  {
+   "name": "Death Mask",
+   "slug": "death-mask",
+   "category": "base"
+  },
+  {
+   "name": "Deathbit",
+   "slug": "deathbit",
+   "category": "uniques"
+  },
+  {
+   "name": "Death's Disguise",
+   "slug": "deaths-disguise",
+   "category": "sets"
+  },
+  {
+   "name": "Death's Fathom",
+   "slug": "deaths-fathom",
+   "category": "uniques"
+  },
+  {
+   "name": "Death's Guard",
+   "slug": "deaths-guard",
+   "category": "sets"
+  },
+  {
+   "name": "Death's Hand",
+   "slug": "deaths-hand",
+   "category": "sets"
+  },
+  {
+   "name": "Death's Touch",
+   "slug": "deaths-touch",
+   "category": "sets"
+  },
+  {
+   "name": "Death's Web",
+   "slug": "deaths-web",
+   "category": "uniques"
+  },
+  {
+   "name": "Deathspade",
+   "slug": "deathspade",
+   "category": "uniques"
+  },
+  {
+   "name": "Decapitator",
+   "slug": "decapitator",
+   "category": "base"
+  },
+  {
+   "name": "Deep Worldstone Shard",
+   "slug": "deep-worldstone-shard",
+   "category": "misc"
+  },
+  {
+   "name": "Defender",
+   "slug": "defender",
+   "category": "base"
+  },
+  {
+   "name": "Defender's Bile",
+   "slug": "defenders-bile",
+   "category": "uniques"
+  },
+  {
+   "name": "Defender's Fire",
+   "slug": "defenders-fire",
+   "category": "uniques"
+  },
+  {
+   "name": "Delirium",
+   "slug": "delirium",
+   "category": "runewords"
+  },
+  {
+   "name": "Demon Crossbow",
+   "slug": "demon-crossbow",
+   "category": "base"
+  },
+  {
+   "name": "Demon Head",
+   "slug": "demon-head",
+   "category": "base"
+  },
+  {
+   "name": "Demon Heart",
+   "slug": "demon-heart",
+   "category": "base"
+  },
+  {
+   "name": "Demon Limb",
+   "slug": "demon-limb",
+   "category": "uniques"
+  },
+  {
+   "name": "Demon Machine",
+   "slug": "demon-machine",
+   "category": "uniques"
+  },
+  {
+   "name": "Demonhead",
+   "slug": "demonhead",
+   "category": "base"
+  },
+  {
+   "name": "Demonhide Armor",
+   "slug": "demonhide-armor",
+   "category": "base"
+  },
+  {
+   "name": "Demonhide Boots",
+   "slug": "demonhide-boots",
+   "category": "base"
+  },
+  {
+   "name": "Demonhide Gloves",
+   "slug": "demonhide-gloves",
+   "category": "base"
+  },
+  {
+   "name": "Demonhide Sash",
+   "slug": "demonhide-sash",
+   "category": "base"
+  },
+  {
+   "name": "Demonhorn's Edge",
+   "slug": "demonhorns-edge",
+   "category": "uniques"
+  },
+  {
+   "name": "Demon's Arch",
+   "slug": "demons-arch",
+   "category": "uniques"
+  },
+  {
+   "name": "Destroyer Helm",
+   "slug": "destroyer-helm",
+   "category": "base"
+  },
+  {
+   "name": "Destruction",
+   "slug": "destruction",
+   "category": "runewords"
+  },
+  {
+   "name": "Devil Star",
+   "slug": "devil-star",
+   "category": "base"
+  },
+  {
+   "name": "Diablo's Horn",
+   "slug": "diablos-horn",
+   "category": "misc"
+  },
+  {
+   "name": "Diadem",
+   "slug": "diadem",
+   "category": "base"
+  },
+  {
+   "name": "Diamond",
+   "slug": "diamond",
+   "category": "gems"
+  },
+  {
+   "name": "Diamond Bow",
+   "slug": "diamond-bow",
+   "category": "base"
+  },
+  {
+   "name": "Diamond Mail",
+   "slug": "diamond-mail",
+   "category": "base"
+  },
+  {
+   "name": "Dimensional Blade",
+   "slug": "dimensional-blade",
+   "category": "base"
+  },
+  {
+   "name": "Dimensional Shard",
+   "slug": "dimensional-shard",
+   "category": "base"
+  },
+  {
+   "name": "Dimoak's Hew",
+   "slug": "dimoaks-hew",
+   "category": "uniques"
+  },
+  {
+   "name": "Dirk",
+   "slug": "dirk",
+   "category": "base"
+  },
+  {
+   "name": "Divine Scepter",
+   "slug": "divine-scepter",
+   "category": "base"
+  },
+  {
+   "name": "Djinn Slayer",
+   "slug": "djinn-slayer",
+   "category": "uniques"
+  },
+  {
+   "name": "Dol Rune",
+   "slug": "dol-rune",
+   "category": "runes"
+  },
+  {
+   "name": "Doom",
+   "slug": "doom",
+   "category": "runewords"
+  },
+  {
+   "name": "Doombringer",
+   "slug": "doombringer",
+   "category": "uniques"
+  },
+  {
+   "name": "Doomslinger",
+   "slug": "doomslinger",
+   "category": "uniques"
+  },
+  {
+   "name": "Double Axe",
+   "slug": "double-axe",
+   "category": "base"
+  },
+  {
+   "name": "Double Bow",
+   "slug": "double-bow",
+   "category": "base"
+  },
+  {
+   "name": "Dracul's Grasp",
+   "slug": "draculs-grasp",
+   "category": "uniques"
+  },
+  {
+   "name": "Dragon",
+   "slug": "dragon",
+   "category": "runewords"
+  },
+  {
+   "name": "Dragon Shield",
+   "slug": "dragon-shield",
+   "category": "base"
+  },
+  {
+   "name": "Dragonscale",
+   "slug": "dragonscale",
+   "category": "uniques"
+  },
+  {
+   "name": "Dreadfang",
+   "slug": "dreadfang",
+   "category": "uniques"
+  },
+  {
+   "name": "Dream",
+   "slug": "dream",
+   "category": "runewords"
+  },
+  {
+   "name": "Dream Spirit",
+   "slug": "dream-spirit",
+   "category": "base"
+  },
+  {
+   "name": "Duress",
+   "slug": "duress",
+   "category": "runewords"
+  },
+  {
+   "name": "Duriel's Shell",
+   "slug": "duriels-shell",
+   "category": "uniques"
+  },
+  {
+   "name": "Dusk Shroud",
+   "slug": "dusk-shroud",
+   "category": "base"
+  },
+  {
+   "name": "Duskdeep",
+   "slug": "duskdeep",
+   "category": "uniques"
+  },
+  {
+   "name": "Dwarf Star",
+   "slug": "dwarf-star",
+   "category": "uniques"
+  },
+  {
+   "name": "Eagle Orb",
+   "slug": "eagle-orb",
+   "category": "base"
+  },
+  {
+   "name": "Eaglehorn",
+   "slug": "eaglehorn",
+   "category": "uniques"
+  },
+  {
+   "name": "Ear",
+   "slug": "ear",
+   "category": "misc"
+  },
+  {
+   "name": "Earth Shifter",
+   "slug": "earth-shifter",
+   "category": "uniques"
+  },
+  {
+   "name": "Earth Spirit",
+   "slug": "earth-spirit",
+   "category": "base"
+  },
+  {
+   "name": "Earthshaker",
+   "slug": "earthshaker",
+   "category": "uniques"
+  },
+  {
+   "name": "Eastern Worldstone Shard",
+   "slug": "eastern-worldstone-shard",
+   "category": "misc"
+  },
+  {
+   "name": "Edge",
+   "slug": "edge",
+   "category": "runewords"
+  },
+  {
+   "name": "Edge Bow",
+   "slug": "edge-bow",
+   "category": "base"
+  },
+  {
+   "name": "El Rune",
+   "slug": "el-rune",
+   "category": "runes"
+  },
+  {
+   "name": "Eld Rune",
+   "slug": "eld-rune",
+   "category": "runes"
+  },
+  {
+   "name": "Elder Staff",
+   "slug": "elder-staff",
+   "category": "base"
+  },
+  {
+   "name": "Eldritch Orb",
+   "slug": "eldritch-orb",
+   "category": "base"
+  },
+  {
+   "name": "Elegant Blade",
+   "slug": "elegant-blade",
+   "category": "base"
+  },
+  {
+   "name": "Elixir",
+   "slug": "elixir",
+   "category": "misc"
+  },
+  {
+   "name": "Embossed Plate",
+   "slug": "embossed-plate",
+   "category": "base"
+  },
+  {
+   "name": "Emerald",
+   "slug": "emerald",
+   "category": "gems"
+  },
+  {
+   "name": "Endlesshail",
+   "slug": "endlesshail",
+   "category": "uniques"
+  },
+  {
+   "name": "Enigma",
+   "slug": "enigma",
+   "category": "runewords"
+  },
+  {
+   "name": "Enlightenment",
+   "slug": "enlightenment",
+   "category": "runewords"
+  },
+  {
+   "name": "Entropy Locket",
+   "slug": "entropy-locket",
+   "category": "uniques"
+  },
+  {
+   "name": "Eschuta's Temper",
+   "slug": "eschutas-temper",
+   "category": "uniques"
+  },
+  {
+   "name": "Espandon",
+   "slug": "espandon",
+   "category": "base"
+  },
+  {
+   "name": "Eternity",
+   "slug": "eternity",
+   "category": "runewords"
+  },
+  {
+   "name": "Eth Rune",
+   "slug": "eth-rune",
+   "category": "runes"
+  },
+  {
+   "name": "Ethereal Edge",
+   "slug": "ethereal-edge",
+   "category": "uniques"
+  },
+  {
+   "name": "Ettin Axe",
+   "slug": "ettin-axe",
+   "category": "base"
+  },
+  {
+   "name": "Executioner Sword",
+   "slug": "executioner-sword",
+   "category": "base"
+  },
+  {
+   "name": "Executioner's Justice",
+   "slug": "executioners-justice",
+   "category": "uniques"
+  },
+  {
+   "name": "Exile",
+   "slug": "exile",
+   "category": "runewords"
+  },
+  {
+   "name": "Exploding Potion",
+   "slug": "exploding-potion",
+   "category": "base"
+  },
+  {
+   "name": "Faith",
+   "slug": "faith",
+   "category": "runewords"
+  },
+  {
+   "name": "Fal Rune",
+   "slug": "fal-rune",
+   "category": "runes"
+  },
+  {
+   "name": "Falcata",
+   "slug": "falcata",
+   "category": "base"
+  },
+  {
+   "name": "Falchion",
+   "slug": "falchion",
+   "category": "base"
+  },
+  {
+   "name": "Falcon Mask",
+   "slug": "falcon-mask",
+   "category": "base"
+  },
+  {
+   "name": "Famine",
+   "slug": "famine",
+   "category": "runewords"
+  },
+  {
+   "name": "Fanged Helm",
+   "slug": "fanged-helm",
+   "category": "base"
+  },
+  {
+   "name": "Fanged Knife",
+   "slug": "fanged-knife",
+   "category": "base"
+  },
+  {
+   "name": "Fascia",
+   "slug": "fascia",
+   "category": "base"
+  },
+  {
+   "name": "Felloak",
+   "slug": "felloak",
+   "category": "uniques"
+  },
+  {
+   "name": "Feral Axe",
+   "slug": "feral-axe",
+   "category": "base"
+  },
+  {
+   "name": "Feral Claws",
+   "slug": "feral-claws",
+   "category": "base"
+  },
+  {
+   "name": "Festering Essence Of Destruction",
+   "slug": "festering-essence-of-destruction",
+   "category": "misc"
+  },
+  {
+   "name": "Fetish Trophy",
+   "slug": "fetish-trophy",
+   "category": "base"
+  },
+  {
+   "name": "Field Plate",
+   "slug": "field-plate",
+   "category": "base"
+  },
+  {
+   "name": "Firelizard's Talons",
+   "slug": "firelizards-talons",
+   "category": "uniques"
+  },
+  {
+   "name": "Flail",
+   "slug": "flail",
+   "category": "base"
+  },
+  {
+   "name": "Flamberge",
+   "slug": "flamberge",
+   "category": "base"
+  },
+  {
+   "name": "Flamebellow",
+   "slug": "flamebellow",
+   "category": "uniques"
+  },
+  {
+   "name": "Flanged Mace",
+   "slug": "flanged-mace",
+   "category": "base"
+  },
+  {
+   "name": "Flawed Amethyst",
+   "slug": "flawed-amethyst",
+   "category": "gems"
+  },
+  {
+   "name": "Flawed Diamond",
+   "slug": "flawed-diamond",
+   "category": "gems"
+  },
+  {
+   "name": "Flawed Emerald",
+   "slug": "flawed-emerald",
+   "category": "gems"
+  },
+  {
+   "name": "Flawed Ruby",
+   "slug": "flawed-ruby",
+   "category": "gems"
+  },
+  {
+   "name": "Flawed Sapphire",
+   "slug": "flawed-sapphire",
+   "category": "gems"
+  },
+  {
+   "name": "Flawed Skull",
+   "slug": "flawed-skull",
+   "category": "gems"
+  },
+  {
+   "name": "Flawed Topaz",
+   "slug": "flawed-topaz",
+   "category": "gems"
+  },
+  {
+   "name": "Flawless Amethyst",
+   "slug": "flawless-amethyst",
+   "category": "gems"
+  },
+  {
+   "name": "Flawless Diamond",
+   "slug": "flawless-diamond",
+   "category": "gems"
+  },
+  {
+   "name": "Flawless Emerald",
+   "slug": "flawless-emerald",
+   "category": "gems"
+  },
+  {
+   "name": "Flawless Ruby",
+   "slug": "flawless-ruby",
+   "category": "gems"
+  },
+  {
+   "name": "Flawless Sapphire",
+   "slug": "flawless-sapphire",
+   "category": "gems"
+  },
+  {
+   "name": "Flawless Skull",
+   "slug": "flawless-skull",
+   "category": "gems"
+  },
+  {
+   "name": "Flawless Topaz",
+   "slug": "flawless-topaz",
+   "category": "gems"
+  },
+  {
+   "name": "Fleshrender",
+   "slug": "fleshrender",
+   "category": "uniques"
+  },
+  {
+   "name": "Fleshripper",
+   "slug": "fleshripper",
+   "category": "uniques"
+  },
+  {
+   "name": "Flickering Flame",
+   "slug": "flickering-flame",
+   "category": "runewords"
+  },
+  {
+   "name": "Flying Axe",
+   "slug": "flying-axe",
+   "category": "base"
+  },
+  {
+   "name": "Flying Knife",
+   "slug": "flying-knife",
+   "category": "base"
+  },
+  {
+   "name": "Forgotten Volume",
+   "slug": "forgotten-volume",
+   "category": "base"
+  },
+  {
+   "name": "Fortitude",
+   "slug": "fortitude",
+   "category": "runewords"
+  },
+  {
+   "name": "Francisca",
+   "slug": "francisca",
+   "category": "base"
+  },
+  {
+   "name": "Frostburn",
+   "slug": "frostburn",
+   "category": "uniques"
+  },
+  {
+   "name": "Frostwind",
+   "slug": "frostwind",
+   "category": "uniques"
+  },
+  {
+   "name": "Full Helm",
+   "slug": "full-helm",
+   "category": "base"
+  },
+  {
+   "name": "Full Plate Mail",
+   "slug": "full-plate-mail",
+   "category": "base"
+  },
+  {
+   "name": "Full Rejuvenation Potion",
+   "slug": "full-rejuvenation-potion",
+   "category": "misc"
+  },
+  {
+   "name": "Fulminating Potion",
+   "slug": "fulminating-potion",
+   "category": "base"
+  },
+  {
+   "name": "Fury",
+   "slug": "fury",
+   "category": "runewords"
+  },
+  {
+   "name": "Fury Visor",
+   "slug": "fury-visor",
+   "category": "base"
+  },
+  {
+   "name": "Fuscina",
+   "slug": "fuscina",
+   "category": "base"
+  },
+  {
+   "name": "Gargoyle Head",
+   "slug": "gargoyle-head",
+   "category": "base"
+  },
+  {
+   "name": "Gargoyle's Bite",
+   "slug": "gargoyles-bite",
+   "category": "uniques"
+  },
+  {
+   "name": "Gauntlets",
+   "slug": "gauntlets",
+   "category": "base"
+  },
+  {
+   "name": "Gerke's Sanctuary",
+   "slug": "gerkes-sanctuary",
+   "category": "uniques"
+  },
+  {
+   "name": "Gheed's Fortune",
+   "slug": "gheeds-fortune",
+   "category": "uniques"
+  },
+  {
+   "name": "Gheed's Wager",
+   "slug": "gheeds-wager",
+   "category": "uniques"
+  },
+  {
+   "name": "Ghost Armor",
+   "slug": "ghost-armor",
+   "category": "base"
+  },
+  {
+   "name": "Ghost Glaive",
+   "slug": "ghost-glaive",
+   "category": "base"
+  },
+  {
+   "name": "Ghost Spear",
+   "slug": "ghost-spear",
+   "category": "base"
+  },
+  {
+   "name": "Ghost Wand",
+   "slug": "ghost-wand",
+   "category": "base"
+  },
+  {
+   "name": "Ghostflame",
+   "slug": "ghostflame",
+   "category": "uniques"
+  },
+  {
+   "name": "Ghoulhide",
+   "slug": "ghoulhide",
+   "category": "uniques"
+  },
+  {
+   "name": "Giant Axe",
+   "slug": "giant-axe",
+   "category": "base"
+  },
+  {
+   "name": "Giant Conch",
+   "slug": "giant-conch",
+   "category": "base"
+  },
+  {
+   "name": "Giant Skull",
+   "slug": "giant-skull",
+   "category": "uniques"
+  },
+  {
+   "name": "Giant Sword",
+   "slug": "giant-sword",
+   "category": "base"
+  },
+  {
+   "name": "Giant Thresher",
+   "slug": "giant-thresher",
+   "category": "base"
+  },
+  {
+   "name": "Gilded Shield",
+   "slug": "gilded-shield",
+   "category": "base"
+  },
+  {
+   "name": "Gimmershred",
+   "slug": "gimmershred",
+   "category": "uniques"
+  },
+  {
+   "name": "Ginther's Rift",
+   "slug": "ginthers-rift",
+   "category": "uniques"
+  },
+  {
+   "name": "Gladius",
+   "slug": "gladius",
+   "category": "base"
+  },
+  {
+   "name": "Glaive",
+   "slug": "glaive",
+   "category": "base"
+  },
+  {
+   "name": "Gleamscythe",
+   "slug": "gleamscythe",
+   "category": "uniques"
+  },
+  {
+   "name": "Gloom",
+   "slug": "gloom",
+   "category": "runewords"
+  },
+  {
+   "name": "Gloom's Trap",
+   "slug": "glooms-trap",
+   "category": "uniques"
+  },
+  {
+   "name": "Glorious Axe",
+   "slug": "glorious-axe",
+   "category": "base"
+  },
+  {
+   "name": "Glowing Orb",
+   "slug": "glowing-orb",
+   "category": "base"
+  },
+  {
+   "name": "Gnarled Staff",
+   "slug": "gnarled-staff",
+   "category": "base"
+  },
+  {
+   "name": "Goblin Toe",
+   "slug": "goblin-toe",
+   "category": "uniques"
+  },
+  {
+   "name": "Gold",
+   "slug": "gold",
+   "category": "misc"
+  },
+  {
+   "name": "Goldskin",
+   "slug": "goldskin",
+   "category": "uniques"
+  },
+  {
+   "name": "Goldstrike Arch",
+   "slug": "goldstrike-arch",
+   "category": "uniques"
+  },
+  {
+   "name": "Goldwrap",
+   "slug": "goldwrap",
+   "category": "uniques"
+  },
+  {
+   "name": "Gore Rider",
+   "slug": "gore-rider",
+   "category": "uniques"
+  },
+  {
+   "name": "Gorefoot",
+   "slug": "gorefoot",
+   "category": "uniques"
+  },
+  {
+   "name": "Goreshovel",
+   "slug": "goreshovel",
+   "category": "uniques"
+  },
+  {
+   "name": "Gorgon Crossbow",
+   "slug": "gorgon-crossbow",
+   "category": "base"
+  },
+  {
+   "name": "Gothic Axe",
+   "slug": "gothic-axe",
+   "category": "base"
+  },
+  {
+   "name": "Gothic Bow",
+   "slug": "gothic-bow",
+   "category": "base"
+  },
+  {
+   "name": "Gothic Plate",
+   "slug": "gothic-plate",
+   "category": "base"
+  },
+  {
+   "name": "Gothic Shield",
+   "slug": "gothic-shield",
+   "category": "base"
+  },
+  {
+   "name": "Gothic Staff",
+   "slug": "gothic-staff",
+   "category": "base"
+  },
+  {
+   "name": "Gothic Sword",
+   "slug": "gothic-sword",
+   "category": "base"
+  },
+  {
+   "name": "Grand Charm",
+   "slug": "grand-charm",
+   "category": "charms"
+  },
+  {
+   "name": "Grand Crown",
+   "slug": "grand-crown",
+   "category": "base"
+  },
+  {
+   "name": "Grand Matron Bow",
+   "slug": "grand-matron-bow",
+   "category": "base"
+  },
+  {
+   "name": "Grand Scepter",
+   "slug": "grand-scepter",
+   "category": "base"
+  },
+  {
+   "name": "Grave Wand",
+   "slug": "grave-wand",
+   "category": "base"
+  },
+  {
+   "name": "Gravenspine",
+   "slug": "gravenspine",
+   "category": "uniques"
+  },
+  {
+   "name": "Gravepalm",
+   "slug": "gravepalm",
+   "category": "uniques"
+  },
+  {
+   "name": "Great Axe",
+   "slug": "great-axe",
+   "category": "base"
+  },
+  {
+   "name": "Great Bow",
+   "slug": "great-bow",
+   "category": "base"
+  },
+  {
+   "name": "Great Hauberk",
+   "slug": "great-hauberk",
+   "category": "base"
+  },
+  {
+   "name": "Great Helm",
+   "slug": "great-helm",
+   "category": "base"
+  },
+  {
+   "name": "Great Maul",
+   "slug": "great-maul",
+   "category": "base"
+  },
+  {
+   "name": "Great Pilum",
+   "slug": "great-pilum",
+   "category": "base"
+  },
+  {
+   "name": "Great Poleaxe",
+   "slug": "great-poleaxe",
+   "category": "base"
+  },
+  {
+   "name": "Great Sword",
+   "slug": "great-sword",
+   "category": "base"
+  },
+  {
+   "name": "Greater Claws",
+   "slug": "greater-claws",
+   "category": "base"
+  },
+  {
+   "name": "Greater Healing Potion",
+   "slug": "greater-healing-potion",
+   "category": "misc"
+  },
+  {
+   "name": "Greater Mana Potion",
+   "slug": "greater-mana-potion",
+   "category": "misc"
+  },
+  {
+   "name": "Greater Talons",
+   "slug": "greater-talons",
+   "category": "base"
+  },
+  {
+   "name": "Greaves",
+   "slug": "greaves",
+   "category": "base"
+  },
+  {
+   "name": "Greyform",
+   "slug": "greyform",
+   "category": "uniques"
+  },
+  {
+   "name": "Grief",
+   "slug": "grief",
+   "category": "runewords"
+  },
+  {
+   "name": "Griffon Headdress",
+   "slug": "griffon-headdress",
+   "category": "base"
+  },
+  {
+   "name": "Griffon's Eye",
+   "slug": "griffons-eye",
+   "category": "uniques"
+  },
+  {
+   "name": "Grim Helm",
+   "slug": "grim-helm",
+   "category": "base"
+  },
+  {
+   "name": "Grim Scythe",
+   "slug": "grim-scythe",
+   "category": "base"
+  },
+  {
+   "name": "Grim Shield",
+   "slug": "grim-shield",
+   "category": "base"
+  },
+  {
+   "name": "Grim Wand",
+   "slug": "grim-wand",
+   "category": "base"
+  },
+  {
+   "name": "Grimoire",
+   "slug": "grimoire",
+   "category": "base"
+  },
+  {
+   "name": "Grim's Burning Dead",
+   "slug": "grims-burning-dead",
+   "category": "uniques"
+  },
+  {
+   "name": "Griswold's Edge",
+   "slug": "griswolds-edge",
+   "category": "uniques"
+  },
+  {
+   "name": "Griswold's Heart",
+   "slug": "griswolds-heart",
+   "category": "sets"
+  },
+  {
+   "name": "Griswold's Honor",
+   "slug": "griswolds-honor",
+   "category": "sets"
+  },
+  {
+   "name": "Griswold's Legacy",
+   "slug": "griswolds-legacy",
+   "category": "sets"
+  },
+  {
+   "name": "Griswold's Redemption",
+   "slug": "griswolds-redemption",
+   "category": "sets"
+  },
+  {
+   "name": "Griswold's Valor",
+   "slug": "griswolds-valor",
+   "category": "sets"
+  },
+  {
+   "name": "Ground",
+   "slug": "ground",
+   "category": "runewords"
+  },
+  {
+   "name": "Guardian Angel",
+   "slug": "guardian-angel",
+   "category": "uniques"
+  },
+  {
+   "name": "Guardian Crown",
+   "slug": "guardian-crown",
+   "category": "base"
+  },
+  {
+   "name": "Guardian Naga",
+   "slug": "guardian-naga",
+   "category": "uniques"
+  },
+  {
+   "name": "Guardian's Light",
+   "slug": "guardians-light",
+   "category": "uniques"
+  },
+  {
+   "name": "Guardian's Thunder",
+   "slug": "guardians-thunder",
+   "category": "uniques"
+  },
+  {
+   "name": "Guillaume's Face",
+   "slug": "guillaumes-face",
+   "category": "sets"
+  },
+  {
+   "name": "Gul Rune",
+   "slug": "gul-rune",
+   "category": "runes"
+  },
+  {
+   "name": "Gull",
+   "slug": "gull",
+   "category": "uniques"
+  },
+  {
+   "name": "Gut Siphon",
+   "slug": "gut-siphon",
+   "category": "uniques"
+  },
+  {
+   "name": "Haemosu's Adamant",
+   "slug": "haemosus-adamant",
+   "category": "sets"
+  },
+  {
+   "name": "Halaberd's Reign",
+   "slug": "halaberds-reign",
+   "category": "uniques"
+  },
+  {
+   "name": "Halberd",
+   "slug": "halberd",
+   "category": "base"
+  },
+  {
+   "name": "Hand Axe",
+   "slug": "hand-axe",
+   "category": "base"
+  },
+  {
+   "name": "Hand Of Blessed Light",
+   "slug": "hand-of-blessed-light",
+   "category": "uniques"
+  },
+  {
+   "name": "Hand Of Justice",
+   "slug": "hand-of-justice",
+   "category": "runewords"
+  },
+  {
+   "name": "Hand Scythe",
+   "slug": "hand-scythe",
+   "category": "base"
+  },
+  {
+   "name": "Hard Leather Armor",
+   "slug": "hard-leather-armor",
+   "category": "base"
+  },
+  {
+   "name": "Harlequin Crest",
+   "slug": "harlequin-crest",
+   "category": "uniques"
+  },
+  {
+   "name": "Harmony",
+   "slug": "harmony",
+   "category": "runewords"
+  },
+  {
+   "name": "Harpoon",
+   "slug": "harpoon",
+   "category": "base"
+  },
+  {
+   "name": "Hatchet",
+   "slug": "hatchet",
+   "category": "base"
+  },
+  {
+   "name": "Hatchet Hands",
+   "slug": "hatchet-hands",
+   "category": "base"
+  },
+  {
+   "name": "Hawk Helm",
+   "slug": "hawk-helm",
+   "category": "base"
+  },
+  {
+   "name": "Hawkmail",
+   "slug": "hawkmail",
+   "category": "uniques"
+  },
+  {
+   "name": "Head Hunter's Glory",
+   "slug": "head-hunters-glory",
+   "category": "uniques"
+  },
+  {
+   "name": "Headstriker",
+   "slug": "headstriker",
+   "category": "uniques"
+  },
+  {
+   "name": "Healing Potion",
+   "slug": "healing-potion",
+   "category": "misc"
+  },
+  {
+   "name": "Heart Carver",
+   "slug": "heart-carver",
+   "category": "uniques"
+  },
+  {
+   "name": "Heart Of The Oak",
+   "slug": "heart-of-the-oak",
+   "category": "runewords"
+  },
+  {
+   "name": "Hearth",
+   "slug": "hearth",
+   "category": "runewords"
+  },
+  {
+   "name": "Heater",
+   "slug": "heater",
+   "category": "base"
+  },
+  {
+   "name": "Heavenly Garb",
+   "slug": "heavenly-garb",
+   "category": "uniques"
+  },
+  {
+   "name": "Heavenly Stone",
+   "slug": "heavenly-stone",
+   "category": "base"
+  },
+  {
+   "name": "Heaven's Brethren",
+   "slug": "heavens-brethren",
+   "category": "sets"
+  },
+  {
+   "name": "Heaven's Light",
+   "slug": "heavens-light",
+   "category": "uniques"
+  },
+  {
+   "name": "Heavy Belt",
+   "slug": "heavy-belt",
+   "category": "base"
+  },
+  {
+   "name": "Heavy Boots",
+   "slug": "heavy-boots",
+   "category": "base"
+  },
+  {
+   "name": "Heavy Bracers",
+   "slug": "heavy-bracers",
+   "category": "base"
+  },
+  {
+   "name": "Heavy Crossbow",
+   "slug": "heavy-crossbow",
+   "category": "base"
+  },
+  {
+   "name": "Heavy Gloves",
+   "slug": "heavy-gloves",
+   "category": "base"
+  },
+  {
+   "name": "Hel Rune",
+   "slug": "hel-rune",
+   "category": "runes"
+  },
+  {
+   "name": "Hell Forge Hammer",
+   "slug": "hell-forge-hammer",
+   "category": "misc"
+  },
+  {
+   "name": "Hellcast",
+   "slug": "hellcast",
+   "category": "uniques"
+  },
+  {
+   "name": "Hellclap",
+   "slug": "hellclap",
+   "category": "uniques"
+  },
+  {
+   "name": "Hellfire Torch",
+   "slug": "hellfire-torch",
+   "category": "uniques"
+  },
+  {
+   "name": "Hellforge Plate",
+   "slug": "hellforge-plate",
+   "category": "base"
+  },
+  {
+   "name": "Hellmouth",
+   "slug": "hellmouth",
+   "category": "uniques"
+  },
+  {
+   "name": "Hellplague",
+   "slug": "hellplague",
+   "category": "uniques"
+  },
+  {
+   "name": "Hellrack",
+   "slug": "hellrack",
+   "category": "uniques"
+  },
+  {
+   "name": "Hellslayer",
+   "slug": "hellslayer",
+   "category": "uniques"
+  },
+  {
+   "name": "Hellspawn Skull",
+   "slug": "hellspawn-skull",
+   "category": "base"
+  },
+  {
+   "name": "Hellwarden's Will",
+   "slug": "hellwardens-will",
+   "category": "uniques"
+  },
+  {
+   "name": "Helm",
+   "slug": "helm",
+   "category": "base"
+  },
+  {
+   "name": "Herald Of Zakarum",
+   "slug": "herald-of-zakarum",
+   "category": "uniques"
+  },
+  {
+   "name": "Heraldic Shield",
+   "slug": "heraldic-shield",
+   "category": "base"
+  },
+  {
+   "name": "Herb",
+   "slug": "herb",
+   "category": "misc"
+  },
+  {
+   "name": "Hexfire",
+   "slug": "hexfire",
+   "category": "uniques"
+  },
+  {
+   "name": "Hierophant Trophy",
+   "slug": "hierophant-trophy",
+   "category": "base"
+  },
+  {
+   "name": "Highland Blade",
+   "slug": "highland-blade",
+   "category": "base"
+  },
+  {
+   "name": "Highlord's Wrath",
+   "slug": "highlords-wrath",
+   "category": "uniques"
+  },
+  {
+   "name": "Hit Power Amulet",
+   "slug": "hit-power-amulet",
+   "category": "crafted"
+  },
+  {
+   "name": "Hit Power Belt",
+   "slug": "hit-power-belt",
+   "category": "crafted"
+  },
+  {
+   "name": "Hit Power Body",
+   "slug": "hit-power-body",
+   "category": "crafted"
+  },
+  {
+   "name": "Hit Power Boots",
+   "slug": "hit-power-boots",
+   "category": "crafted"
+  },
+  {
+   "name": "Hit Power Gloves",
+   "slug": "hit-power-gloves",
+   "category": "crafted"
+  },
+  {
+   "name": "Hit Power Helm",
+   "slug": "hit-power-helm",
+   "category": "crafted"
+  },
+  {
+   "name": "Hit Power Ring",
+   "slug": "hit-power-ring",
+   "category": "crafted"
+  },
+  {
+   "name": "Hit Power Shield",
+   "slug": "hit-power-shield",
+   "category": "crafted"
+  },
+  {
+   "name": "Hit Power Weapon",
+   "slug": "hit-power-weapon",
+   "category": "crafted"
+  },
+  {
+   "name": "Holy Thunder",
+   "slug": "holy-thunder",
+   "category": "runewords"
+  },
+  {
+   "name": "Holy Water Sprinkler",
+   "slug": "holy-water-sprinkler",
+   "category": "base"
+  },
+  {
+   "name": "Homunculus",
+   "slug": "homunculus",
+   "category": "uniques"
+  },
+  {
+   "name": "Hone Sundan",
+   "slug": "hone-sundan",
+   "category": "uniques"
+  },
+  {
+   "name": "Honor",
+   "slug": "honor",
+   "category": "runewords"
+  },
+  {
+   "name": "Horadric Cube",
+   "slug": "horadric-cube",
+   "category": "misc"
+  },
+  {
+   "name": "Horadric Malus",
+   "slug": "horadric-malus",
+   "category": "misc"
+  },
+  {
+   "name": "Horadric Scroll",
+   "slug": "horadric-scroll",
+   "category": "misc"
+  },
+  {
+   "name": "Horadric Staff",
+   "slug": "horadric-staff",
+   "category": "misc"
+  },
+  {
+   "name": "Horazon's Countenance",
+   "slug": "horazons-countenance",
+   "category": "sets"
+  },
+  {
+   "name": "Horazon's Dominion",
+   "slug": "horazons-dominion",
+   "category": "sets"
+  },
+  {
+   "name": "Horazon's Hold",
+   "slug": "horazons-hold",
+   "category": "sets"
+  },
+  {
+   "name": "Horazon's Legacy",
+   "slug": "horazons-legacy",
+   "category": "sets"
+  },
+  {
+   "name": "Horazon's Secrets",
+   "slug": "horazons-secrets",
+   "category": "sets"
+  },
+  {
+   "name": "Horizon's Tornado",
+   "slug": "horizons-tornado",
+   "category": "uniques"
+  },
+  {
+   "name": "Horned Helm",
+   "slug": "horned-helm",
+   "category": "base"
+  },
+  {
+   "name": "Hotspur",
+   "slug": "hotspur",
+   "category": "uniques"
+  },
+  {
+   "name": "Howltusk",
+   "slug": "howltusk",
+   "category": "uniques"
+  },
+  {
+   "name": "Hsarus' Defense",
+   "slug": "hsarus-defense",
+   "category": "sets"
+  },
+  {
+   "name": "Hsarus' Iron Fist",
+   "slug": "hsarus-iron-fist",
+   "category": "sets"
+  },
+  {
+   "name": "Hsarus' Iron Heel",
+   "slug": "hsarus-iron-heel",
+   "category": "sets"
+  },
+  {
+   "name": "Hsarus' Iron Stay",
+   "slug": "hsarus-iron-stay",
+   "category": "sets"
+  },
+  {
+   "name": "Humongous",
+   "slug": "humongous",
+   "category": "uniques"
+  },
+  {
+   "name": "Hunter's Bow",
+   "slug": "hunters-bow",
+   "category": "base"
+  },
+  {
+   "name": "Hunter's Guise",
+   "slug": "hunters-guise",
+   "category": "base"
+  },
+  {
+   "name": "Hurlbat",
+   "slug": "hurlbat",
+   "category": "base"
+  },
+  {
+   "name": "Husoldal Evo",
+   "slug": "husoldal-evo",
+   "category": "uniques"
+  },
+  {
+   "name": "Hustle (Armor)",
+   "slug": "hustle-armor",
+   "category": "runewords"
+  },
+  {
+   "name": "Hustle (Weapon)",
+   "slug": "hustle-weapon",
+   "category": "runewords"
+  },
+  {
+   "name": "Hwanin's Blessing",
+   "slug": "hwanins-blessing",
+   "category": "sets"
+  },
+  {
+   "name": "Hwanin's Justice",
+   "slug": "hwanins-justice",
+   "category": "sets"
+  },
+  {
+   "name": "Hwanin's Majesty",
+   "slug": "hwanins-majesty",
+   "category": "sets"
+  },
+  {
+   "name": "Hwanin's Refuge",
+   "slug": "hwanins-refuge",
+   "category": "sets"
+  },
+  {
+   "name": "Hwanin's Splendor",
+   "slug": "hwanins-splendor",
+   "category": "sets"
+  },
+  {
+   "name": "Hydra Bow",
+   "slug": "hydra-bow",
+   "category": "base"
+  },
+  {
+   "name": "Hydra Edge",
+   "slug": "hydra-edge",
+   "category": "base"
+  },
+  {
+   "name": "Hydraskull",
+   "slug": "hydraskull",
+   "category": "base"
+  },
+  {
+   "name": "Hyperion",
+   "slug": "hyperion",
+   "category": "base"
+  },
+  {
+   "name": "Hyperion Javelin",
+   "slug": "hyperion-javelin",
+   "category": "base"
+  },
+  {
+   "name": "Hyperion Spear",
+   "slug": "hyperion-spear",
+   "category": "base"
+  },
+  {
+   "name": "Hysteria",
+   "slug": "hysteria",
+   "category": "runewords"
+  },
+  {
+   "name": "Ice",
+   "slug": "ice",
+   "category": "runewords"
+  },
+  {
+   "name": "Iceblink",
+   "slug": "iceblink",
+   "category": "uniques"
+  },
+  {
+   "name": "Ichorsting",
+   "slug": "ichorsting",
+   "category": "uniques"
+  },
+  {
+   "name": "Immortal King",
+   "slug": "immortal-king",
+   "category": "sets"
+  },
+  {
+   "name": "Immortal King's Detail",
+   "slug": "immortal-kings-detail",
+   "category": "sets"
+  },
+  {
+   "name": "Immortal King's Forge",
+   "slug": "immortal-kings-forge",
+   "category": "sets"
+  },
+  {
+   "name": "Immortal King's Pillar",
+   "slug": "immortal-kings-pillar",
+   "category": "sets"
+  },
+  {
+   "name": "Immortal King's Soul Cage",
+   "slug": "immortal-kings-soul-cage",
+   "category": "sets"
+  },
+  {
+   "name": "Immortal King's Stone Crusher",
+   "slug": "immortal-kings-stone-crusher",
+   "category": "sets"
+  },
+  {
+   "name": "Immortal King's Will",
+   "slug": "immortal-kings-will",
+   "category": "sets"
+  },
+  {
+   "name": "Infernal Cranium",
+   "slug": "infernal-cranium",
+   "category": "sets"
+  },
+  {
+   "name": "Infernal Sign",
+   "slug": "infernal-sign",
+   "category": "sets"
+  },
+  {
+   "name": "Infernal Tools",
+   "slug": "infernal-tools",
+   "category": "sets"
+  },
+  {
+   "name": "Infernal Torch",
+   "slug": "infernal-torch",
+   "category": "sets"
+  },
+  {
+   "name": "Infernostride",
+   "slug": "infernostride",
+   "category": "uniques"
+  },
+  {
+   "name": "Infinity",
+   "slug": "infinity",
+   "category": "runewords"
+  },
+  {
+   "name": "Insight",
+   "slug": "insight",
+   "category": "runewords"
+  },
+  {
+   "name": "Io Rune",
+   "slug": "io-rune",
+   "category": "runes"
+  },
+  {
+   "name": "Iratha's Coil",
+   "slug": "irathas-coil",
+   "category": "sets"
+  },
+  {
+   "name": "Iratha's Collar",
+   "slug": "irathas-collar",
+   "category": "sets"
+  },
+  {
+   "name": "Iratha's Cord",
+   "slug": "irathas-cord",
+   "category": "sets"
+  },
+  {
+   "name": "Iratha's Cuff",
+   "slug": "irathas-cuff",
+   "category": "sets"
+  },
+  {
+   "name": "Iratha's Finery",
+   "slug": "irathas-finery",
+   "category": "sets"
+  },
+  {
+   "name": "Iron Pelt",
+   "slug": "iron-pelt",
+   "category": "uniques"
+  },
+  {
+   "name": "Ironstone",
+   "slug": "ironstone",
+   "category": "uniques"
+  },
+  {
+   "name": "Isenhart's Armory",
+   "slug": "isenharts-armory",
+   "category": "sets"
+  },
+  {
+   "name": "Isenhart's Case",
+   "slug": "isenharts-case",
+   "category": "sets"
+  },
+  {
+   "name": "Isenhart's Horns",
+   "slug": "isenharts-horns",
+   "category": "sets"
+  },
+  {
+   "name": "Isenhart's Lightbrand",
+   "slug": "isenharts-lightbrand",
+   "category": "sets"
+  },
+  {
+   "name": "Isenhart's Parry",
+   "slug": "isenharts-parry",
+   "category": "sets"
+  },
+  {
+   "name": "Islestrike",
+   "slug": "islestrike",
+   "category": "uniques"
+  },
+  {
+   "name": "Ist Rune",
+   "slug": "ist-rune",
+   "category": "runes"
+  },
+  {
+   "name": "Ith Rune",
+   "slug": "ith-rune",
+   "category": "runes"
+  },
+  {
+   "name": "Jade Talon",
+   "slug": "jade-talon",
+   "category": "uniques"
+  },
+  {
+   "name": "Jagged Star",
+   "slug": "jagged-star",
+   "category": "base"
+  },
+  {
+   "name": "Jah Rune",
+   "slug": "jah-rune",
+   "category": "runes"
+  },
+  {
+   "name": "Jalal's Mane",
+   "slug": "jalals-mane",
+   "category": "uniques"
+  },
+  {
+   "name": "Jared's Stone",
+   "slug": "jareds-stone",
+   "category": "base"
+  },
+  {
+   "name": "Javelin",
+   "slug": "javelin",
+   "category": "base"
+  },
+  {
+   "name": "Jawbone Cap",
+   "slug": "jawbone-cap",
+   "category": "base"
+  },
+  {
+   "name": "Jawbone Visor",
+   "slug": "jawbone-visor",
+   "category": "base"
+  },
+  {
+   "name": "Jewel",
+   "slug": "jewel",
+   "category": "misc"
+  },
+  {
+   "name": "Jo Staff",
+   "slug": "jo-staff",
+   "category": "base"
+  },
+  {
+   "name": "Katar",
+   "slug": "katar",
+   "category": "base"
+  },
+  {
+   "name": "Kelpie Snare",
+   "slug": "kelpie-snare",
+   "category": "uniques"
+  },
+  {
+   "name": "Key",
+   "slug": "key",
+   "category": "misc"
+  },
+  {
+   "name": "Key Of Destruction",
+   "slug": "key-of-destruction",
+   "category": "misc"
+  },
+  {
+   "name": "Key Of Hate",
+   "slug": "key-of-hate",
+   "category": "misc"
+  },
+  {
+   "name": "Key Of Terror",
+   "slug": "key-of-terror",
+   "category": "misc"
+  },
+  {
+   "name": "Key To The Cairn Stones",
+   "slug": "key-to-the-cairn-stones",
+   "category": "misc"
+  },
+  {
+   "name": "Khalim's Brain",
+   "slug": "khalims-brain",
+   "category": "misc"
+  },
+  {
+   "name": "Khalim's Eye",
+   "slug": "khalims-eye",
+   "category": "misc"
+  },
+  {
+   "name": "Khalim's Flail",
+   "slug": "khalims-flail",
+   "category": "misc"
+  },
+  {
+   "name": "Khalim's Heart",
+   "slug": "khalims-heart",
+   "category": "misc"
+  },
+  {
+   "name": "Khalim's Will",
+   "slug": "khalims-will",
+   "category": "misc"
+  },
+  {
+   "name": "Kinemil's Awl",
+   "slug": "kinemils-awl",
+   "category": "uniques"
+  },
+  {
+   "name": "King's Grace",
+   "slug": "kings-grace",
+   "category": "runewords"
+  },
+  {
+   "name": "Kingslayer",
+   "slug": "kingslayer",
+   "category": "runewords"
+  },
+  {
+   "name": "Kira's Guardian",
+   "slug": "kiras-guardian",
+   "category": "uniques"
+  },
+  {
+   "name": "Kite Shield",
+   "slug": "kite-shield",
+   "category": "base"
+  },
+  {
+   "name": "Knell Striker",
+   "slug": "knell-striker",
+   "category": "uniques"
+  },
+  {
+   "name": "Knout",
+   "slug": "knout",
+   "category": "base"
+  },
+  {
+   "name": "Ko Rune",
+   "slug": "ko-rune",
+   "category": "runes"
+  },
+  {
+   "name": "Korlic's Pain",
+   "slug": "korlics-pain",
+   "category": "misc"
+  },
+  {
+   "name": "Kraken Shell",
+   "slug": "kraken-shell",
+   "category": "base"
+  },
+  {
+   "name": "Kris",
+   "slug": "kris",
+   "category": "base"
+  },
+  {
+   "name": "Kuko Shakaku",
+   "slug": "kuko-shakaku",
+   "category": "uniques"
+  },
+  {
+   "name": "Kurast Shield",
+   "slug": "kurast-shield",
+   "category": "base"
+  },
+  {
+   "name": "Lacerator",
+   "slug": "lacerator",
+   "category": "uniques"
+  },
+  {
+   "name": "Lacquered Plate",
+   "slug": "lacquered-plate",
+   "category": "base"
+  },
+  {
+   "name": "Lam Esen's Tome",
+   "slug": "lam-esens-tome",
+   "category": "misc"
+  },
+  {
+   "name": "Lance",
+   "slug": "lance",
+   "category": "base"
+  },
+  {
+   "name": "Lance Guard",
+   "slug": "lance-guard",
+   "category": "uniques"
+  },
+  {
+   "name": "Lance Of Yaggai",
+   "slug": "lance-of-yaggai",
+   "category": "uniques"
+  },
+  {
+   "name": "Langer Briser",
+   "slug": "langer-briser",
+   "category": "uniques"
+  },
+  {
+   "name": "Large Axe",
+   "slug": "large-axe",
+   "category": "base"
+  },
+  {
+   "name": "Large Charm",
+   "slug": "large-charm",
+   "category": "charms"
+  },
+  {
+   "name": "Large Shield",
+   "slug": "large-shield",
+   "category": "base"
+  },
+  {
+   "name": "Large Siege Bow",
+   "slug": "large-siege-bow",
+   "category": "base"
+  },
+  {
+   "name": "Last Wish",
+   "slug": "last-wish",
+   "category": "runewords"
+  },
+  {
+   "name": "Latent Black Cleft",
+   "slug": "latent-black-cleft",
+   "category": "uniques"
+  },
+  {
+   "name": "Latent Bone Break",
+   "slug": "latent-bone-break",
+   "category": "uniques"
+  },
+  {
+   "name": "Latent Cold Rupture",
+   "slug": "latent-cold-rupture",
+   "category": "uniques"
+  },
+  {
+   "name": "Latent Crack Of The Heavens",
+   "slug": "latent-crack-of-the-heavens",
+   "category": "uniques"
+  },
+  {
+   "name": "Latent Flame Rift",
+   "slug": "latent-flame-rift",
+   "category": "uniques"
+  },
+  {
+   "name": "Latent Rotting Fissure",
+   "slug": "latent-rotting-fissure",
+   "category": "uniques"
+  },
+  {
+   "name": "Lava Gout",
+   "slug": "lava-gout",
+   "category": "uniques"
+  },
+  {
+   "name": "Lawbringer",
+   "slug": "lawbringer",
+   "category": "runewords"
+  },
+  {
+   "name": "Laying Of Hands",
+   "slug": "laying-of-hands",
+   "category": "sets"
+  },
+  {
+   "name": "Leadcrow",
+   "slug": "leadcrow",
+   "category": "uniques"
+  },
+  {
+   "name": "Leaf",
+   "slug": "leaf",
+   "category": "runewords"
+  },
+  {
+   "name": "Leather Armor",
+   "slug": "leather-armor",
+   "category": "base"
+  },
+  {
+   "name": "Leather Gloves",
+   "slug": "leather-gloves",
+   "category": "base"
+  },
+  {
+   "name": "Legend Spike",
+   "slug": "legend-spike",
+   "category": "base"
+  },
+  {
+   "name": "Legend Sword",
+   "slug": "legend-sword",
+   "category": "base"
+  },
+  {
+   "name": "Legendary Mallet",
+   "slug": "legendary-mallet",
+   "category": "base"
+  },
+  {
+   "name": "Lem Rune",
+   "slug": "lem-rune",
+   "category": "runes"
+  },
+  {
+   "name": "Lenymo",
+   "slug": "lenymo",
+   "category": "uniques"
+  },
+  {
+   "name": "Leviathan",
+   "slug": "leviathan",
+   "category": "uniques"
+  },
+  {
+   "name": "Lich Wand",
+   "slug": "lich-wand",
+   "category": "base"
+  },
+  {
+   "name": "Lidless Wall",
+   "slug": "lidless-wall",
+   "category": "uniques"
+  },
+  {
+   "name": "Light Belt",
+   "slug": "light-belt",
+   "category": "base"
+  },
+  {
+   "name": "Light Crossbow",
+   "slug": "light-crossbow",
+   "category": "base"
+  },
+  {
+   "name": "Light Gauntlets",
+   "slug": "light-gauntlets",
+   "category": "base"
+  },
+  {
+   "name": "Light Healing Potion",
+   "slug": "light-healing-potion",
+   "category": "misc"
+  },
+  {
+   "name": "Light Mana Potion",
+   "slug": "light-mana-potion",
+   "category": "misc"
+  },
+  {
+   "name": "Light Plate",
+   "slug": "light-plate",
+   "category": "base"
+  },
+  {
+   "name": "Light Plated Boots",
+   "slug": "light-plated-boots",
+   "category": "base"
+  },
+  {
+   "name": "Lightsabre",
+   "slug": "lightsabre",
+   "category": "uniques"
+  },
+  {
+   "name": "Linked Mail",
+   "slug": "linked-mail",
+   "category": "base"
+  },
+  {
+   "name": "Lion Helm",
+   "slug": "lion-helm",
+   "category": "base"
+  },
+  {
+   "name": "Lionheart",
+   "slug": "lionheart",
+   "category": "runewords"
+  },
+  {
+   "name": "Lo Rune",
+   "slug": "lo-rune",
+   "category": "runes"
+  },
+  {
+   "name": "Lochaber Axe",
+   "slug": "lochaber-axe",
+   "category": "base"
+  },
+  {
+   "name": "Long Battle Bow",
+   "slug": "long-battle-bow",
+   "category": "base"
+  },
+  {
+   "name": "Long Bow",
+   "slug": "long-bow",
+   "category": "base"
+  },
+  {
+   "name": "Long Staff",
+   "slug": "long-staff",
+   "category": "base"
+  },
+  {
+   "name": "Long Sword",
+   "slug": "long-sword",
+   "category": "base"
+  },
+  {
+   "name": "Long War Bow",
+   "slug": "long-war-bow",
+   "category": "base"
+  },
+  {
+   "name": "Lore",
+   "slug": "lore",
+   "category": "runewords"
+  },
+  {
+   "name": "Loricated Mail",
+   "slug": "loricated-mail",
+   "category": "base"
+  },
+  {
+   "name": "Lum Rune",
+   "slug": "lum-rune",
+   "category": "runes"
+  },
+  {
+   "name": "Luna",
+   "slug": "luna",
+   "category": "base"
+  },
+  {
+   "name": "Lycander's Aim",
+   "slug": "lycanders-aim",
+   "category": "uniques"
+  },
+  {
+   "name": "Lycander's Flank",
+   "slug": "lycanders-flank",
+   "category": "uniques"
+  },
+  {
+   "name": "Mace",
+   "slug": "mace",
+   "category": "base"
+  },
+  {
+   "name": "Madawc's Ire",
+   "slug": "madawcs-ire",
+   "category": "misc"
+  },
+  {
+   "name": "Maelstrom",
+   "slug": "maelstrom",
+   "category": "uniques"
+  },
+  {
+   "name": "Mage Plate",
+   "slug": "mage-plate",
+   "category": "base"
+  },
+  {
+   "name": "Magefist",
+   "slug": "magefist",
+   "category": "uniques"
+  },
+  {
+   "name": "Magewrath",
+   "slug": "magewrath",
+   "category": "uniques"
+  },
+  {
+   "name": "Magnus' Skin",
+   "slug": "magnus-skin",
+   "category": "sets"
+  },
+  {
+   "name": "Maiden Javelin",
+   "slug": "maiden-javelin",
+   "category": "base"
+  },
+  {
+   "name": "Maiden Pike",
+   "slug": "maiden-pike",
+   "category": "base"
+  },
+  {
+   "name": "Maiden Spear",
+   "slug": "maiden-spear",
+   "category": "base"
+  },
+  {
+   "name": "Mal Rune",
+   "slug": "mal-rune",
+   "category": "runes"
+  },
+  {
+   "name": "Malah's Potion",
+   "slug": "malahs-potion",
+   "category": "misc"
+  },
+  {
+   "name": "Malice",
+   "slug": "malice",
+   "category": "runewords"
+  },
+  {
+   "name": "Mana Potion",
+   "slug": "mana-potion",
+   "category": "misc"
+  },
+  {
+   "name": "Manald Heal",
+   "slug": "manald-heal",
+   "category": "uniques"
+  },
+  {
+   "name": "Mancatcher",
+   "slug": "mancatcher",
+   "category": "base"
+  },
+  {
+   "name": "Mang Song's Lesson",
+   "slug": "mang-songs-lesson",
+   "category": "uniques"
+  },
+  {
+   "name": "Mania",
+   "slug": "mania",
+   "category": "runewords"
+  },
+  {
+   "name": "Mara's Kaleidoscope",
+   "slug": "maras-kaleidoscope",
+   "category": "uniques"
+  },
+  {
+   "name": "Marrowwalk",
+   "slug": "marrowwalk",
+   "category": "uniques"
+  },
+  {
+   "name": "Martel De Fer",
+   "slug": "martel-de-fer",
+   "category": "base"
+  },
+  {
+   "name": "Mask",
+   "slug": "mask",
+   "category": "base"
+  },
+  {
+   "name": "Matriarchal Bow",
+   "slug": "matriarchal-bow",
+   "category": "base"
+  },
+  {
+   "name": "Matriarchal Javelin",
+   "slug": "matriarchal-javelin",
+   "category": "base"
+  },
+  {
+   "name": "Matriarchal Pike",
+   "slug": "matriarchal-pike",
+   "category": "base"
+  },
+  {
+   "name": "Matriarchal Spear",
+   "slug": "matriarchal-spear",
+   "category": "base"
+  },
+  {
+   "name": "Maul",
+   "slug": "maul",
+   "category": "base"
+  },
+  {
+   "name": "M'avina's Battle Hymn",
+   "slug": "mavinas-battle-hymn",
+   "category": "sets"
+  },
+  {
+   "name": "M'avina's Caster",
+   "slug": "mavinas-caster",
+   "category": "sets"
+  },
+  {
+   "name": "M'avina's Embrace",
+   "slug": "mavinas-embrace",
+   "category": "sets"
+  },
+  {
+   "name": "M'avina's Icy Clutch",
+   "slug": "mavinas-icy-clutch",
+   "category": "sets"
+  },
+  {
+   "name": "M'avina's Tenet",
+   "slug": "mavinas-tenet",
+   "category": "sets"
+  },
+  {
+   "name": "M'avina's True Sight",
+   "slug": "mavinas-true-sight",
+   "category": "sets"
+  },
+  {
+   "name": "Measured Wrath",
+   "slug": "measured-wrath",
+   "category": "uniques"
+  },
+  {
+   "name": "Medusa's Gaze",
+   "slug": "medusas-gaze",
+   "category": "uniques"
+  },
+  {
+   "name": "Melody",
+   "slug": "melody",
+   "category": "runewords"
+  },
+  {
+   "name": "Memory",
+   "slug": "memory",
+   "category": "runewords"
+  },
+  {
+   "name": "Mephisto's Brain",
+   "slug": "mephistos-brain",
+   "category": "misc"
+  },
+  {
+   "name": "Mephisto's Soulstone",
+   "slug": "mephistos-soulstone",
+   "category": "misc"
+  },
+  {
+   "name": "Mesh Armor",
+   "slug": "mesh-armor",
+   "category": "base"
+  },
+  {
+   "name": "Mesh Belt",
+   "slug": "mesh-belt",
+   "category": "base"
+  },
+  {
+   "name": "Mesh Boots",
+   "slug": "mesh-boots",
+   "category": "base"
+  },
+  {
+   "name": "Messerschmidt's Reaver",
+   "slug": "messerschmidts-reaver",
+   "category": "uniques"
+  },
+  {
+   "name": "Metalgrid",
+   "slug": "metalgrid",
+   "category": "uniques"
+  },
+  {
+   "name": "Metamorphosis",
+   "slug": "metamorphosis",
+   "category": "runewords"
+  },
+  {
+   "name": "Mighty Scepter",
+   "slug": "mighty-scepter",
+   "category": "base"
+  },
+  {
+   "name": "Milabrega's Diadem",
+   "slug": "milabregas-diadem",
+   "category": "sets"
+  },
+  {
+   "name": "Milabrega's Orb",
+   "slug": "milabregas-orb",
+   "category": "sets"
+  },
+  {
+   "name": "Milabrega's Regalia",
+   "slug": "milabregas-regalia",
+   "category": "sets"
+  },
+  {
+   "name": "Milabrega's Robe",
+   "slug": "milabregas-robe",
+   "category": "sets"
+  },
+  {
+   "name": "Milabrega's Rod",
+   "slug": "milabregas-rod",
+   "category": "sets"
+  },
+  {
+   "name": "Military Axe",
+   "slug": "military-axe",
+   "category": "base"
+  },
+  {
+   "name": "Military Pick",
+   "slug": "military-pick",
+   "category": "base"
+  },
+  {
+   "name": "Minion Skull",
+   "slug": "minion-skull",
+   "category": "base"
+  },
+  {
+   "name": "Minor Healing Potion",
+   "slug": "minor-healing-potion",
+   "category": "misc"
+  },
+  {
+   "name": "Minor Mana Potion",
+   "slug": "minor-mana-potion",
+   "category": "misc"
+  },
+  {
+   "name": "Mirrored Boots",
+   "slug": "mirrored-boots",
+   "category": "base"
+  },
+  {
+   "name": "Mist",
+   "slug": "mist",
+   "category": "runewords"
+  },
+  {
+   "name": "Mithril Coil",
+   "slug": "mithril-coil",
+   "category": "base"
+  },
+  {
+   "name": "Mithril Point",
+   "slug": "mithril-point",
+   "category": "base"
+  },
+  {
+   "name": "Monarch",
+   "slug": "monarch",
+   "category": "base"
+  },
+  {
+   "name": "Moonfall",
+   "slug": "moonfall",
+   "category": "uniques"
+  },
+  {
+   "name": "Morning Star",
+   "slug": "morning-star",
+   "category": "base"
+  },
+  {
+   "name": "Mosaic",
+   "slug": "mosaic",
+   "category": "runewords"
+  },
+  {
+   "name": "Moser's Blessed Circle",
+   "slug": "mosers-blessed-circle",
+   "category": "uniques"
+  },
+  {
+   "name": "Mummified Trophy",
+   "slug": "mummified-trophy",
+   "category": "base"
+  },
+  {
+   "name": "Myrmidon Greaves",
+   "slug": "myrmidon-greaves",
+   "category": "base"
+  },
+  {
+   "name": "Myth",
+   "slug": "myth",
+   "category": "runewords"
+  },
+  {
+   "name": "Mythical Sword",
+   "slug": "mythical-sword",
+   "category": "base"
+  },
+  {
+   "name": "Nadir",
+   "slug": "nadir",
+   "category": "runewords"
+  },
+  {
+   "name": "Naga",
+   "slug": "naga",
+   "category": "base"
+  },
+  {
+   "name": "Nagelring",
+   "slug": "nagelring",
+   "category": "uniques"
+  },
+  {
+   "name": "Naj's Ancient Vestige",
+   "slug": "najs-ancient-vestige",
+   "category": "sets"
+  },
+  {
+   "name": "Naj's Circlet",
+   "slug": "najs-circlet",
+   "category": "sets"
+  },
+  {
+   "name": "Naj's Light Plate",
+   "slug": "najs-light-plate",
+   "category": "sets"
+  },
+  {
+   "name": "Naj's Puzzler",
+   "slug": "najs-puzzler",
+   "category": "sets"
+  },
+  {
+   "name": "Natalya's Mark",
+   "slug": "natalyas-mark",
+   "category": "sets"
+  },
+  {
+   "name": "Natalya's Odium",
+   "slug": "natalyas-odium",
+   "category": "sets"
+  },
+  {
+   "name": "Natalya's Shadow",
+   "slug": "natalyas-shadow",
+   "category": "sets"
+  },
+  {
+   "name": "Natalya's Soul",
+   "slug": "natalyas-soul",
+   "category": "sets"
+  },
+  {
+   "name": "Natalya's Totem",
+   "slug": "natalyas-totem",
+   "category": "sets"
+  },
+  {
+   "name": "Nature's Peace",
+   "slug": "natures-peace",
+   "category": "uniques"
+  },
+  {
+   "name": "Nef Rune",
+   "slug": "nef-rune",
+   "category": "runes"
+  },
+  {
+   "name": "Nightsmoke",
+   "slug": "nightsmoke",
+   "category": "uniques"
+  },
+  {
+   "name": "Nightwing's Veil",
+   "slug": "nightwings-veil",
+   "category": "uniques"
+  },
+  {
+   "name": "Nokozan Relic",
+   "slug": "nokozan-relic",
+   "category": "uniques"
+  },
+  {
+   "name": "Nord's Tenderizer",
+   "slug": "nords-tenderizer",
+   "category": "uniques"
+  },
+  {
+   "name": "Northern Worldstone Shard",
+   "slug": "northern-worldstone-shard",
+   "category": "misc"
+  },
+  {
+   "name": "Nosferatu's Coil",
+   "slug": "nosferatus-coil",
+   "category": "uniques"
+  },
+  {
+   "name": "Oath",
+   "slug": "oath",
+   "category": "runewords"
+  },
+  {
+   "name": "Obedience",
+   "slug": "obedience",
+   "category": "runewords"
+  },
+  {
+   "name": "Obsession",
+   "slug": "obsession",
+   "category": "runewords"
+  },
+  {
+   "name": "Occult Codex",
+   "slug": "occult-codex",
+   "category": "base"
+  },
+  {
+   "name": "Occult Tome",
+   "slug": "occult-tome",
+   "category": "base"
+  },
+  {
+   "name": "Ogre Axe",
+   "slug": "ogre-axe",
+   "category": "base"
+  },
+  {
+   "name": "Ogre Gauntlets",
+   "slug": "ogre-gauntlets",
+   "category": "base"
+  },
+  {
+   "name": "Ogre Maul",
+   "slug": "ogre-maul",
+   "category": "base"
+  },
+  {
+   "name": "Ohm Rune",
+   "slug": "ohm-rune",
+   "category": "runes"
+  },
+  {
+   "name": "Oil Potion",
+   "slug": "oil-potion",
+   "category": "base"
+  },
+  {
+   "name": "Old Book",
+   "slug": "old-book",
+   "category": "base"
+  },
+  {
+   "name": "Ondal's Almighty",
+   "slug": "ondals-almighty",
+   "category": "sets"
+  },
+  {
+   "name": "Ondal's Wisdom",
+   "slug": "ondals-wisdom",
+   "category": "uniques"
+  },
+  {
+   "name": "Opalvein",
+   "slug": "opalvein",
+   "category": "uniques"
+  },
+  {
+   "name": "Ormus' Robes",
+   "slug": "ormus-robes",
+   "category": "uniques"
+  },
+  {
+   "name": "Ornate Plate",
+   "slug": "ornate-plate",
+   "category": "base"
+  },
+  {
+   "name": "Orphan's Call",
+   "slug": "orphans-call",
+   "category": "sets"
+  },
+  {
+   "name": "Ort Rune",
+   "slug": "ort-rune",
+   "category": "runes"
+  },
+  {
+   "name": "Overseer Skull",
+   "slug": "overseer-skull",
+   "category": "base"
+  },
+  {
+   "name": "Partizan",
+   "slug": "partizan",
+   "category": "base"
+  },
+  {
+   "name": "Passion",
+   "slug": "passion",
+   "category": "runewords"
+  },
+  {
+   "name": "Pattern",
+   "slug": "pattern",
+   "category": "runewords"
+  },
+  {
+   "name": "Pavise",
+   "slug": "pavise",
+   "category": "base"
+  },
+  {
+   "name": "Peace",
+   "slug": "peace",
+   "category": "runewords"
+  },
+  {
+   "name": "Peasant Crown",
+   "slug": "peasant-crown",
+   "category": "uniques"
+  },
+  {
+   "name": "Pellet Bow",
+   "slug": "pellet-bow",
+   "category": "base"
+  },
+  {
+   "name": "Pelta Lunata",
+   "slug": "pelta-lunata",
+   "category": "uniques"
+  },
+  {
+   "name": "Perfect Amethyst",
+   "slug": "perfect-amethyst",
+   "category": "gems"
+  },
+  {
+   "name": "Perfect Diamond",
+   "slug": "perfect-diamond",
+   "category": "gems"
+  },
+  {
+   "name": "Perfect Emerald",
+   "slug": "perfect-emerald",
+   "category": "gems"
+  },
+  {
+   "name": "Perfect Ruby",
+   "slug": "perfect-ruby",
+   "category": "gems"
+  },
+  {
+   "name": "Perfect Sapphire",
+   "slug": "perfect-sapphire",
+   "category": "gems"
+  },
+  {
+   "name": "Perfect Skull",
+   "slug": "perfect-skull",
+   "category": "gems"
+  },
+  {
+   "name": "Perfect Topaz",
+   "slug": "perfect-topaz",
+   "category": "gems"
+  },
+  {
+   "name": "Petrified Wand",
+   "slug": "petrified-wand",
+   "category": "base"
+  },
+  {
+   "name": "Phase Blade",
+   "slug": "phase-blade",
+   "category": "base"
+  },
+  {
+   "name": "Phoenix",
+   "slug": "phoenix",
+   "category": "runewords"
+  },
+  {
+   "name": "Pierre Tombale Couant",
+   "slug": "pierre-tombale-couant",
+   "category": "uniques"
+  },
+  {
+   "name": "Pike",
+   "slug": "pike",
+   "category": "base"
+  },
+  {
+   "name": "Pilum",
+   "slug": "pilum",
+   "category": "base"
+  },
+  {
+   "name": "Plague",
+   "slug": "plague",
+   "category": "runewords"
+  },
+  {
+   "name": "Plague Bearer",
+   "slug": "plague-bearer",
+   "category": "uniques"
+  },
+  {
+   "name": "Plate Mail",
+   "slug": "plate-mail",
+   "category": "base"
+  },
+  {
+   "name": "Plated Belt",
+   "slug": "plated-belt",
+   "category": "base"
+  },
+  {
+   "name": "Pluckeye",
+   "slug": "pluckeye",
+   "category": "uniques"
+  },
+  {
+   "name": "Poignard",
+   "slug": "poignard",
+   "category": "base"
+  },
+  {
+   "name": "Poleaxe",
+   "slug": "poleaxe",
+   "category": "base"
+  },
+  {
+   "name": "Polished Wand",
+   "slug": "polished-wand",
+   "category": "base"
+  },
+  {
+   "name": "Pompeii's Wrath",
+   "slug": "pompeiis-wrath",
+   "category": "uniques"
+  },
+  {
+   "name": "Portal To Forgotten Sands",
+   "slug": "portal-to-forgotten-sands",
+   "category": "misc"
+  },
+  {
+   "name": "Portal To Furnace Of Pain",
+   "slug": "portal-to-furnace-of-pain",
+   "category": "misc"
+  },
+  {
+   "name": "Portal To Matron's Den",
+   "slug": "portal-to-matrons-den",
+   "category": "misc"
+  },
+  {
+   "name": "Portal To The Secret Cow Level",
+   "slug": "portal-to-the-secret-cow-level",
+   "category": "misc"
+  },
+  {
+   "name": "Portal To Uber Tristram",
+   "slug": "portal-to-uber-tristram",
+   "category": "misc"
+  },
+  {
+   "name": "Possessed Compendium",
+   "slug": "possessed-compendium",
+   "category": "base"
+  },
+  {
+   "name": "Possessed Grimoire",
+   "slug": "possessed-grimoire",
+   "category": "base"
+  },
+  {
+   "name": "Potion Of Life",
+   "slug": "potion-of-life",
+   "category": "misc"
+  },
+  {
+   "name": "Preserved Head",
+   "slug": "preserved-head",
+   "category": "base"
+  },
+  {
+   "name": "Pride",
+   "slug": "pride",
+   "category": "runewords"
+  },
+  {
+   "name": "Principle",
+   "slug": "principle",
+   "category": "runewords"
+  },
+  {
+   "name": "Protector Shield",
+   "slug": "protector-shield",
+   "category": "base"
+  },
+  {
+   "name": "Protector's Frost",
+   "slug": "protectors-frost",
+   "category": "uniques"
+  },
+  {
+   "name": "Protector's Stone",
+   "slug": "protectors-stone",
+   "category": "uniques"
+  },
+  {
+   "name": "Prudence",
+   "slug": "prudence",
+   "category": "runewords"
+  },
+  {
+   "name": "Pul Rune",
+   "slug": "pul-rune",
+   "category": "runes"
+  },
+  {
+   "name": "Pus Spitter",
+   "slug": "pus-spitter",
+   "category": "uniques"
+  },
+  {
+   "name": "Quarterstaff",
+   "slug": "quarterstaff",
+   "category": "base"
+  },
+  {
+   "name": "Que-Hegan's Wisdom",
+   "slug": "que-hegans-wisdom",
+   "category": "uniques"
+  },
+  {
+   "name": "Quhab",
+   "slug": "quhab",
+   "category": "base"
+  },
+  {
+   "name": "Quilted Armor",
+   "slug": "quilted-armor",
+   "category": "base"
+  },
+  {
+   "name": "Radament's Sphere",
+   "slug": "radaments-sphere",
+   "category": "uniques"
+  },
+  {
+   "name": "Radiance",
+   "slug": "radiance",
+   "category": "runewords"
+  },
+  {
+   "name": "Rage Mask",
+   "slug": "rage-mask",
+   "category": "base"
+  },
+  {
+   "name": "Rain",
+   "slug": "rain",
+   "category": "runewords"
+  },
+  {
+   "name": "Rainbow Facet",
+   "slug": "rainbow-facet",
+   "category": "uniques"
+  },
+  {
+   "name": "Rainbow Facet: Cold Death",
+   "slug": "rainbow-facet-cold-death",
+   "category": "uniques"
+  },
+  {
+   "name": "Rainbow Facet: Cold Level-Up",
+   "slug": "rainbow-facet-cold-level-up",
+   "category": "uniques"
+  },
+  {
+   "name": "Rainbow Facet: Fire Death",
+   "slug": "rainbow-facet-fire-death",
+   "category": "uniques"
+  },
+  {
+   "name": "Rainbow Facet: Fire Level-Up",
+   "slug": "rainbow-facet-fire-level-up",
+   "category": "uniques"
+  },
+  {
+   "name": "Rainbow Facet: Lightning Death",
+   "slug": "rainbow-facet-lightning-death",
+   "category": "uniques"
+  },
+  {
+   "name": "Rainbow Facet: Lightning Level-Up",
+   "slug": "rainbow-facet-lightning-level-up",
+   "category": "uniques"
+  },
+  {
+   "name": "Rainbow Facet: Poison Death",
+   "slug": "rainbow-facet-poison-death",
+   "category": "uniques"
+  },
+  {
+   "name": "Rainbow Facet: Poison Level-Up",
+   "slug": "rainbow-facet-poison-level-up",
+   "category": "uniques"
+  },
+  {
+   "name": "Rakescar",
+   "slug": "rakescar",
+   "category": "uniques"
+  },
+  {
+   "name": "Ral Rune",
+   "slug": "ral-rune",
+   "category": "runes"
+  },
+  {
+   "name": "Rancid Gas Potion",
+   "slug": "rancid-gas-potion",
+   "category": "base"
+  },
+  {
+   "name": "Random Gems",
+   "slug": "random-gems",
+   "category": "gems"
+  },
+  {
+   "name": "Random Minor Key",
+   "slug": "random-minor-key",
+   "category": "misc"
+  },
+  {
+   "name": "Rattlecage",
+   "slug": "rattlecage",
+   "category": "uniques"
+  },
+  {
+   "name": "Raven Claw",
+   "slug": "raven-claw",
+   "category": "uniques"
+  },
+  {
+   "name": "Raven Frost",
+   "slug": "raven-frost",
+   "category": "uniques"
+  },
+  {
+   "name": "Ravenlore",
+   "slug": "ravenlore",
+   "category": "uniques"
+  },
+  {
+   "name": "Razor Bow",
+   "slug": "razor-bow",
+   "category": "base"
+  },
+  {
+   "name": "Razor's Edge",
+   "slug": "razors-edge",
+   "category": "uniques"
+  },
+  {
+   "name": "Razorswitch",
+   "slug": "razorswitch",
+   "category": "uniques"
+  },
+  {
+   "name": "Razortail",
+   "slug": "razortail",
+   "category": "uniques"
+  },
+  {
+   "name": "Razortine",
+   "slug": "razortine",
+   "category": "uniques"
+  },
+  {
+   "name": "Reflex Bow",
+   "slug": "reflex-bow",
+   "category": "base"
+  },
+  {
+   "name": "Reinforced Mace",
+   "slug": "reinforced-mace",
+   "category": "base"
+  },
+  {
+   "name": "Rejuvenation Potion",
+   "slug": "rejuvenation-potion",
+   "category": "misc"
+  },
+  {
+   "name": "Renewed Black Cleft",
+   "slug": "renewed-black-cleft",
+   "category": "uniques"
+  },
+  {
+   "name": "Renewed Bone Break",
+   "slug": "renewed-bone-break",
+   "category": "uniques"
+  },
+  {
+   "name": "Renewed Cold Rupture",
+   "slug": "renewed-cold-rupture",
+   "category": "uniques"
+  },
+  {
+   "name": "Renewed Crack Of The Heavens",
+   "slug": "renewed-crack-of-the-heavens",
+   "category": "uniques"
+  },
+  {
+   "name": "Renewed Flame Rift",
+   "slug": "renewed-flame-rift",
+   "category": "uniques"
+  },
+  {
+   "name": "Renewed Rotting Fissure",
+   "slug": "renewed-rotting-fissure",
+   "category": "uniques"
+  },
+  {
+   "name": "Repeating Crossbow",
+   "slug": "repeating-crossbow",
+   "category": "base"
+  },
+  {
+   "name": "Rhyme",
+   "slug": "rhyme",
+   "category": "runewords"
+  },
+  {
+   "name": "Ribcracker",
+   "slug": "ribcracker",
+   "category": "uniques"
+  },
+  {
+   "name": "Rift",
+   "slug": "rift",
+   "category": "runewords"
+  },
+  {
+   "name": "Ring",
+   "slug": "ring",
+   "category": "misc"
+  },
+  {
+   "name": "Ring Mail",
+   "slug": "ring-mail",
+   "category": "base"
+  },
+  {
+   "name": "Riphook",
+   "slug": "riphook",
+   "category": "uniques"
+  },
+  {
+   "name": "Ripsaw",
+   "slug": "ripsaw",
+   "category": "uniques"
+  },
+  {
+   "name": "Rite Of Passage",
+   "slug": "rite-of-passage",
+   "category": "sets"
+  },
+  {
+   "name": "Ritual",
+   "slug": "ritual",
+   "category": "runewords"
+  },
+  {
+   "name": "Rixot's Keen",
+   "slug": "rixots-keen",
+   "category": "uniques"
+  },
+  {
+   "name": "Rockfleece",
+   "slug": "rockfleece",
+   "category": "uniques"
+  },
+  {
+   "name": "Rockstopper",
+   "slug": "rockstopper",
+   "category": "uniques"
+  },
+  {
+   "name": "Rogue's Bow",
+   "slug": "rogues-bow",
+   "category": "uniques"
+  },
+  {
+   "name": "Rondache",
+   "slug": "rondache",
+   "category": "base"
+  },
+  {
+   "name": "Rondel",
+   "slug": "rondel",
+   "category": "base"
+  },
+  {
+   "name": "Round Shield",
+   "slug": "round-shield",
+   "category": "base"
+  },
+  {
+   "name": "Royal Shield",
+   "slug": "royal-shield",
+   "category": "base"
+  },
+  {
+   "name": "Ruby",
+   "slug": "ruby",
+   "category": "gems"
+  },
+  {
+   "name": "Rune Bow",
+   "slug": "rune-bow",
+   "category": "base"
+  },
+  {
+   "name": "Rune Master",
+   "slug": "rune-master",
+   "category": "uniques"
+  },
+  {
+   "name": "Rune Scepter",
+   "slug": "rune-scepter",
+   "category": "base"
+  },
+  {
+   "name": "Rune Set",
+   "slug": "rune-set",
+   "category": "runes"
+  },
+  {
+   "name": "Rune Staff",
+   "slug": "rune-staff",
+   "category": "base"
+  },
+  {
+   "name": "Rune Sword",
+   "slug": "rune-sword",
+   "category": "base"
+  },
+  {
+   "name": "Runic Talons",
+   "slug": "runic-talons",
+   "category": "base"
+  },
+  {
+   "name": "Russet Armor",
+   "slug": "russet-armor",
+   "category": "base"
+  },
+  {
+   "name": "Rusthandle",
+   "slug": "rusthandle",
+   "category": "uniques"
+  },
+  {
+   "name": "Sabre",
+   "slug": "sabre",
+   "category": "base"
+  },
+  {
+   "name": "Sacred Armor",
+   "slug": "sacred-armor",
+   "category": "base"
+  },
+  {
+   "name": "Sacred Feathers",
+   "slug": "sacred-feathers",
+   "category": "base"
+  },
+  {
+   "name": "Sacred Globe",
+   "slug": "sacred-globe",
+   "category": "base"
+  },
+  {
+   "name": "Sacred Rondache",
+   "slug": "sacred-rondache",
+   "category": "base"
+  },
+  {
+   "name": "Sacred Targe",
+   "slug": "sacred-targe",
+   "category": "base"
+  },
+  {
+   "name": "Safety Amulet",
+   "slug": "safety-amulet",
+   "category": "crafted"
+  },
+  {
+   "name": "Safety Belt",
+   "slug": "safety-belt",
+   "category": "crafted"
+  },
+  {
+   "name": "Safety Body",
+   "slug": "safety-body",
+   "category": "crafted"
+  },
+  {
+   "name": "Safety Boots",
+   "slug": "safety-boots",
+   "category": "crafted"
+  },
+  {
+   "name": "Safety Gloves",
+   "slug": "safety-gloves",
+   "category": "crafted"
+  },
+  {
+   "name": "Safety Helm",
+   "slug": "safety-helm",
+   "category": "crafted"
+  },
+  {
+   "name": "Safety Ring",
+   "slug": "safety-ring",
+   "category": "crafted"
+  },
+  {
+   "name": "Safety Shield",
+   "slug": "safety-shield",
+   "category": "crafted"
+  },
+  {
+   "name": "Safety Weapon",
+   "slug": "safety-weapon",
+   "category": "crafted"
+  },
+  {
+   "name": "Sallet",
+   "slug": "sallet",
+   "category": "base"
+  },
+  {
+   "name": "Sanctuary",
+   "slug": "sanctuary",
+   "category": "runewords"
+  },
+  {
+   "name": "Sander's Folly",
+   "slug": "sanders-folly",
+   "category": "sets"
+  },
+  {
+   "name": "Sander's Paragon",
+   "slug": "sanders-paragon",
+   "category": "sets"
+  },
+  {
+   "name": "Sander's Riprap",
+   "slug": "sanders-riprap",
+   "category": "sets"
+  },
+  {
+   "name": "Sander's Superstition",
+   "slug": "sanders-superstition",
+   "category": "sets"
+  },
+  {
+   "name": "Sander's Taboo",
+   "slug": "sanders-taboo",
+   "category": "sets"
+  },
+  {
+   "name": "Sandstorm Trek",
+   "slug": "sandstorm-trek",
+   "category": "uniques"
+  },
+  {
+   "name": "Sapphire",
+   "slug": "sapphire",
+   "category": "gems"
+  },
+  {
+   "name": "Saracen's Chance",
+   "slug": "saracens-chance",
+   "category": "uniques"
+  },
+  {
+   "name": "Sash",
+   "slug": "sash",
+   "category": "base"
+  },
+  {
+   "name": "Savage Helmet",
+   "slug": "savage-helmet",
+   "category": "base"
+  },
+  {
+   "name": "Sazabi's Cobalt Redeemer",
+   "slug": "sazabis-cobalt-redeemer",
+   "category": "sets"
+  },
+  {
+   "name": "Sazabi's Ghost Liberator",
+   "slug": "sazabis-ghost-liberator",
+   "category": "sets"
+  },
+  {
+   "name": "Sazabi's Grand Tribute",
+   "slug": "sazabis-grand-tribute",
+   "category": "sets"
+  },
+  {
+   "name": "Sazabi's Mental Sheath",
+   "slug": "sazabis-mental-sheath",
+   "category": "sets"
+  },
+  {
+   "name": "Scale Mail",
+   "slug": "scale-mail",
+   "category": "base"
+  },
+  {
+   "name": "Scarab Husk",
+   "slug": "scarab-husk",
+   "category": "base"
+  },
+  {
+   "name": "Scarabshell Boots",
+   "slug": "scarabshell-boots",
+   "category": "base"
+  },
+  {
+   "name": "Scepter",
+   "slug": "scepter",
+   "category": "base"
+  },
+  {
+   "name": "Schaefer's Hammer",
+   "slug": "schaefers-hammer",
+   "category": "uniques"
+  },
+  {
+   "name": "Scimitar",
+   "slug": "scimitar",
+   "category": "base"
+  },
+  {
+   "name": "Scissors Katar",
+   "slug": "scissors-katar",
+   "category": "base"
+  },
+  {
+   "name": "Scissors Quhab",
+   "slug": "scissors-quhab",
+   "category": "base"
+  },
+  {
+   "name": "Scissors Suwayyah",
+   "slug": "scissors-suwayyah",
+   "category": "base"
+  },
+  {
+   "name": "Scourge",
+   "slug": "scourge",
+   "category": "base"
+  },
+  {
+   "name": "Scroll Of Identify",
+   "slug": "scroll-of-identify",
+   "category": "misc"
+  },
+  {
+   "name": "Scroll Of Inifuss",
+   "slug": "scroll-of-inifuss",
+   "category": "misc"
+  },
+  {
+   "name": "Scroll Of Knowledge",
+   "slug": "scroll-of-knowledge",
+   "category": "misc"
+  },
+  {
+   "name": "Scroll Of Resistance",
+   "slug": "scroll-of-resistance",
+   "category": "misc"
+  },
+  {
+   "name": "Scroll Of Town Portal",
+   "slug": "scroll-of-town-portal",
+   "category": "misc"
+  },
+  {
+   "name": "Scutum",
+   "slug": "scutum",
+   "category": "base"
+  },
+  {
+   "name": "Scythe",
+   "slug": "scythe",
+   "category": "base"
+  },
+  {
+   "name": "Seraph Rod",
+   "slug": "seraph-rod",
+   "category": "base"
+  },
+  {
+   "name": "Seraph's Hymn",
+   "slug": "seraphs-hymn",
+   "category": "uniques"
+  },
+  {
+   "name": "Serpent Lord",
+   "slug": "serpent-lord",
+   "category": "uniques"
+  },
+  {
+   "name": "Serpentskin Armor",
+   "slug": "serpentskin-armor",
+   "category": "base"
+  },
+  {
+   "name": "Sexton Trophy",
+   "slug": "sexton-trophy",
+   "category": "base"
+  },
+  {
+   "name": "Shadow Bow",
+   "slug": "shadow-bow",
+   "category": "base"
+  },
+  {
+   "name": "Shadow Dancer",
+   "slug": "shadow-dancer",
+   "category": "uniques"
+  },
+  {
+   "name": "Shadow Killer",
+   "slug": "shadow-killer",
+   "category": "uniques"
+  },
+  {
+   "name": "Shadow Plate",
+   "slug": "shadow-plate",
+   "category": "base"
+  },
+  {
+   "name": "Shadowfang",
+   "slug": "shadowfang",
+   "category": "uniques"
+  },
+  {
+   "name": "Shael Rune",
+   "slug": "shael-rune",
+   "category": "runes"
+  },
+  {
+   "name": "Shaftstop",
+   "slug": "shaftstop",
+   "category": "uniques"
+  },
+  {
+   "name": "Shako",
+   "slug": "shako",
+   "category": "base"
+  },
+  {
+   "name": "Shamshir",
+   "slug": "shamshir",
+   "category": "base"
+  },
+  {
+   "name": "Shard Set",
+   "slug": "shard-set",
+   "category": "misc"
+  },
+  {
+   "name": "Sharkskin Belt",
+   "slug": "sharkskin-belt",
+   "category": "base"
+  },
+  {
+   "name": "Sharkskin Boots",
+   "slug": "sharkskin-boots",
+   "category": "base"
+  },
+  {
+   "name": "Sharkskin Gloves",
+   "slug": "sharkskin-gloves",
+   "category": "base"
+  },
+  {
+   "name": "Sharktooth Armor",
+   "slug": "sharktooth-armor",
+   "category": "base"
+  },
+  {
+   "name": "Shillelagh",
+   "slug": "shillelagh",
+   "category": "base"
+  },
+  {
+   "name": "Short Battle Bow",
+   "slug": "short-battle-bow",
+   "category": "base"
+  },
+  {
+   "name": "Short Bow",
+   "slug": "short-bow",
+   "category": "base"
+  },
+  {
+   "name": "Short Siege Bow",
+   "slug": "short-siege-bow",
+   "category": "base"
+  },
+  {
+   "name": "Short Spear",
+   "slug": "short-spear",
+   "category": "base"
+  },
+  {
+   "name": "Short Staff",
+   "slug": "short-staff",
+   "category": "base"
+  },
+  {
+   "name": "Short Sword",
+   "slug": "short-sword",
+   "category": "base"
+  },
+  {
+   "name": "Short War Bow",
+   "slug": "short-war-bow",
+   "category": "base"
+  },
+  {
+   "name": "Siege Crossbow",
+   "slug": "siege-crossbow",
+   "category": "base"
+  },
+  {
+   "name": "Sigon's Complete Steel",
+   "slug": "sigons-complete-steel",
+   "category": "sets"
+  },
+  {
+   "name": "Sigon's Gage",
+   "slug": "sigons-gage",
+   "category": "sets"
+  },
+  {
+   "name": "Sigon's Guard",
+   "slug": "sigons-guard",
+   "category": "sets"
+  },
+  {
+   "name": "Sigon's Sabot",
+   "slug": "sigons-sabot",
+   "category": "sets"
+  },
+  {
+   "name": "Sigon's Shelter",
+   "slug": "sigons-shelter",
+   "category": "sets"
+  },
+  {
+   "name": "Sigon's Visor",
+   "slug": "sigons-visor",
+   "category": "sets"
+  },
+  {
+   "name": "Sigon's Wrap",
+   "slug": "sigons-wrap",
+   "category": "sets"
+  },
+  {
+   "name": "Silence",
+   "slug": "silence",
+   "category": "runewords"
+  },
+  {
+   "name": "Silks Of The Victor",
+   "slug": "silks-of-the-victor",
+   "category": "uniques"
+  },
+  {
+   "name": "Silkweave",
+   "slug": "silkweave",
+   "category": "uniques"
+  },
+  {
+   "name": "Silver-Edged Axe",
+   "slug": "silver-edged-axe",
+   "category": "base"
+  },
+  {
+   "name": "Simbilan",
+   "slug": "simbilan",
+   "category": "base"
+  },
+  {
+   "name": "Skewer Of Krintiz",
+   "slug": "skewer-of-krintiz",
+   "category": "uniques"
+  },
+  {
+   "name": "Skin Of The Flayed One",
+   "slug": "skin-of-the-flayed-one",
+   "category": "uniques"
+  },
+  {
+   "name": "Skin Of The Vipermagi",
+   "slug": "skin-of-the-vipermagi",
+   "category": "uniques"
+  },
+  {
+   "name": "Skull",
+   "slug": "skull",
+   "category": "gems"
+  },
+  {
+   "name": "Skull Cap",
+   "slug": "skull-cap",
+   "category": "base"
+  },
+  {
+   "name": "Skull Collector",
+   "slug": "skull-collector",
+   "category": "uniques"
+  },
+  {
+   "name": "Skull Splitter",
+   "slug": "skull-splitter",
+   "category": "uniques"
+  },
+  {
+   "name": "Skullder's Ire",
+   "slug": "skullders-ire",
+   "category": "uniques"
+  },
+  {
+   "name": "Sky Spirit",
+   "slug": "sky-spirit",
+   "category": "base"
+  },
+  {
+   "name": "Skystrike",
+   "slug": "skystrike",
+   "category": "uniques"
+  },
+  {
+   "name": "Slayer Guard",
+   "slug": "slayer-guard",
+   "category": "base"
+  },
+  {
+   "name": "Sling",
+   "slug": "sling",
+   "category": "uniques"
+  },
+  {
+   "name": "Small Charm",
+   "slug": "small-charm",
+   "category": "charms"
+  },
+  {
+   "name": "Small Crescent",
+   "slug": "small-crescent",
+   "category": "base"
+  },
+  {
+   "name": "Small Shield",
+   "slug": "small-shield",
+   "category": "base"
+  },
+  {
+   "name": "Smoke",
+   "slug": "smoke",
+   "category": "runewords"
+  },
+  {
+   "name": "Smoked Sphere",
+   "slug": "smoked-sphere",
+   "category": "base"
+  },
+  {
+   "name": "Snakecord",
+   "slug": "snakecord",
+   "category": "uniques"
+  },
+  {
+   "name": "Snowclash",
+   "slug": "snowclash",
+   "category": "uniques"
+  },
+  {
+   "name": "Sol Rune",
+   "slug": "sol-rune",
+   "category": "runes"
+  },
+  {
+   "name": "Soul Drainer",
+   "slug": "soul-drainer",
+   "category": "uniques"
+  },
+  {
+   "name": "Soul Harvest",
+   "slug": "soul-harvest",
+   "category": "uniques"
+  },
+  {
+   "name": "Soulfeast Tine",
+   "slug": "soulfeast-tine",
+   "category": "uniques"
+  },
+  {
+   "name": "Soulflay",
+   "slug": "soulflay",
+   "category": "uniques"
+  },
+  {
+   "name": "Southern Worldstone Shard",
+   "slug": "southern-worldstone-shard",
+   "category": "misc"
+  },
+  {
+   "name": "Sparking Mail",
+   "slug": "sparking-mail",
+   "category": "uniques"
+  },
+  {
+   "name": "Sparkling Ball",
+   "slug": "sparkling-ball",
+   "category": "base"
+  },
+  {
+   "name": "Spear",
+   "slug": "spear",
+   "category": "base"
+  },
+  {
+   "name": "Spectral Shard",
+   "slug": "spectral-shard",
+   "category": "uniques"
+  },
+  {
+   "name": "Spellsteel",
+   "slug": "spellsteel",
+   "category": "uniques"
+  },
+  {
+   "name": "Spetum",
+   "slug": "spetum",
+   "category": "base"
+  },
+  {
+   "name": "Spiculum",
+   "slug": "spiculum",
+   "category": "base"
+  },
+  {
+   "name": "Spider Bow",
+   "slug": "spider-bow",
+   "category": "base"
+  },
+  {
+   "name": "Spiderweb Sash",
+   "slug": "spiderweb-sash",
+   "category": "base"
+  },
+  {
+   "name": "Spike Thorn",
+   "slug": "spike-thorn",
+   "category": "uniques"
+  },
+  {
+   "name": "Spiked Club",
+   "slug": "spiked-club",
+   "category": "base"
+  },
+  {
+   "name": "Spiked Shield",
+   "slug": "spiked-shield",
+   "category": "base"
+  },
+  {
+   "name": "Spineripper",
+   "slug": "spineripper",
+   "category": "uniques"
+  },
+  {
+   "name": "Spire Of Honor",
+   "slug": "spire-of-honor",
+   "category": "uniques"
+  },
+  {
+   "name": "Spire Of Lazarus",
+   "slug": "spire-of-lazarus",
+   "category": "uniques"
+  },
+  {
+   "name": "Spired Helm",
+   "slug": "spired-helm",
+   "category": "base"
+  },
+  {
+   "name": "Spirit",
+   "slug": "spirit",
+   "category": "runewords"
+  },
+  {
+   "name": "Spirit Forge",
+   "slug": "spirit-forge",
+   "category": "uniques"
+  },
+  {
+   "name": "Spirit Keeper",
+   "slug": "spirit-keeper",
+   "category": "uniques"
+  },
+  {
+   "name": "Spirit Mask",
+   "slug": "spirit-mask",
+   "category": "base"
+  },
+  {
+   "name": "Spirit Ward",
+   "slug": "spirit-ward",
+   "category": "uniques"
+  },
+  {
+   "name": "Splendor",
+   "slug": "splendor",
+   "category": "runewords"
+  },
+  {
+   "name": "Splint Mail",
+   "slug": "splint-mail",
+   "category": "base"
+  },
+  {
+   "name": "Staff Of Kings",
+   "slug": "staff-of-kings",
+   "category": "misc"
+  },
+  {
+   "name": "Stag Bow",
+   "slug": "stag-bow",
+   "category": "base"
+  },
+  {
+   "name": "Stalagmite",
+   "slug": "stalagmite",
+   "category": "base"
+  },
+  {
+   "name": "Stamina Potion",
+   "slug": "stamina-potion",
+   "category": "misc"
+  },
+  {
+   "name": "Standard Of Heroes",
+   "slug": "standard-of-heroes",
+   "category": "misc"
+  },
+  {
+   "name": "Statue Set",
+   "slug": "statue-set",
+   "category": "misc"
+  },
+  {
+   "name": "Stealskull",
+   "slug": "stealskull",
+   "category": "uniques"
+  },
+  {
+   "name": "Stealth",
+   "slug": "stealth",
+   "category": "runewords"
+  },
+  {
+   "name": "Steel",
+   "slug": "steel",
+   "category": "runewords"
+  },
+  {
+   "name": "Steel Carapace",
+   "slug": "steel-carapace",
+   "category": "uniques"
+  },
+  {
+   "name": "Steel Pillar",
+   "slug": "steel-pillar",
+   "category": "uniques"
+  },
+  {
+   "name": "Steel Shade",
+   "slug": "steel-shade",
+   "category": "uniques"
+  },
+  {
+   "name": "Steelclash",
+   "slug": "steelclash",
+   "category": "uniques"
+  },
+  {
+   "name": "Steeldriver",
+   "slug": "steeldriver",
+   "category": "uniques"
+  },
+  {
+   "name": "Steelgoad",
+   "slug": "steelgoad",
+   "category": "uniques"
+  },
+  {
+   "name": "Steelrend",
+   "slug": "steelrend",
+   "category": "uniques"
+  },
+  {
+   "name": "Stiletto",
+   "slug": "stiletto",
+   "category": "base"
+  },
+  {
+   "name": "Stone",
+   "slug": "stone",
+   "category": "runewords"
+  },
+  {
+   "name": "Stone Crusher",
+   "slug": "stone-crusher",
+   "category": "uniques"
+  },
+  {
+   "name": "Stoneraven",
+   "slug": "stoneraven",
+   "category": "uniques"
+  },
+  {
+   "name": "Stormchaser",
+   "slug": "stormchaser",
+   "category": "uniques"
+  },
+  {
+   "name": "Stormeye",
+   "slug": "stormeye",
+   "category": "uniques"
+  },
+  {
+   "name": "Stormguild",
+   "slug": "stormguild",
+   "category": "uniques"
+  },
+  {
+   "name": "Stormlash",
+   "slug": "stormlash",
+   "category": "uniques"
+  },
+  {
+   "name": "Stormrider",
+   "slug": "stormrider",
+   "category": "uniques"
+  },
+  {
+   "name": "Stormshield",
+   "slug": "stormshield",
+   "category": "uniques"
+  },
+  {
+   "name": "Stormspike",
+   "slug": "stormspike",
+   "category": "uniques"
+  },
+  {
+   "name": "Stormspire",
+   "slug": "stormspire",
+   "category": "uniques"
+  },
+  {
+   "name": "Stormstrike",
+   "slug": "stormstrike",
+   "category": "uniques"
+  },
+  {
+   "name": "Stoutnail",
+   "slug": "stoutnail",
+   "category": "uniques"
+  },
+  {
+   "name": "Strangling Gas Potion",
+   "slug": "strangling-gas-potion",
+   "category": "base"
+  },
+  {
+   "name": "Strength",
+   "slug": "strength",
+   "category": "runewords"
+  },
+  {
+   "name": "String Of Ears",
+   "slug": "string-of-ears",
+   "category": "uniques"
+  },
+  {
+   "name": "Studded Leather",
+   "slug": "studded-leather",
+   "category": "base"
+  },
+  {
+   "name": "Stygian Pike",
+   "slug": "stygian-pike",
+   "category": "base"
+  },
+  {
+   "name": "Stygian Pilum",
+   "slug": "stygian-pilum",
+   "category": "base"
+  },
+  {
+   "name": "Succubus Skull",
+   "slug": "succubus-skull",
+   "category": "base"
+  },
+  {
+   "name": "Suicide Branch",
+   "slug": "suicide-branch",
+   "category": "uniques"
+  },
+  {
+   "name": "Sun Spirit",
+   "slug": "sun-spirit",
+   "category": "base"
+  },
+  {
+   "name": "Super Healing Potion",
+   "slug": "super-healing-potion",
+   "category": "misc"
+  },
+  {
+   "name": "Super Mana Potion",
+   "slug": "super-mana-potion",
+   "category": "misc"
+  },
+  {
+   "name": "Sur Rune",
+   "slug": "sur-rune",
+   "category": "runes"
+  },
+  {
+   "name": "Sureshrill Frost",
+   "slug": "sureshrill-frost",
+   "category": "uniques"
+  },
+  {
+   "name": "Suwayyah",
+   "slug": "suwayyah",
+   "category": "base"
+  },
+  {
+   "name": "Swirling Crystal",
+   "slug": "swirling-crystal",
+   "category": "base"
+  },
+  {
+   "name": "Swordback Hold",
+   "slug": "swordback-hold",
+   "category": "uniques"
+  },
+  {
+   "name": "Swordguard",
+   "slug": "swordguard",
+   "category": "uniques"
+  },
+  {
+   "name": "Tabar",
+   "slug": "tabar",
+   "category": "base"
+  },
+  {
+   "name": "Taebaek's Glory",
+   "slug": "taebaeks-glory",
+   "category": "sets"
+  },
+  {
+   "name": "Tal Rasha's Adjudication",
+   "slug": "tal-rashas-adjudication",
+   "category": "sets"
+  },
+  {
+   "name": "Tal Rasha's Fine-Spun Cloth",
+   "slug": "tal-rashas-fine-spun-cloth",
+   "category": "sets"
+  },
+  {
+   "name": "Tal Rasha's Guardianship",
+   "slug": "tal-rashas-guardianship",
+   "category": "sets"
+  },
+  {
+   "name": "Tal Rasha's Horadric Crest",
+   "slug": "tal-rashas-horadric-crest",
+   "category": "sets"
+  },
+  {
+   "name": "Tal Rasha's Lidless Eye",
+   "slug": "tal-rashas-lidless-eye",
+   "category": "sets"
+  },
+  {
+   "name": "Tal Rasha's Wrappings",
+   "slug": "tal-rashas-wrappings",
+   "category": "sets"
+  },
+  {
+   "name": "Tal Rune",
+   "slug": "tal-rune",
+   "category": "runes"
+  },
+  {
+   "name": "Talic's Anguish",
+   "slug": "talics-anguish",
+   "category": "misc"
+  },
+  {
+   "name": "Tancred's Battlegear",
+   "slug": "tancreds-battlegear",
+   "category": "sets"
+  },
+  {
+   "name": "Tancred's Crowbill",
+   "slug": "tancreds-crowbill",
+   "category": "sets"
+  },
+  {
+   "name": "Tancred's Hobnails",
+   "slug": "tancreds-hobnails",
+   "category": "sets"
+  },
+  {
+   "name": "Tancred's Skull",
+   "slug": "tancreds-skull",
+   "category": "sets"
+  },
+  {
+   "name": "Tancred's Spine",
+   "slug": "tancreds-spine",
+   "category": "sets"
+  },
+  {
+   "name": "Tancred's Weird",
+   "slug": "tancreds-weird",
+   "category": "sets"
+  },
+  {
+   "name": "Targe",
+   "slug": "targe",
+   "category": "base"
+  },
+  {
+   "name": "Tarnhelm",
+   "slug": "tarnhelm",
+   "category": "uniques"
+  },
+  {
+   "name": "Tearhaunch",
+   "slug": "tearhaunch",
+   "category": "uniques"
+  },
+  {
+   "name": "Telling Of Beads",
+   "slug": "telling-of-beads",
+   "category": "sets"
+  },
+  {
+   "name": "Temper",
+   "slug": "temper",
+   "category": "runewords"
+  },
+  {
+   "name": "Templar Coat",
+   "slug": "templar-coat",
+   "category": "base"
+  },
+  {
+   "name": "Templar's Might",
+   "slug": "templars-might",
+   "category": "uniques"
+  },
+  {
+   "name": "Thawing Potion",
+   "slug": "thawing-potion",
+   "category": "misc"
+  },
+  {
+   "name": "The Atlantean",
+   "slug": "the-atlantean",
+   "category": "uniques"
+  },
+  {
+   "name": "The Battlebranch",
+   "slug": "the-battlebranch",
+   "category": "uniques"
+  },
+  {
+   "name": "The Black Cleft",
+   "slug": "the-black-cleft",
+   "category": "uniques"
+  },
+  {
+   "name": "The Black Tower Key",
+   "slug": "the-black-tower-key",
+   "category": "misc"
+  },
+  {
+   "name": "The Bone Break",
+   "slug": "the-bone-break",
+   "category": "uniques"
+  },
+  {
+   "name": "The Cat's Eye",
+   "slug": "the-cats-eye",
+   "category": "uniques"
+  },
+  {
+   "name": "The Centurion",
+   "slug": "the-centurion",
+   "category": "uniques"
+  },
+  {
+   "name": "The Chieftain",
+   "slug": "the-chieftain",
+   "category": "uniques"
+  },
+  {
+   "name": "The Cold Rupture",
+   "slug": "the-cold-rupture",
+   "category": "uniques"
+  },
+  {
+   "name": "The Crack Of The Heavens",
+   "slug": "the-crack-of-the-heavens",
+   "category": "uniques"
+  },
+  {
+   "name": "The Cranium Basher",
+   "slug": "the-cranium-basher",
+   "category": "uniques"
+  },
+  {
+   "name": "The Diggler",
+   "slug": "the-diggler",
+   "category": "uniques"
+  },
+  {
+   "name": "The Disciple",
+   "slug": "the-disciple",
+   "category": "sets"
+  },
+  {
+   "name": "The Dragon Chang",
+   "slug": "the-dragon-chang",
+   "category": "uniques"
+  },
+  {
+   "name": "The Eye Of Etlich",
+   "slug": "the-eye-of-etlich",
+   "category": "uniques"
+  },
+  {
+   "name": "The Face Of Horror",
+   "slug": "the-face-of-horror",
+   "category": "uniques"
+  },
+  {
+   "name": "The Fetid Sprinkler",
+   "slug": "the-fetid-sprinkler",
+   "category": "uniques"
+  },
+  {
+   "name": "The Flame Rift",
+   "slug": "the-flame-rift",
+   "category": "uniques"
+  },
+  {
+   "name": "The Gavel Of Pain",
+   "slug": "the-gavel-of-pain",
+   "category": "uniques"
+  },
+  {
+   "name": "The General's Tan Do Li Ga",
+   "slug": "the-generals-tan-do-li-ga",
+   "category": "uniques"
+  },
+  {
+   "name": "The Gidbinn",
+   "slug": "the-gidbinn",
+   "category": "base"
+  },
+  {
+   "name": "The Gladiator's Bane",
+   "slug": "the-gladiators-bane",
+   "category": "uniques"
+  },
+  {
+   "name": "The Gnasher",
+   "slug": "the-gnasher",
+   "category": "uniques"
+  },
+  {
+   "name": "The Golden Bird",
+   "slug": "the-golden-bird",
+   "category": "misc"
+  },
+  {
+   "name": "The Grandfather",
+   "slug": "the-grandfather",
+   "category": "uniques"
+  },
+  {
+   "name": "The Grim Reaper",
+   "slug": "the-grim-reaper",
+   "category": "uniques"
+  },
+  {
+   "name": "The Hand Of Broc",
+   "slug": "the-hand-of-broc",
+   "category": "uniques"
+  },
+  {
+   "name": "The Impaler",
+   "slug": "the-impaler",
+   "category": "uniques"
+  },
+  {
+   "name": "The Iron Jang Bong",
+   "slug": "the-iron-jang-bong",
+   "category": "uniques"
+  },
+  {
+   "name": "The Jade Tan Do",
+   "slug": "the-jade-tan-do",
+   "category": "uniques"
+  },
+  {
+   "name": "The Mahim-Oak Curio",
+   "slug": "the-mahim-oak-curio",
+   "category": "uniques"
+  },
+  {
+   "name": "The Meat Scraper",
+   "slug": "the-meat-scraper",
+   "category": "uniques"
+  },
+  {
+   "name": "The Minotaur",
+   "slug": "the-minotaur",
+   "category": "uniques"
+  },
+  {
+   "name": "The Oculus",
+   "slug": "the-oculus",
+   "category": "uniques"
+  },
+  {
+   "name": "The Patriarch",
+   "slug": "the-patriarch",
+   "category": "uniques"
+  },
+  {
+   "name": "The Reaper's Toll",
+   "slug": "the-reapers-toll",
+   "category": "uniques"
+  },
+  {
+   "name": "The Redeemer",
+   "slug": "the-redeemer",
+   "category": "uniques"
+  },
+  {
+   "name": "The Rising Sun",
+   "slug": "the-rising-sun",
+   "category": "uniques"
+  },
+  {
+   "name": "The Rotting Fissure",
+   "slug": "the-rotting-fissure",
+   "category": "uniques"
+  },
+  {
+   "name": "The Salamander",
+   "slug": "the-salamander",
+   "category": "uniques"
+  },
+  {
+   "name": "The Scalper",
+   "slug": "the-scalper",
+   "category": "uniques"
+  },
+  {
+   "name": "The Spirit Shroud",
+   "slug": "the-spirit-shroud",
+   "category": "uniques"
+  },
+  {
+   "name": "The Stone Of Jordan",
+   "slug": "the-stone-of-jordan",
+   "category": "uniques"
+  },
+  {
+   "name": "The Tannr Gorerod",
+   "slug": "the-tannr-gorerod",
+   "category": "uniques"
+  },
+  {
+   "name": "The Vile Husk",
+   "slug": "the-vile-husk",
+   "category": "uniques"
+  },
+  {
+   "name": "The Ward",
+   "slug": "the-ward",
+   "category": "uniques"
+  },
+  {
+   "name": "Thresher",
+   "slug": "thresher",
+   "category": "base"
+  },
+  {
+   "name": "Throwing Axe",
+   "slug": "throwing-axe",
+   "category": "base"
+  },
+  {
+   "name": "Throwing Knife",
+   "slug": "throwing-knife",
+   "category": "base"
+  },
+  {
+   "name": "Throwing Spear",
+   "slug": "throwing-spear",
+   "category": "base"
+  },
+  {
+   "name": "Thul Rune",
+   "slug": "thul-rune",
+   "category": "runes"
+  },
+  {
+   "name": "Thunder Maul",
+   "slug": "thunder-maul",
+   "category": "base"
+  },
+  {
+   "name": "Thundergod's Vigor",
+   "slug": "thundergods-vigor",
+   "category": "uniques"
+  },
+  {
+   "name": "Thunderstroke",
+   "slug": "thunderstroke",
+   "category": "uniques"
+  },
+  {
+   "name": "Tiamat's Rebuke",
+   "slug": "tiamats-rebuke",
+   "category": "uniques"
+  },
+  {
+   "name": "Tiara",
+   "slug": "tiara",
+   "category": "base"
+  },
+  {
+   "name": "Tigulated Mail",
+   "slug": "tigulated-mail",
+   "category": "base"
+  },
+  {
+   "name": "Tir Rune",
+   "slug": "tir-rune",
+   "category": "runes"
+  },
+  {
+   "name": "Titan's Revenge",
+   "slug": "titans-revenge",
+   "category": "uniques"
+  },
+  {
+   "name": "Todesfaelle Flamme",
+   "slug": "todesfaelle-flamme",
+   "category": "uniques"
+  },
+  {
+   "name": "Token Of Absolution",
+   "slug": "token-of-absolution",
+   "category": "misc"
+  },
+  {
+   "name": "Tomahawk",
+   "slug": "tomahawk",
+   "category": "base"
+  },
+  {
+   "name": "Tomb Reaver",
+   "slug": "tomb-reaver",
+   "category": "uniques"
+  },
+  {
+   "name": "Tomb Wand",
+   "slug": "tomb-wand",
+   "category": "base"
+  },
+  {
+   "name": "Tome",
+   "slug": "tome",
+   "category": "base"
+  },
+  {
+   "name": "Tome Of Identify",
+   "slug": "tome-of-identify",
+   "category": "misc"
+  },
+  {
+   "name": "Tome Of Town Portal",
+   "slug": "tome-of-town-portal",
+   "category": "misc"
+  },
+  {
+   "name": "Toothrow",
+   "slug": "toothrow",
+   "category": "uniques"
+  },
+  {
+   "name": "Top Of The Horadric Staff",
+   "slug": "top-of-the-horadric-staff",
+   "category": "misc"
+  },
+  {
+   "name": "Topaz",
+   "slug": "topaz",
+   "category": "gems"
+  },
+  {
+   "name": "Torch",
+   "slug": "torch",
+   "category": "misc"
+  },
+  {
+   "name": "Torch Of Iro",
+   "slug": "torch-of-iro",
+   "category": "uniques"
+  },
+  {
+   "name": "Totemic Mask",
+   "slug": "totemic-mask",
+   "category": "base"
+  },
+  {
+   "name": "Tower Shield",
+   "slug": "tower-shield",
+   "category": "base"
+  },
+  {
+   "name": "Trang-Oul's Avatar",
+   "slug": "trang-ouls-avatar",
+   "category": "sets"
+  },
+  {
+   "name": "Trang-Oul's Claws",
+   "slug": "trang-ouls-claws",
+   "category": "sets"
+  },
+  {
+   "name": "Trang-Oul's Girth",
+   "slug": "trang-ouls-girth",
+   "category": "sets"
+  },
+  {
+   "name": "Trang-Oul's Guise",
+   "slug": "trang-ouls-guise",
+   "category": "sets"
+  },
+  {
+   "name": "Trang-Oul's Scales",
+   "slug": "trang-ouls-scales",
+   "category": "sets"
+  },
+  {
+   "name": "Trang-Oul's Wing",
+   "slug": "trang-ouls-wing",
+   "category": "sets"
+  },
+  {
+   "name": "Treachery",
+   "slug": "treachery",
+   "category": "runewords"
+  },
+  {
+   "name": "Treads Of Cthon",
+   "slug": "treads-of-cthon",
+   "category": "uniques"
+  },
+  {
+   "name": "Trellised Armor",
+   "slug": "trellised-armor",
+   "category": "base"
+  },
+  {
+   "name": "Trident",
+   "slug": "trident",
+   "category": "base"
+  },
+  {
+   "name": "Troll Belt",
+   "slug": "troll-belt",
+   "category": "base"
+  },
+  {
+   "name": "Troll Nest",
+   "slug": "troll-nest",
+   "category": "base"
+  },
+  {
+   "name": "Truncheon",
+   "slug": "truncheon",
+   "category": "base"
+  },
+  {
+   "name": "Tulwar",
+   "slug": "tulwar",
+   "category": "base"
+  },
+  {
+   "name": "Tusk Sword",
+   "slug": "tusk-sword",
+   "category": "base"
+  },
+  {
+   "name": "Twin Axe",
+   "slug": "twin-axe",
+   "category": "base"
+  },
+  {
+   "name": "Twisted Essence Of Suffering",
+   "slug": "twisted-essence-of-suffering",
+   "category": "misc"
+  },
+  {
+   "name": "Twitchthroe",
+   "slug": "twitchthroe",
+   "category": "uniques"
+  },
+  {
+   "name": "Two-Handed Sword",
+   "slug": "two-handed-sword",
+   "category": "base"
+  },
+  {
+   "name": "Tyrael's Might",
+   "slug": "tyraels-might",
+   "category": "uniques"
+  },
+  {
+   "name": "Tyrant Club",
+   "slug": "tyrant-club",
+   "category": "base"
+  },
+  {
+   "name": "Um Rune",
+   "slug": "um-rune",
+   "category": "runes"
+  },
+  {
+   "name": "Umbral Disk",
+   "slug": "umbral-disk",
+   "category": "uniques"
+  },
+  {
+   "name": "Ume's Lament",
+   "slug": "umes-lament",
+   "category": "uniques"
+  },
+  {
+   "name": "Unbending Will",
+   "slug": "unbending-will",
+   "category": "runewords"
+  },
+  {
+   "name": "Undead Crown",
+   "slug": "undead-crown",
+   "category": "uniques"
+  },
+  {
+   "name": "Unearthed Wand",
+   "slug": "unearthed-wand",
+   "category": "base"
+  },
+  {
+   "name": "Unraveller Head",
+   "slug": "unraveller-head",
+   "category": "base"
+  },
+  {
+   "name": "Valkyrie Wing",
+   "slug": "valkyrie-wing",
+   "category": "uniques"
+  },
+  {
+   "name": "Vambraces",
+   "slug": "vambraces",
+   "category": "base"
+  },
+  {
+   "name": "Vampire Gaze",
+   "slug": "vampire-gaze",
+   "category": "uniques"
+  },
+  {
+   "name": "Vampirebone Gloves",
+   "slug": "vampirebone-gloves",
+   "category": "base"
+  },
+  {
+   "name": "Vampirefang Belt",
+   "slug": "vampirefang-belt",
+   "category": "base"
+  },
+  {
+   "name": "Veil Of Steel",
+   "slug": "veil-of-steel",
+   "category": "uniques"
+  },
+  {
+   "name": "Venom",
+   "slug": "venom",
+   "category": "runewords"
+  },
+  {
+   "name": "Venom Grip",
+   "slug": "venom-grip",
+   "category": "uniques"
+  },
+  {
+   "name": "Venom Ward",
+   "slug": "venom-ward",
+   "category": "uniques"
+  },
+  {
+   "name": "Verdungo's Hearty Cord",
+   "slug": "verdungos-hearty-cord",
+   "category": "uniques"
+  },
+  {
+   "name": "Vex Rune",
+   "slug": "vex-rune",
+   "category": "runes"
+  },
+  {
+   "name": "Vidala's Ambush",
+   "slug": "vidalas-ambush",
+   "category": "sets"
+  },
+  {
+   "name": "Vidala's Barb",
+   "slug": "vidalas-barb",
+   "category": "sets"
+  },
+  {
+   "name": "Vidala's Fetlock",
+   "slug": "vidalas-fetlock",
+   "category": "sets"
+  },
+  {
+   "name": "Vidala's Rig",
+   "slug": "vidalas-rig",
+   "category": "sets"
+  },
+  {
+   "name": "Vidala's Snare",
+   "slug": "vidalas-snare",
+   "category": "sets"
+  },
+  {
+   "name": "Vigilance",
+   "slug": "vigilance",
+   "category": "runewords"
+  },
+  {
+   "name": "Viperfork",
+   "slug": "viperfork",
+   "category": "uniques"
+  },
+  {
+   "name": "Visceratuant",
+   "slug": "visceratuant",
+   "category": "uniques"
+  },
+  {
+   "name": "Voice Of Reason",
+   "slug": "voice-of-reason",
+   "category": "runewords"
+  },
+  {
+   "name": "Void",
+   "slug": "void",
+   "category": "runewords"
+  },
+  {
+   "name": "Vortex Orb",
+   "slug": "vortex-orb",
+   "category": "base"
+  },
+  {
+   "name": "Vortex Shield",
+   "slug": "vortex-shield",
+   "category": "base"
+  },
+  {
+   "name": "Voulge",
+   "slug": "voulge",
+   "category": "base"
+  },
+  {
+   "name": "Walking Stick",
+   "slug": "walking-stick",
+   "category": "base"
+  },
+  {
+   "name": "Wall Of The Eyeless",
+   "slug": "wall-of-the-eyeless",
+   "category": "uniques"
+  },
+  {
+   "name": "Wand",
+   "slug": "wand",
+   "category": "base"
+  },
+  {
+   "name": "War Axe",
+   "slug": "war-axe",
+   "category": "base"
+  },
+  {
+   "name": "War Belt",
+   "slug": "war-belt",
+   "category": "base"
+  },
+  {
+   "name": "War Boots",
+   "slug": "war-boots",
+   "category": "base"
+  },
+  {
+   "name": "War Club",
+   "slug": "war-club",
+   "category": "base"
+  },
+  {
+   "name": "War Dart",
+   "slug": "war-dart",
+   "category": "base"
+  },
+  {
+   "name": "War Fist",
+   "slug": "war-fist",
+   "category": "base"
+  },
+  {
+   "name": "War Fork",
+   "slug": "war-fork",
+   "category": "base"
+  },
+  {
+   "name": "War Gauntlets",
+   "slug": "war-gauntlets",
+   "category": "base"
+  },
+  {
+   "name": "War Hammer",
+   "slug": "war-hammer",
+   "category": "base"
+  },
+  {
+   "name": "War Hat",
+   "slug": "war-hat",
+   "category": "base"
+  },
+  {
+   "name": "War Javelin",
+   "slug": "war-javelin",
+   "category": "base"
+  },
+  {
+   "name": "War Pike",
+   "slug": "war-pike",
+   "category": "base"
+  },
+  {
+   "name": "War Scepter",
+   "slug": "war-scepter",
+   "category": "base"
+  },
+  {
+   "name": "War Scythe",
+   "slug": "war-scythe",
+   "category": "base"
+  },
+  {
+   "name": "War Spear",
+   "slug": "war-spear",
+   "category": "base"
+  },
+  {
+   "name": "War Spike",
+   "slug": "war-spike",
+   "category": "base"
+  },
+  {
+   "name": "War Staff",
+   "slug": "war-staff",
+   "category": "base"
+  },
+  {
+   "name": "War Sword",
+   "slug": "war-sword",
+   "category": "base"
+  },
+  {
+   "name": "War Traveler",
+   "slug": "war-traveler",
+   "category": "uniques"
+  },
+  {
+   "name": "Ward",
+   "slug": "ward",
+   "category": "base"
+  },
+  {
+   "name": "Ward Bow",
+   "slug": "ward-bow",
+   "category": "base"
+  },
+  {
+   "name": "Warlord's Authority",
+   "slug": "warlords-authority",
+   "category": "sets"
+  },
+  {
+   "name": "Warlord's Conquest",
+   "slug": "warlords-conquest",
+   "category": "sets"
+  },
+  {
+   "name": "Warlord's Crushers",
+   "slug": "warlords-crushers",
+   "category": "sets"
+  },
+  {
+   "name": "Warlord's Lust",
+   "slug": "warlords-lust",
+   "category": "sets"
+  },
+  {
+   "name": "Warlord's Mantle",
+   "slug": "warlords-mantle",
+   "category": "sets"
+  },
+  {
+   "name": "Warlord's Trust",
+   "slug": "warlords-trust",
+   "category": "uniques"
+  },
+  {
+   "name": "Warpspear",
+   "slug": "warpspear",
+   "category": "uniques"
+  },
+  {
+   "name": "Warshrike",
+   "slug": "warshrike",
+   "category": "uniques"
+  },
+  {
+   "name": "Waterwalk",
+   "slug": "waterwalk",
+   "category": "uniques"
+  },
+  {
+   "name": "Wealth",
+   "slug": "wealth",
+   "category": "runewords"
+  },
+  {
+   "name": "Western Worldstone Shard",
+   "slug": "western-worldstone-shard",
+   "category": "misc"
+  },
+  {
+   "name": "White",
+   "slug": "white",
+   "category": "runewords"
+  },
+  {
+   "name": "Whitstan's Guard",
+   "slug": "whitstans-guard",
+   "category": "sets"
+  },
+  {
+   "name": "Widowmaker",
+   "slug": "widowmaker",
+   "category": "uniques"
+  },
+  {
+   "name": "Wilhelm's Pride",
+   "slug": "wilhelms-pride",
+   "category": "sets"
+  },
+  {
+   "name": "Wind",
+   "slug": "wind",
+   "category": "runewords"
+  },
+  {
+   "name": "Windforce",
+   "slug": "windforce",
+   "category": "uniques"
+  },
+  {
+   "name": "Windhammer",
+   "slug": "windhammer",
+   "category": "uniques"
+  },
+  {
+   "name": "Winged Axe",
+   "slug": "winged-axe",
+   "category": "base"
+  },
+  {
+   "name": "Winged Harpoon",
+   "slug": "winged-harpoon",
+   "category": "base"
+  },
+  {
+   "name": "Winged Helm",
+   "slug": "winged-helm",
+   "category": "base"
+  },
+  {
+   "name": "Winged Knife",
+   "slug": "winged-knife",
+   "category": "base"
+  },
+  {
+   "name": "Wire Fleece",
+   "slug": "wire-fleece",
+   "category": "base"
+  },
+  {
+   "name": "Wirt's Leg",
+   "slug": "wirts-leg",
+   "category": "base"
+  },
+  {
+   "name": "Wirt's Leg",
+   "slug": "wirts-legt-misc",
+   "category": "misc"
+  },
+  {
+   "name": "Wisdom",
+   "slug": "wisdom",
+   "category": "runewords"
+  },
+  {
+   "name": "Wisp Projector",
+   "slug": "wisp-projector",
+   "category": "uniques"
+  },
+  {
+   "name": "Witchwild String",
+   "slug": "witchwild-string",
+   "category": "uniques"
+  },
+  {
+   "name": "Witherstring",
+   "slug": "witherstring",
+   "category": "uniques"
+  },
+  {
+   "name": "Wizardspike",
+   "slug": "wizardspike",
+   "category": "uniques"
+  },
+  {
+   "name": "Wizendraw",
+   "slug": "wizendraw",
+   "category": "uniques"
+  },
+  {
+   "name": "Woestave",
+   "slug": "woestave",
+   "category": "uniques"
+  },
+  {
+   "name": "Wolf Head",
+   "slug": "wolf-head",
+   "category": "base"
+  },
+  {
+   "name": "Wolfhowl",
+   "slug": "wolfhowl",
+   "category": "uniques"
+  },
+  {
+   "name": "Wormskull",
+   "slug": "wormskull",
+   "category": "uniques"
+  },
+  {
+   "name": "Worusk's End",
+   "slug": "worusks-end",
+   "category": "misc"
+  },
+  {
+   "name": "Wraith Flight",
+   "slug": "wraith-flight",
+   "category": "uniques"
+  },
+  {
+   "name": "Wraithstep",
+   "slug": "wraithstep",
+   "category": "uniques"
+  },
+  {
+   "name": "Wrath",
+   "slug": "wrath",
+   "category": "runewords"
+  },
+  {
+   "name": "Wrist Blade",
+   "slug": "wrist-blade",
+   "category": "base"
+  },
+  {
+   "name": "Wrist Spike",
+   "slug": "wrist-spike",
+   "category": "base"
+  },
+  {
+   "name": "Wrist Sword",
+   "slug": "wrist-sword",
+   "category": "base"
+  },
+  {
+   "name": "Wyrmhide",
+   "slug": "wyrmhide",
+   "category": "base"
+  },
+  {
+   "name": "Wyrmhide Boots",
+   "slug": "wyrmhide-boots",
+   "category": "base"
+  },
+  {
+   "name": "3x3 Key Set",
+   "slug": "x-key-set",
+   "category": "misc"
+  },
+  {
+   "name": "Yari",
+   "slug": "yari",
+   "category": "base"
+  },
+  {
+   "name": "Yew Wand",
+   "slug": "yew-wand",
+   "category": "base"
+  },
+  {
+   "name": "Zakarum Shield",
+   "slug": "zakarum-shield",
+   "category": "base"
+  },
+  {
+   "name": "Zakarum's Hand",
+   "slug": "zakarums-hand",
+   "category": "uniques"
+  },
+  {
+   "name": "Zephyr",
+   "slug": "zephyr",
+   "category": "runewords"
+  },
+  {
+   "name": "Zod Rune",
+   "slug": "zod-rune",
+   "category": "runes"
+  },
+  {
+   "name": "Zombie Head",
+   "slug": "zombie-head",
+   "category": "base"
+  },
+  {
+   "name": "Zweihander",
+   "slug": "zweihander",
+   "category": "base"
+  }
+ ],
+ "zh": {
+  "三叉戟": "Trident",
+  "三叉槍": "Brandistock",
+  "三叉長槍": "Yari",
+  "三尖槍": "Yari",
+  "三重冠": "Tiara",
+  "上古劍": "Ancient Sword",
+  "上古斧": "Ancient Axe",
+  "上古盾": "Ancient Shield",
+  "上古鎧甲": "Ancient Armor",
+  "不屈意志": "Unbending Will",
+  "不朽之王": "Immortal King",
+  "不朽之王之柱": "Immortal King's Pillar",
+  "不朽之王的意志": "Immortal King's Will",
+  "不朽之王的扈從": "Immortal King's Detail",
+  "不朽之王的熔爐": "Immortal King's Forge",
+  "不朽之王的瑣事": "Immortal King's Detail",
+  "不朽之王的碎魂者": "Immortal King's Stone Crusher",
+  "不朽之王的融爐": "Immortal King's Forge",
+  "不朽之王的靈魂牢籠": "Immortal King's Soul Cage",
+  "不死皇冠": "Undead Crown",
+  "丹弓的教導": "Dangoon's Teaching",
+  "主母之弓": "Grand Matron Bow",
+  "九頭蛇刃": "Hydra Edge",
+  "九頭蛇弓": "Hydra Bow",
+  "九頭蛇頭蓋骨圓帽": "Hydraskull",
+  "五彩的怒氣": "Chromatic Ire",
+  "亞克南圓盾": "Akaran Targe",
+  "亞克南輕圓盾": "Akaran Rondache",
+  "亞特拉斯": "The Atlantean",
+  "亞特瑪的哭喊": "Atma's Wail",
+  "亞特瑪的聖甲蟲": "Atma's Scarab",
+  "亞特蘭提恩": "The Atlantean",
+  "亞瑞特的面容": "Arreat's Face",
+  "亥伯龍之槍": "Hyperion Javelin",
+  "亥伯龍之矛": "Hyperion Spear",
+  "亥伯龍標槍": "Hyperion Javelin",
+  "亥伯龍盾": "Hyperion",
+  "亥伯龍矛": "Hyperion Spear",
+  "伊司": "Ith Rune",
+  "伊司特": "Ist Rune",
+  "伊洛的火炬": "Torch Of Iro",
+  "伐克斯": "Vex Rune",
+  "伐頓戈的強韌腰索": "Verdungo's Hearty Cord",
+  "作響之籠": "Rattlecage",
+  "作響的地獄": "Hellclap",
+  "作響的金屬": "Steelclash",
+  "侏儒": "Homunculus",
+  "依森哈德的光之烙鐵": "Isenhart's Lightbrand",
+  "依森哈德的外殼": "Isenhart's Case",
+  "依森哈德的號角": "Isenhart's Horns",
+  "依森哈德的閃避": "Isenhart's Parry",
+  "依森哈特的光之烙鐵": "Isenhart's Lightbrand",
+  "依森哈特的外殼": "Isenhart's Case",
+  "依森哈特的招架": "Isenhart's Parry",
+  "依森哈特的角盔": "Isenhart's Horns",
+  "依森哈特的軍械": "Isenhart's Armory",
+  "依雷撒之繩": "Iratha's Cord",
+  "依雷撒的盤頂": "Iratha's Coil",
+  "依雷撒的線圈": "Iratha's Coil",
+  "依雷撒的腰繩": "Iratha's Cord",
+  "依雷撒的華服": "Iratha's Finery",
+  "依雷撒的袖口": "Iratha's Cuff",
+  "依雷撒的袖銬": "Iratha's Cuff",
+  "依雷撒的項圈": "Iratha's Collar",
+  "便帽": "Cap",
+  "便盔": "Sallet",
+  "保衛者的冰霜": "Protector's Frost",
+  "保衛者的岩石": "Protector's Stone",
+  "保護盾牌": "Ward",
+  "俠盜之弓": "Rogue's Bow",
+  "信心": "Faith",
+  "信條": "Credendum",
+  "倒刺棍棒": "Barbed Club",
+  "倒刺盾": "Barbed Shield",
+  "倒刺護盾": "Barbed Shield",
+  "倒鉤鎚": "Barbed Club",
+  "偷取骷髏": "Stealskull",
+  "傑瑞德之石": "Jared's Stone",
+  "傳說之劍": "Legend Sword",
+  "傳說之鎚": "Legendary Mallet",
+  "傳說劍": "Legend Sword",
+  "傳說尖刀": "Legend Spike",
+  "傳說尖刺": "Legend Spike",
+  "傳說戰鎚": "Legendary Mallet",
+  "僕從顱骨": "Minion Skull",
+  "僵屍之首": "Zombie Head",
+  "儀式": "Ritual",
+  "儀式的走道": "Rite Of Passage",
+  "儀禮弓": "Ceremonial Bow",
+  "儀禮標槍": "Ceremonial Javelin",
+  "儀禮長槍": "Ceremonial Pike",
+  "儀禮長矛": "Ceremonial Spear",
+  "優雅之劍": "Elegant Blade",
+  "兇猛橡樹": "Felloak",
+  "兇邪軀殼": "The Vile Husk",
+  "先祖之契": "Ancients' Pledge",
+  "光之軍刀": "Lightsabre",
+  "光榮布帽": "Coif Of Glory",
+  "光榮罩盔": "Coif Of Glory",
+  "光輝": "Radiance",
+  "克林鐵‧弗姆": "Crainte Vomir",
+  "克維雷布的法衣": "Civerb's Vestments",
+  "克維雷布的短棍": "Civerb's Cudgel",
+  "克維雷布的聖像": "Civerb's Icon",
+  "克維雷布的防護": "Civerb's Ward",
+  "克里維茲的肉叉": "Skewer Of Krintiz",
+  "克雷得勞之爪": "Cleglaw's Claw",
+  "克雷得勞之牙": "Cleglaw's Tooth",
+  "克雷得勞之鉗": "Cleglaw's Pincers",
+  "克雷德勞之爪": "Cleglaw's Claw",
+  "克雷德勞之牙": "Cleglaw's Tooth",
+  "克雷德勞之鉗": "Cleglaw's Pincers",
+  "克雷德勞的防備": "Cleglaw's Brace",
+  "兜盔": "Casque",
+  "入門式": "Rite Of Passage",
+  "內臟吸管": "Gut Siphon",
+  "全罩盔": "Full Helm",
+  "全身鎧甲": "Full Plate Mail",
+  "六尺棍": "Quarterstaff",
+  "六角之火": "Hexfire",
+  "兵之王": "Bing Sz Wang",
+  "典雅彎刀": "Elegant Blade",
+  "冠冕之盾": "Crown Shield",
+  "冠軍之劍": "Champion Sword",
+  "冥河之槍": "Stygian Pike",
+  "冥河戰矛": "Stygian Pike",
+  "冥河標槍": "Stygian Pilum",
+  "冰之王": "Bing Sz Wang",
+  "冰晶": "Iceblink",
+  "冰鋼之眼": "Coldsteel Eye",
+  "冰雪交織": "Snowclash",
+  "冰雪眨眼": "Iceblink",
+  "冰霜之風": "Frostwind",
+  "冷殺": "Coldkill",
+  "冷酷之盾": "Grim Shield",
+  "冷酷開膛手": "The Grim Reaper",
+  "凋萎之弦": "Witherstring",
+  "凋謝之戒": "Witherstring",
+  "凋謝之畫": "Wizendraw",
+  "凋謝弓弦": "Wizendraw",
+  "凱恩碎片": "Carin Shard",
+  "凱松的征服": "Treads Of Cthon",
+  "凱松的足靴": "Treads Of Cthon",
+  "凱林碎片": "Carin Shard",
+  "凶蠻頭盔": "Savage Helmet",
+  "凸紋戰甲": "Embossed Plate",
+  "凸緣釘鎚": "Flanged Mace",
+  "凸緣釘頭錘": "Flanged Mace",
+  "刀刃刺盾": "Blade Barrier",
+  "刀鋒弓": "Blade Bow",
+  "刀鋒扣帶": "Bladebuckle",
+  "刀鋒邊緣": "Razor's Edge",
+  "刃拳": "Cestus",
+  "刃爪": "Blade Talons",
+  "刃翼飛刀": "Winged Knife",
+  "刃翼飛斧": "Winged Axe",
+  "切肉斧": "Cleaver",
+  "切開骷髏": "Skull Splitter",
+  "刑罪連枷": "Knout",
+  "刨心者": "Heart Carver",
+  "利刃匕首": "Blade",
+  "利維坦": "Leviathan",
+  "刮肉者": "The Meat Scraper",
+  "刺人槍": "Mancatcher",
+  "刺擊短劍": "Poignard",
+  "刺穿者": "The Impaler",
+  "刺藤": "Bramble",
+  "刻心者": "Heart Carver",
+  "剃刀之叉": "Razortine",
+  "剃刀之尾": "Razortail",
+  "剃刀之弓": "Razor Bow",
+  "剃刀叉": "Razortine",
+  "剃刀弓": "Razor Bow",
+  "剃刀杖": "Razorswitch",
+  "剃刀銳斧": "Razor's Edge",
+  "剛毅": "Fortitude",
+  "剝皮者之皮": "Skin Of The Flayed One",
+  "剝皮靈魂": "Soulflay",
+  "剝魂": "Soulflay",
+  "剪刃": "Scissors Katar",
+  "剪咬刃": "Scissors Katar",
+  "劇毒": "Venom",
+  "劇毒之抓": "Venom Grip",
+  "劇毒之握": "Venom Grip",
+  "劈腦": "Brainhew",
+  "劈顱斧": "Skull Splitter",
+  "劊子手的裁決": "Executioner's Justice",
+  "劍棘之盾": "Swordback Hold",
+  "劍背之架": "Swordback Hold",
+  "劍衛": "Swordguard",
+  "力量": "Strength",
+  "加爾的長髮": "Jalal's Mane",
+  "加爾的鬃毛": "Jalal's Mane",
+  "勇士護脛": "Myrmidon Greaves",
+  "勇氣之眼": "Pluckeye",
+  "勝利者之絲綢": "Silks Of The Victor",
+  "勝利者的絲綢": "Silks Of The Victor",
+  "勾刃槍": "Spetum",
+  "匕首": "Dagger",
+  "北地肉鎚": "Nord's Tenderizer",
+  "北極手套": "Arctic Mitts",
+  "北極捆索": "Arctic Binding",
+  "北極捆縛": "Arctic Binding",
+  "北極毛皮": "Arctic Furs",
+  "北極號角": "Arctic Horn",
+  "北極裝備": "Arctic Gear",
+  "十字弓": "Crossbow",
+  "十字軍之弓": "Crusader Bow",
+  "十字軍鐵手套": "Crusader Gauntlets",
+  "卑劣軀殼": "The Vile Husk",
+  "卓古拉之握": "Dracul's Grasp",
+  "卓越之劍": "Great Sword",
+  "卓越之斧": "Great Axe",
+  "卓越巨棍": "Great Maul",
+  "卓越標槍": "Great Pilum",
+  "卓越頭盔": "Great Helm",
+  "卡珊之尺": "Cathan's Rule",
+  "卡珊之網": "Cathan's Mesh",
+  "卡珊的容貌": "Cathan's Visage",
+  "卡珊的封印": "Cathan's Seal",
+  "卡珊的尺杖": "Cathan's Rule",
+  "卡珊的網衣": "Cathan's Mesh",
+  "卡珊的衣著": "Cathan's Traps",
+  "卡珊的魔咒": "Cathan's Sigil",
+  "印度彎刀": "Tulwar",
+  "厚皮手套": "Heavy Gloves",
+  "厚腰帶": "Heavy Belt",
+  "原則": "Principle",
+  "原理": "Principle",
+  "叉": "Brandistock",
+  "反射之弓": "Reflex Bow",
+  "反射弓": "Reflex Bow",
+  "古代之劍": "Ancient Sword",
+  "古代之斧": "Ancient Axe",
+  "古代之盾": "Ancient Shield",
+  "古代人的契約": "Ancients' Pledge",
+  "古代裝甲": "Ancient Armor",
+  "古墓之杖": "Tomb Wand",
+  "古墓魔杖": "Tomb Wand",
+  "古爾": "Gul Rune",
+  "古龍皮": "Wyrmhide",
+  "史恰佛之鎚": "Schaefer's Hammer",
+  "司事印記": "Sexton Trophy",
+  "司事首級": "Sexton Trophy",
+  "吉永之臉": "Guillaume's Face",
+  "吉默削斧": "Gimmershred",
+  "吐膿毒弩": "Pus Spitter",
+  "君主盾": "Monarch",
+  "吸血聖王之圈": "Nosferatu's Coil",
+  "吸血鬼手套": "Vambraces",
+  "吸血鬼燎牙腰帶": "Vampirefang Belt",
+  "吸血鬼牙腰帶": "Vampirefang Belt",
+  "吸血鬼王之圈": "Nosferatu's Coil",
+  "吸血鬼的凝視": "Vampire Gaze",
+  "吸血鬼骸骨手套": "Vampirebone Gloves",
+  "吸魂者": "Soul Drainer",
+  "和平": "Peace",
+  "和緩": "Temper",
+  "和諧": "Harmony",
+  "和風": "Zephyr",
+  "品牌": "Brand",
+  "哈斯拉柏的鐵後跟": "Hsarus' Iron Heel",
+  "哈斯拉柏的鐵拳": "Hsarus' Iron Fist",
+  "哈斯拉柏的鐵胸衣": "Hsarus' Iron Stay",
+  "哥布林腳趾": "Goblin Toe",
+  "哥德之斧": "Gothic Axe",
+  "哥德之棍": "Gothic Staff",
+  "哥德劍": "Gothic Sword",
+  "哥德弓": "Gothic Bow",
+  "哥德戰甲": "Gothic Plate",
+  "哥德斧": "Gothic Axe",
+  "哥德法杖": "Gothic Staff",
+  "哥德盾": "Gothic Shield",
+  "哥德盾牌": "Gothic Shield",
+  "哥德鎧甲": "Gothic Plate",
+  "啪噠": "Pattern",
+  "喙鉗": "Crowbill",
+  "喪鐘敲擊者": "Knell Striker",
+  "喬": "Jah Rune",
+  "喬丹之石": "The Stone Of Jordan",
+  "喬木棒": "Jo Staff",
+  "噬咬者": "The Gnasher",
+  "噬魂叉": "Soulfeast Tine",
+  "囚房": "Ward",
+  "圓型盾": "Round Shield",
+  "圓月彎刀": "Tulwar",
+  "圓月盾": "Luna",
+  "圓柄匕首": "Rondel",
+  "圓盾": "Buckler",
+  "圓鑿": "The Scalper",
+  "圖紋": "Pattern",
+  "圖騰面具": "Totemic Mask",
+  "圖騰面具狼盔": "Totemic Mask",
+  "土耳其劍": "Ataghan",
+  "土耳其彎刀": "Ataghan",
+  "地土靈獸帽": "Earth Spirit",
+  "地平線的颱風": "Horizon's Tornado",
+  "地平線的龍捲風": "Horizon's Tornado",
+  "地獄之口": "Hellmouth",
+  "地獄之吻": "Cerebus' Bite",
+  "地獄之嘴": "Hellmouth",
+  "地獄刑具": "Hellrack",
+  "地獄刑長的意志": "Hellwarden's Will",
+  "地獄拷問": "Hellrack",
+  "地獄擲弩": "Hellcast",
+  "地獄殺戮者": "Hellslayer",
+  "地獄毀滅者": "Hellslayer",
+  "地獄爪牙之骨": "Hellspawn Skull",
+  "地獄爪牙顱骨": "Hellspawn Skull",
+  "地獄犬之咬": "Cerebus' Bite",
+  "地獄瘟疫": "Hellplague",
+  "地獄符號": "Infernal Sign",
+  "地獄轟鳴": "Hellclap",
+  "地獄鍛甲": "Hellforge Plate",
+  "地獄闊步": "Infernostride",
+  "地獄頭骨": "Infernal Cranium",
+  "坦-杜-裡-嘎將軍": "The General's Tan Do Li Ga",
+  "坦之血杖": "The Tannr Gorerod",
+  "坦克雷之骷髏": "Tancred's Skull",
+  "坦克雷的平頭釘": "Tancred's Hobnails",
+  "坦克雷的怪誕": "Tancred's Weird",
+  "坦克雷的戰裝": "Tancred's Battlegear",
+  "坦克雷的脊柱": "Tancred's Spine",
+  "坦克雷的釘靴": "Tancred's Hobnails",
+  "坦克雷的顱骨": "Tancred's Skull",
+  "坦克雷的鴉嘴鉗": "Tancred's Crowbill",
+  "坦克雷的鴉嘴鎬": "Tancred's Crowbill",
+  "坦杜之玉": "The Jade Tan Do",
+  "坦納血杖": "The Tannr Gorerod",
+  "埃歐": "Io Rune",
+  "埋骨魔杖": "Unearthed Wand",
+  "執念": "Obsession",
+  "執政官之杖": "Archon Staff",
+  "執政官鎧甲": "Archon Plate",
+  "執法者": "Lawbringer",
+  "基德的財運": "Gheed's Fortune",
+  "基德的賭注": "Gheed's Wager",
+  "基德的運氣": "Gheed's Fortune",
+  "基爾克的聖堂": "Gerke's Sanctuary",
+  "堅定意志": "Unbending Will",
+  "堅硬的指甲": "Stoutnail",
+  "塔.拉夏的守護": "Tal Rasha's Guardianship",
+  "塔.拉夏的纖細衣服": "Tal Rasha's Fine-Spun Cloth",
+  "塔.拉夏的赫拉迪克紋章": "Tal Rasha's Horadric Crest",
+  "塔因頭盔": "Tarnhelm",
+  "塔拉夏的判決": "Tal Rasha's Adjudication",
+  "塔拉夏的外袍": "Tal Rasha's Wrappings",
+  "塔拉夏的守護": "Tal Rasha's Guardianship",
+  "塔拉夏的精織腰布": "Tal Rasha's Fine-Spun Cloth",
+  "塔拉夏的警惕之眼": "Tal Rasha's Lidless Eye",
+  "塔拉夏的赫拉迪姆之冠": "Tal Rasha's Horadric Crest",
+  "塔格奧之外裝": "Trang-Oul's Guise",
+  "塔格奧之容": "Trang-Oul's Guise",
+  "塔格奧之手": "Trang-Oul's Claws",
+  "塔格奧之束帶": "Trang-Oul's Girth",
+  "塔格奧之爪": "Trang-Oul's Claws",
+  "塔格奧之翼": "Trang-Oul's Wing",
+  "塔格奧之腹": "Trang-Oul's Girth",
+  "塔格奧之鱗": "Trang-Oul's Scales",
+  "塔格奧的化身": "Trang-Oul's Avatar",
+  "塔爾": "Tal Rune",
+  "墓地之杖": "Grave Wand",
+  "墓地魔杖": "Grave Wand",
+  "墓石長戟": "Pierre Tombale Couant",
+  "墓穴之脊": "Gravenspine",
+  "墓穴手掌": "Gravepalm",
+  "墓穴的撫弄": "Gravepalm",
+  "壁壘": "Bulwark",
+  "壓碎的凸邊": "Crushflange",
+  "夏": "Shael Rune",
+  "多爾": "Dol Rune",
+  "多節棍": "Gnarled Staff",
+  "多頭蛇刃": "Hydra Edge",
+  "多頭蛇弓": "Hydra Bow",
+  "多頭蛇顱盔": "Hydraskull",
+  "夜煙": "Nightsmoke",
+  "夜翼面紗": "Nightwing's Veil",
+  "夢境": "Dream",
+  "大劍": "Giant Sword",
+  "大君之怒": "Highlord's Wrath",
+  "大圓盾": "Scutum",
+  "大地之靈": "Earth Spirit",
+  "大地變形者": "Earth Shifter",
+  "大型咒符": "Large Charm",
+  "大型盾": "Large Shield",
+  "大戰戟": "Spetum",
+  "大斧": "Giant Axe",
+  "大木棍": "Maul",
+  "大盾": "Pavise",
+  "大盾牌": "Large Shield",
+  "大砍刀": "Bardiche",
+  "大自然的和平": "Nature's Peace",
+  "大長刀": "Glaive",
+  "大院長之弓": "Grand Matron Bow",
+  "天使之光": "Angelic Halo",
+  "天使之翼": "Angelic Wings",
+  "天使的光暈": "Angelic Halo",
+  "天使的披風": "Angelic Mantle",
+  "天使的翅膀": "Angelic Wings",
+  "天使的衣裝": "Angelic Raiment",
+  "天使的鐮刀": "Angelic Sickle",
+  "天堂之光": "Heaven's Light",
+  "天堂之石": "Heavenly Stone",
+  "天堂的同胞": "Heaven's Brethren",
+  "天堂裝束": "Heavenly Garb",
+  "天底": "Nadir",
+  "天擊": "Skystrike",
+  "天空之靈": "Sky Spirit",
+  "天罰之錘": "Scourge",
+  "天翔靈獸帽": "Sky Spirit",
+  "太白山的榮光": "Taebaek's Glory",
+  "太陽之靈": "Sun Spirit",
+  "奇拉的守護": "Kira's Guardian",
+  "奧瑪斯之袍": "Ormus' Robes",
+  "奧瑪斯的長袍": "Ormus' Robes",
+  "奪人目": "Pluckeye",
+  "女傑之弓": "Matriarchal Bow",
+  "女傑標槍": "Matriarchal Javelin",
+  "女傑長槍": "Matriarchal Pike",
+  "女傑長矛": "Matriarchal Spear",
+  "女士之矛": "Maiden Spear",
+  "女士鏢槍": "Maiden Javelin",
+  "女士長矛": "Maiden Pike",
+  "女妖之骨": "Succubus Skull",
+  "女戰標槍": "Maiden Javelin",
+  "女戰長槍": "Maiden Pike",
+  "女戰長矛": "Maiden Spear",
+  "女族長之弓": "Matriarchal Bow",
+  "女族長之矛": "Matriarchal Spear",
+  "女族長之鏢槍": "Matriarchal Javelin",
+  "女族長之長矛": "Matriarchal Pike",
+  "女武神之翼": "Valkyrie Wing",
+  "妖怪碎片": "Spectral Shard",
+  "妖火": "Hexfire",
+  "妖鬼釘頭鎚": "Devil Star",
+  "威廉的自尊": "Wilhelm's Pride",
+  "娜吉的上古遺物": "Naj's Ancient Vestige",
+  "娜吉的小環": "Naj's Circlet",
+  "娜吉的解謎杖": "Naj's Puzzler",
+  "娜吉的輕鎧": "Naj's Light Plate",
+  "娜吉的輕鎧甲": "Naj's Light Plate",
+  "娜吉的頭環": "Naj's Circlet",
+  "娜吉解迷杖": "Naj's Puzzler",
+  "娜塔亞的印記": "Natalya's Mark",
+  "娜塔亞的圖騰": "Natalya's Totem",
+  "娜塔亞的影子": "Natalya's Shadow",
+  "娜塔亞的記號": "Natalya's Mark",
+  "娜塔亞的靈魂": "Natalya's Soul",
+  "娜塔亞的非難": "Natalya's Odium",
+  "守信條": "Credendum",
+  "守護之盾": "Protector Shield",
+  "守護天使": "Guardian Angel",
+  "守護者的光芒": "Guardian's Light",
+  "守護者的閃電": "Guardian's Thunder",
+  "守護者皇冠面甲": "Guardian Crown",
+  "守護者盔冠": "Guardian Crown",
+  "安姆": "Amn Rune",
+  "安戴爾的全靈": "Ondal's Almighty",
+  "安戴爾的智慧": "Ondal's Wisdom",
+  "安達莉爾的面貌": "Andariel's Visage",
+  "宏‧森丹": "Hone Sundan",
+  "寂靜": "Silence",
+  "寒冰": "Ice",
+  "實戰鎧甲": "Field Plate",
+  "審慎之怒": "Measured Wrath",
+  "寶典": "Codex",
+  "寶冠": "Coronet",
+  "將軍的連枷": "The General's Tan Do Li Ga",
+  "尊父": "The Patriarch",
+  "小劍": "Stiletto",
+  "小圓盾": "Buckler",
+  "小型咒符": "Small Charm",
+  "小型盾": "Small Shield",
+  "小妖精腳趾": "Goblin Toe",
+  "小斧": "Hatchet",
+  "小盾": "Targe",
+  "小盾牌": "Small Shield",
+  "尖刃槍": "Spiculum",
+  "尖刺根源": "Spike Thorn",
+  "尖刺盾": "Spiked Shield",
+  "尖刺盾牌": "Spiked Shield",
+  "尖刺荊棘": "Spike Thorn",
+  "尖嘯冰霜": "Sureshrill Frost",
+  "尖牙盔": "Fanged Helm",
+  "尖牙頭盔": "Fanged Helm",
+  "尖角頭盔": "Horned Helm",
+  "尖齒小刀": "Fanged Knife",
+  "屍慟": "Corpsemourn",
+  "屍體的哀傷": "Corpsemourn",
+  "屠夫之瞳": "Butcher's Pupil",
+  "屠夫的徒弟": "Butcher's Pupil",
+  "屠殺頭盔": "Carnage Helm",
+  "山德的愚行": "Sander's Folly",
+  "山德的模範": "Sander's Paragon",
+  "山德的碎石": "Sander's Riprap",
+  "山德的禁忌": "Sander's Taboo",
+  "山德的迷信": "Sander's Superstition",
+  "岩壁殺手": "Cliffkiller",
+  "岩石制動器": "Rockstopper",
+  "島擊": "Islestrike",
+  "嵌飾": "Mosaic",
+  "巧工弩": "Chu-Ko-Nu",
+  "巨人斧": "Giant Axe",
+  "巨型斬鐮": "Giant Thresher",
+  "巨型重鎚": "Great Maul",
+  "巨型長柄斧": "Great Poleaxe",
+  "巨型鱗鎧胸甲": "Great Hauberk",
+  "巨大無比": "Humongous",
+  "巨大顱骨": "Giant Skull",
+  "巨弓": "Great Bow",
+  "巨戰之劍": "War Sword",
+  "巨戰之叉": "War Fork",
+  "巨戰之靴": "War Boots",
+  "巨戰手套": "War Gauntlets",
+  "巨戰斧": "War Axe",
+  "巨戰木棍": "War Club",
+  "巨戰標槍": "War Javelin",
+  "巨戰權杖": "War Scepter",
+  "巨戰法杖": "War Staff",
+  "巨戰腰帶": "War Belt",
+  "巨戰鐮刀": "War Scythe",
+  "巨戰鐵鎚": "War Hammer",
+  "巨戰長矛": "War Spear",
+  "巨戰飛鏢": "War Dart",
+  "巨無霸": "Humongous",
+  "巨爪": "Greater Claws",
+  "巨皇冠": "Grand Crown",
+  "巨神之刃": "Colossus Blade",
+  "巨神之劍": "Colossus Sword",
+  "巨神之斧": "Colossus Voulge",
+  "巨神刃": "Colossus Blade",
+  "巨神劍": "Colossus Sword",
+  "巨神十字弓": "Colossus Crossbow",
+  "巨神弩": "Colossus Crossbow",
+  "巨神腰帶": "Colossus Girdle",
+  "巨神長柄斧": "Colossus Voulge",
+  "巨螺盔": "Giant Conch",
+  "巨角獸帽": "Antlers",
+  "巨角頭盔": "Spired Helm",
+  "巨貝頭盔": "Giant Conch",
+  "巨長斧": "Great Poleaxe",
+  "巨靈殺手": "Djinn Slayer",
+  "巨骷髏": "Giant Skull",
+  "巨魔斧": "Ogre Axe",
+  "巨魔護手": "Ogre Gauntlets",
+  "巨魔重鎚": "Ogre Maul",
+  "巨鷹爪": "Greater Talons",
+  "巫妖法杖": "Lich Wand",
+  "巫妖魔杖": "Lich Wand",
+  "巫師之刺": "Wizardspike",
+  "巫師之怒": "Magewrath",
+  "巫師會": "Coven",
+  "巴拉那之星": "Baranar's Star",
+  "巴特克的猛擊": "Bartuc's Cut-Throat",
+  "布爾凱索之戒": "Bul-Kathos' Wedding Band",
+  "布爾凱索的婚戒": "Bul-Kathos' Wedding Band",
+  "布爾凱索的子嗣": "Bul-Kathos' Children",
+  "布爾凱索的神聖代價": "Bul-Kathos' Sacred Charge",
+  "布爾凱索的神聖職責": "Bul-Kathos' Sacred Charge",
+  "布爾凱索的部族守護": "Bul-Kathos' Tribal Guardian",
+  "布理撒‧多‧凱南": "Buriza-Do Kyanon",
+  "布甲": "Quilted Armor",
+  "布雷維特要塞": "Bverrit Keep",
+  "希弗伯的圖案": "Civerb's Icon",
+  "希弗伯的短棍": "Civerb's Cudgel",
+  "希弗柏的防護": "Civerb's Ward",
+  "希梅斯特的掠奪": "Messerschmidt's Reaver",
+  "平衡小刀": "Balanced Knife",
+  "平衡斧": "Balanced Axe",
+  "平衡飛刀": "Balanced Knife",
+  "平衡飛斧": "Balanced Axe",
+  "年紀之冠": "Crown Of Ages",
+  "幻化之刃": "Phase Blade",
+  "幻鏡戰靴": "Mirrored Boots",
+  "幽夢之靈": "Dream Spirit",
+  "幽夢靈獸帽": "Dream Spirit",
+  "幽暗": "Gloom",
+  "庇護之弓": "Ward Bow",
+  "庇護弓": "Ward Bow",
+  "庇護盾": "Ward",
+  "庇護結界": "Ward",
+  "庫拉斯特之盾": "Kurast Shield",
+  "庫拉斯特盾": "Kurast Shield",
+  "庫爾溫的尖刃": "Culwen's Point",
+  "庫爾溫的尖端": "Culwen's Point",
+  "弒王者": "Kingslayer",
+  "引導烏鴉": "Leadcrow",
+  "弩": "Crossbow",
+  "弩弓": "Ballista",
+  "張龍": "The Dragon Chang",
+  "強制": "Duress",
+  "強化釘鎚": "Reinforced Mace",
+  "強化釘頭錘": "Reinforced Mace",
+  "強化雙斧": "Twin Axe",
+  "強威權杖": "Mighty Scepter",
+  "強波刀": "Cinquedeas",
+  "彈丸弓": "Pellet Bow",
+  "彈丸弩": "Pellet Bow",
+  "彎刀": "Scimitar",
+  "彎刃大刀": "Falchion",
+  "彎形大刀": "Falchion",
+  "彎月斧": "Small Crescent",
+  "彩虹刻面": "Rainbow Facet",
+  "影之牙": "Shadowfang",
+  "影殺者": "Shadow Killer",
+  "影舞者": "Shadow Dancer",
+  "征戰劍": "War Sword",
+  "征戰拳套": "War Fist",
+  "征戰斧": "War Axe",
+  "征戰標槍": "War Javelin",
+  "征戰權杖": "War Scepter",
+  "征戰法杖": "War Staff",
+  "征戰短弓": "Short War Bow",
+  "征戰腰帶": "War Belt",
+  "征戰護手": "War Gauntlets",
+  "征戰軍叉": "War Fork",
+  "征戰重鎚": "War Club",
+  "征戰鎬": "War Spike",
+  "征戰鐮刀": "War Scythe",
+  "征戰長弓": "Long War Bow",
+  "征戰長槍": "War Pike",
+  "征戰長矛": "War Spear",
+  "征戰靴": "War Boots",
+  "征戰飛鏢": "War Dart",
+  "征服之劍": "Conquest Sword",
+  "征服者皇冠面甲": "Conqueror Crown",
+  "征服者盔冠": "Conqueror Crown",
+  "復仇者之盔": "Avenger Guard",
+  "復仇者護盔": "Avenger Guard",
+  "微彎劍": "Cutlass",
+  "德古拉之握": "Dracul's Grasp",
+  "怒號長牙": "Howltusk",
+  "思考之聲": "Voice Of Reason",
+  "怨恨": "Malice",
+  "怨靈步伐": "Wraithstep",
+  "怪異之球": "Eldritch Orb",
+  "恐懼之嘔": "Crainte Vomir",
+  "恐懼之臉": "The Face Of Horror",
+  "悔恨": "Grief",
+  "悲哀護杖": "Woestave",
+  "惠斯坦的守護": "Whitstan's Guard",
+  "惠斯坦的武裝": "Whitstan's Guard",
+  "惡臭散佈者": "The Fetid Sprinkler",
+  "惡魔之心": "Demon Heart",
+  "惡魔之拱": "Demon's Arch",
+  "惡魔之王": "Demon's Arch",
+  "惡魔之首": "Demon Head",
+  "惡魔十字弓": "Demon Crossbow",
+  "惡魔弩": "Demon Crossbow",
+  "惡魔心石": "Demon Heart",
+  "惡魔機器": "Demon Machine",
+  "惡魔機弩": "Demon Machine",
+  "惡魔流星錘": "Devil Star",
+  "惡魔爪牙": "Demon Limb",
+  "惡魔肢體": "Demon Limb",
+  "惡魔號角的邊緣": "Demonhorn's Edge",
+  "惡魔角尖": "Demonhorn's Edge",
+  "惡魔頭蓋骨面具": "Demonhead",
+  "惡魔頭顱": "Demon Head",
+  "惡魔頭骨": "Demonhead",
+  "愛斯": "Eth Rune",
+  "愛斯特龍之鐵的保護區": "Astreon's Iron Ward",
+  "愛斯特龍的鐵衛": "Astreon's Iron Ward",
+  "愛理歐克之針": "Arioc's Needle",
+  "憤怒": "Wrath",
+  "懸崖殺手": "Cliffkiller",
+  "懺悔者": "The Redeemer",
+  "懼焰亡靈": "Grim's Burning Dead",
+  "懼牙": "Dreadfang",
+  "戒慎": "Vigilance",
+  "戒指": "Ring",
+  "戮夫刃": "Widowmaker",
+  "戰儀杖": "Truncheon",
+  "戰刺": "War Spike",
+  "戰場之靴": "Battle Boots",
+  "戰場手套": "Battle Gauntlets",
+  "戰場腰帶": "Battle Belt",
+  "戰帽": "War Hat",
+  "戰戟": "Partizan",
+  "戰拳": "War Fist",
+  "戰斧": "Battle Axe",
+  "戰槌": "Martel De Fer",
+  "戰槍": "War Pike",
+  "戰爭之鳥": "Warshrike",
+  "戰爭召喚": "Call To Arms",
+  "戰爭旅者": "War Traveler",
+  "戰爵之證": "Warlord's Trust",
+  "戰鉞": "Tomahawk",
+  "戰鎚": "War Hammer",
+  "戰鬥刃拳": "Battle Cestus",
+  "戰鬥劍": "Battle Sword",
+  "戰鬥支系": "The Battlebranch",
+  "戰鬥枝椏": "The Battlebranch",
+  "戰鬥法杖": "Battle Staff",
+  "戰鬥短弓": "Short Battle Bow",
+  "戰鬥腰帶": "Battle Belt",
+  "戰鬥護手": "Battle Gauntlets",
+  "戰鬥鐮刀": "Battle Scythe",
+  "戰鬥鐵鎚": "Battle Hammer",
+  "戰鬥長劍": "Battle Sword",
+  "戰鬥長弓": "Long Battle Bow",
+  "戰鬥靴": "Battle Boots",
+  "戰鬥飛鏢": "Battle Dart",
+  "手掌的安置": "Laying Of Hands",
+  "手斧": "Hand Axe",
+  "手杖": "Walking Stick",
+  "手鐮": "Hand Scythe",
+  "打擊棍": "Truncheon",
+  "打鋼鎚": "Steeldriver",
+  "托巴爾羅斯學術": "Ars Tor'Baalos",
+  "扣帶": "Belt",
+  "扭曲之矛": "Warpspear",
+  "投擲地獄": "Hellcast",
+  "投斧": "Hurlbat",
+  "投索": "Sling",
+  "押韻": "Rhyme",
+  "抽動掙扎": "Twitchthroe",
+  "抽動的掙扎": "Twitchthroe",
+  "拉撒羅斯之螺旋": "Spire Of Lazarus",
+  "拉撒雷茲之杖": "Spire Of Lazarus",
+  "拉爾": "Ral Rune",
+  "拋光魔杖": "Polished Wand",
+  "拳刃": "Katar",
+  "拳劍": "Katar",
+  "拿各的戒指": "Nagelring",
+  "按手禮": "Laying Of Hands",
+  "捕人叉": "Mancatcher",
+  "排齒": "Toothrow",
+  "掠鴉之爪": "Raven Claw",
+  "掠鴉之王": "Ravenlore",
+  "接地": "Ground",
+  "提格萊特戰甲": "Tigulated Mail",
+  "握扣法珠": "Clasped Orb",
+  "揭露者之首": "Unraveller Head",
+  "摩瑟的祝福之圓": "Moser's Blessed Circle",
+  "摩西祝福之環": "Moser's Blessed Circle",
+  "撒卡蘭姆之手": "Zakarum's Hand",
+  "撒卡蘭姆使者": "Herald Of Zakarum",
+  "撒卡蘭姆盾": "Zakarum Shield",
+  "撒卡蘭姆盾牌": "Zakarum Shield",
+  "撕裂之鉤": "Riphook",
+  "撕裂者": "Lacerator",
+  "擊頭者": "Headstriker",
+  "擲鐵": "Iron Pelt",
+  "擴散黑暗": "Darkglow",
+  "擺動剃刀": "Razorswitch",
+  "攀繞戰甲": "Trellised Armor",
+  "攏煙之球": "Smoked Sphere",
+  "攻城十字弓": "Siege Crossbow",
+  "攻城弩": "Siege Crossbow",
+  "攻城短弓": "Short Siege Bow",
+  "攻城長弓": "Large Siege Bow",
+  "放血者": "Bloodletter",
+  "教化": "Enlightenment",
+  "教宗的智慧": "Que-Hegan's Wisdom",
+  "敲擊喪鐘者": "Knell Striker",
+  "斗盾": "Heater",
+  "斧": "Axe",
+  "斧手": "Hatchet Hands",
+  "斬斧": "Cleaver",
+  "斬鐮": "Thresher",
+  "斬鐵劍": "Espandon",
+  "斬首斧": "Decapitator",
+  "斬骨者之斧": "Boneslayer Blade",
+  "斯寇德的憤怒": "Skullder's Ire",
+  "新月": "Crescent Moon",
+  "新月小盾": "Pelta Lunata",
+  "新生冰寒裂縫": "Renewed Cold Rupture",
+  "新生分筋裂骨": "Renewed Bone Break",
+  "新生天堂裂擊": "Renewed Crack Of The Heavens",
+  "新生漆黑裂口": "Renewed Black Cleft",
+  "新生火焰裂隙": "Renewed Flame Rift",
+  "新生腐敗裂痕": "Renewed Rotting Fissure",
+  "施法系手工戒指": "Caster Ring",
+  "施法系手工手套": "Caster Gloves",
+  "施法系手工武器": "Caster Weapon",
+  "施法系手工盾牌": "Caster Shield",
+  "施法系手工腰帶": "Caster Belt",
+  "施法系手工護甲": "Caster Body",
+  "施法系手工護身符": "Caster Amulet",
+  "施法系手工鞋子": "Caster Boots",
+  "施法系手工頭盔": "Caster Helm",
+  "旋律": "Melody",
+  "旋風盾": "Vortex Shield",
+  "日冕之冠": "Corona",
+  "日耳曼大劍": "Zweihander",
+  "日陽靈獸帽": "Sun Spirit",
+  "旭日東升": "The Rising Sun",
+  "旭日東昇": "The Rising Sun",
+  "普爾": "Pul Rune",
+  "智慧": "Wisdom",
+  "暗光": "Darkglow",
+  "暗影之牙": "Shadowfang",
+  "暗影弓": "Shadow Bow",
+  "暗影鎧甲": "Shadow Plate",
+  "暗視之盔": "Darksight Helm",
+  "暴君之棒": "Tyrant Club",
+  "暴君棍棒": "Tyrant Club",
+  "暴怒面甲": "Fury Visor",
+  "暴雪砲弩": "Buriza-Do Kyanon",
+  "暴風之擊": "Stormstrike",
+  "暴風之盾": "Stormshield",
+  "暴風之結": "Stormlash",
+  "暴風之鞭": "Stormlash",
+  "暴風公會": "Stormguild",
+  "暴風尖刺": "Stormspike",
+  "暴風尖塔": "Stormspire",
+  "暴風眼": "Stormeye",
+  "暴風騎士": "Stormrider",
+  "書爾": "Thul Rune",
+  "曼宋的教誨": "Mang Song's Lesson",
+  "最後希望": "Last Wish",
+  "最後遺願": "Last Wish",
+  "月牙砍刀": "Bardiche",
+  "月精靈護盾": "Luna",
+  "月落": "Moonfall",
+  "木乃伊印記": "Mummified Trophy",
+  "木乃伊首級": "Mummified Trophy",
+  "木棒": "Club",
+  "木節法杖": "Gnarled Staff",
+  "末日": "Doom",
+  "末日使者": "Doombringer",
+  "末日毀滅者": "Doombringer",
+  "杉木之棍": "Cedar Staff",
+  "杉木弓": "Cedar Bow",
+  "杉木法杖": "Cedar Staff",
+  "李奧瑞克王的手骨": "Arm Of King Leoric",
+  "李奧瑞克王的武器": "Arm Of King Leoric",
+  "杜墨菲斯托斯學術": "Ars Dul'Mephistos",
+  "束帶": "Sash",
+  "板甲": "Splint Mail",
+  "柏克之手": "The Hand Of Broc",
+  "查姆": "Cham Rune",
+  "核瞳": "The Oculus",
+  "格利風之眼": "Griffon's Eye",
+  "格林提斯的肉叉": "Skewer Of Krintiz",
+  "格理斯瓦得的銳利": "Griswold's Edge",
+  "格瑞斯華爾德之心": "Griswold's Heart",
+  "格瑞斯華爾德的勇氣": "Griswold's Valor",
+  "格瑞斯華爾德的救贖": "Griswold's Redemption",
+  "格瑞斯華爾德的榮耀": "Griswold's Honor",
+  "格網護甲": "Trellised Armor",
+  "格里斯瓦德之刃": "Griswold's Edge",
+  "格里斯瓦德之心": "Griswold's Heart",
+  "格里斯瓦德的傳奇": "Griswold's Legacy",
+  "格里斯瓦德的勇氣": "Griswold's Valor",
+  "格里斯瓦德的救贖": "Griswold's Redemption",
+  "格里斯瓦德的榮耀": "Griswold's Honor",
+  "格鬥刃": "Quhab",
+  "格鬥剪": "Scissors Quhab",
+  "格鬥剪刃": "Scissors Quhab",
+  "格鬥爪": "Fascia",
+  "桓因的光輝": "Hwanin's Splendor",
+  "桓因的制裁": "Hwanin's Justice",
+  "桓因的威嚴": "Hwanin's Majesty",
+  "桓因的庇佑": "Hwanin's Refuge",
+  "桓因的祝福": "Hwanin's Blessing",
+  "梅希斯密特之劫掠者": "Messerschmidt's Reaver",
+  "梅杜莎的凝視": "Medusa's Gaze",
+  "梅格之歌的教訓": "Mang Song's Lesson",
+  "梅花嘆": "Ume's Lament",
+  "梣木弓": "Ashwood Bow",
+  "棉布甲": "Quilted Armor",
+  "棍杖": "Jo Staff",
+  "棍棒": "Cudgel",
+  "極速靴": "Myrmidon Greaves",
+  "榮光之斧": "Glorious Axe",
+  "榮光斧": "Glorious Axe",
+  "榮耀": "Honor",
+  "榮耀之鍊": "Chains Of Honor",
+  "榮耀尖塔": "Spire Of Honor",
+  "榮耀的尖塔": "Spire Of Honor",
+  "槍斧": "Voulge",
+  "標槍": "Javelin",
+  "樹皮之杖": "Shillelagh",
+  "橡樹之心": "Heart Of The Oak",
+  "檀君的教導": "Dangoon's Teaching",
+  "權冠": "Diadem",
+  "權威": "Authority",
+  "權杖": "Scepter",
+  "次元刃": "Dimensional Blade",
+  "次元法珠": "Dimensional Shard",
+  "次元碎片": "Dimensional Shard",
+  "歇斯底里": "Hysteria",
+  "歐姆": "Ohm Rune",
+  "歐特": "Ort Rune",
+  "正義之手": "Hand Of Justice",
+  "步戰矛": "Pike",
+  "歲月之冠": "Crown Of Ages",
+  "死亡之刀": "Death Cleaver",
+  "死亡之手": "Death's Hand",
+  "死亡之網": "Death's Web",
+  "死亡之觸": "Death's Touch",
+  "死亡之護": "Death's Guard",
+  "死亡之鏟": "Deathspade",
+  "死亡劈斧": "Death Cleaver",
+  "死亡呼吸": "Breath Of The Dying",
+  "死亡尖鑽": "Deathbit",
+  "死亡深度": "Death's Fathom",
+  "死亡的守護": "Death's Guard",
+  "死亡碎片": "Deathbit",
+  "死亡面具": "Death Mask",
+  "死刑之劍": "Executioner Sword",
+  "死神": "Death",
+  "死神喪鐘": "The Reaper's Toll",
+  "死神的喪鐘": "The Reaper's Toll",
+  "死落之火": "Todesfaelle Flamme",
+  "死靈夜翔": "Wraith Flight",
+  "殘酷之杖": "Grim Wand",
+  "殘酷鐮刀": "Grim Scythe",
+  "殘酷頭盔": "Grim Helm",
+  "殭屍頭顱": "Zombie Head",
+  "殺手護盔": "Slayer Guard",
+  "殺手防護面甲": "Slayer Guard",
+  "毀滅投石者": "Doomslinger",
+  "毀滅投索": "Doomslinger",
+  "毀滅者頭盔": "Destroyer Helm",
+  "毒之守禦": "Venom Ward",
+  "毒液怪": "Pus Spitter",
+  "毒液牢房": "Venom Ward",
+  "毒牙": "Venom",
+  "比爾長刀": "Bill",
+  "水上飄": "Waterwalk",
+  "水手刀": "Cutlass",
+  "水晶劍": "Crystal Sword",
+  "水晶天球": "Crystalline Globe",
+  "水魔陷阱": "Kelpie Snare",
+  "永恆": "Eternity",
+  "永恆邊緣": "Ethereal Edge",
+  "沌頓": "Chaos",
+  "沙撒璧的懺悔之鈷": "Sazabi's Cobalt Redeemer",
+  "沙撒璧的精神之鞘": "Sazabi's Mental Sheath",
+  "沙撒璧的鬼魂釋放者": "Sazabi's Ghost Liberator",
+  "沙暴之旅": "Sandstorm Trek",
+  "沙薩比的崇高禮讚": "Sazabi's Grand Tribute",
+  "沙薩比的救贖鈷劍": "Sazabi's Cobalt Redeemer",
+  "沙薩比的精神護罩": "Sazabi's Mental Sheath",
+  "沙薩比的解靈框體": "Sazabi's Ghost Liberator",
+  "治癒": "Cure",
+  "法卡塔劍": "Falcata",
+  "法師之拳": "Magefist",
+  "法師鎧甲": "Mage Plate",
+  "法杖": "Wand",
+  "法爾": "Fal Rune",
+  "法蘭西飛斧": "Francisca",
+  "法蘭飛斧": "Francisca",
+  "波刃匕首": "Kris",
+  "波形刀": "Kris",
+  "波斯彎刀": "Shamshir",
+  "泰坦的復仇": "Titan's Revenge",
+  "泰比克的光榮": "Taebaek's Glory",
+  "泰瑞爾之力": "Tyrael's Might",
+  "泰瑞爾的力量": "Tyrael's Might",
+  "洗鍊法杖": "Polished Wand",
+  "洞穴巨魔巢穴骨盾": "Troll Nest",
+  "洞穴巨魔腰帶": "Troll Belt",
+  "活動頭盔": "Armet",
+  "流亡": "Exile",
+  "流星鎚": "Morning Star",
+  "海妖殼甲": "Kraken Shell",
+  "海怪之殼": "Kraken Shell",
+  "海拉柏得的國度": "Halaberd's Reign",
+  "海拉柏德的國度": "Halaberd's Reign",
+  "海沙魯的鐵扣": "Hsarus' Iron Stay",
+  "海沙魯的鐵拳": "Hsarus' Iron Fist",
+  "海沙魯的鐵禦": "Hsarus' Defense",
+  "海沙魯的鐵跟": "Hsarus' Iron Heel",
+  "海爾": "Hel Rune",
+  "海王利維亞桑": "Leviathan",
+  "海蛇之王": "Serpent Lord",
+  "海蛇皮甲": "Serpentskin Armor",
+  "海鷗": "Gull",
+  "淚之臀": "Tearhaunch",
+  "淨化之杖": "Petrified Wand",
+  "混沌": "Chaos",
+  "混沌戰甲": "Chaos Armor",
+  "渡鳥之爪": "Raven Claw",
+  "渡鴉喙": "Bec-De-Corbin",
+  "渦旋盾": "Vortex Shield",
+  "渦流水晶": "Swirling Crystal",
+  "溫暖骷髏": "Wormskull",
+  "溫達的全靈": "Ondal's Almighty",
+  "溫達的智慧": "Ondal's Wisdom",
+  "滅絕": "Annihilus",
+  "漆甲": "Lacquered Plate",
+  "漆護鎧甲": "Lacquered Plate",
+  "漩渦": "Maelstrom",
+  "漩渦法珠": "Vortex Orb",
+  "漩渦球": "Vortex Orb",
+  "潛伏冰寒裂縫": "Latent Cold Rupture",
+  "潛伏分筋裂骨": "Latent Bone Break",
+  "潛伏天堂裂擊": "Latent Crack Of The Heavens",
+  "潛伏漆黑裂口": "Latent Black Cleft",
+  "潛伏火焰裂隙": "Latent Flame Rift",
+  "潛伏腐敗裂痕": "Latent Rotting Fissure",
+  "火嚎": "Flamebellow",
+  "火焰": "Flickering Flame",
+  "火焰號叫": "Flamebellow",
+  "火爐": "Hearth",
+  "火精靈": "The Salamander",
+  "火花之甲": "Sparking Mail",
+  "火蜥蜴之爪": "Firelizard's Talons",
+  "火鉤之傷": "Rakescar",
+  "灰暮之形": "Greyform",
+  "灰暮罩衣": "Dusk Shroud",
+  "灰木之弓": "Ashwood Bow",
+  "炎魔之刃": "Balrog Blade",
+  "炎魔皮板甲": "Balrog Skin",
+  "炎魔長矛": "Balrog Spear",
+  "炫彩之怒": "Chromatic Ire",
+  "烏姆": "Um Rune",
+  "烏米的慟哭": "Ume's Lament",
+  "烏鴉之王": "Ravenlore",
+  "烏鴉之霜": "Raven Frost",
+  "烙印": "Brand",
+  "無序墜盒": "Entropy Locket",
+  "無形之刃": "Ethereal Edge",
+  "無盡冰雹": "Endlesshail",
+  "無盡的冰雹": "Endlesshail",
+  "無眼之牆": "Wall Of The Eyeless",
+  "無眼者之牆": "Wall Of The Eyeless",
+  "無限": "Infinity",
+  "無頰頭盔": "Casque",
+  "焦木魔杖": "Burnt Wand",
+  "焦灼書冊": "Burnt Text",
+  "焰形劍": "Flamberge",
+  "煉獄器具": "Infernal Tools",
+  "煉獄火炬": "Infernal Torch",
+  "煉獄符印": "Infernal Sign",
+  "煉獄頭骨": "Infernal Cranium",
+  "煙霧": "Smoke",
+  "煩惱詩集": "Woestave",
+  "熔岩之痛": "Lava Gout",
+  "熔岩角羊": "Lava Gout",
+  "熱情": "Passion",
+  "熱靴刺": "Hotspur",
+  "熾天使之韻": "Seraph's Hymn",
+  "熾天使法杖": "Seraph Rod",
+  "熾天使節杖": "Seraph Rod",
+  "燒焦之杖": "Burnt Wand",
+  "燦爛": "Splendor",
+  "爆裂咆哮": "Blastbark",
+  "爆裂的吠叫": "Blastbark",
+  "爪": "Claws",
+  "牙齒": "The Gnasher",
+  "牛王之皮": "Cow King's Hide",
+  "牛王之角": "Cow King's Horns",
+  "牛王之蹄": "Cow King's Hooves",
+  "牛王皮甲": "Cow King's Leathers",
+  "牛頭怪": "The Minotaur",
+  "牛魔王之皮": "Cow King's Hide",
+  "牛魔王之角": "Cow King's Horns",
+  "牛魔王之蹄": "Cow King's Hooves",
+  "物神印記": "Fetish Trophy",
+  "特大咒符": "Grand Charm",
+  "特爾": "Tir Rune",
+  "特粗鐵釘": "Stoutnail",
+  "特迪斯法雷‧芙法米": "Todesfaelle Flamme",
+  "狂巫之弦": "Witchwild String",
+  "狂怒": "Fury",
+  "狂怒面具": "Rage Mask",
+  "狂怒面具刺盔": "Rage Mask",
+  "狂戰士手斧": "Berserker's Hatchet",
+  "狂戰士斧": "Berserker Axe",
+  "狂戰士的手斧": "Berserker's Hatchet",
+  "狂戰士的武裝": "Berserker's Arsenal",
+  "狂戰士的鎖子甲": "Berserker's Hauberk",
+  "狂戰士的頭戴": "Berserker's Headgear",
+  "狂戰士鎖子甲": "Berserker's Hauberk",
+  "狂戰士頭盔": "Berserker's Headgear",
+  "狂戰斧": "Berserker Axe",
+  "狂野之弦": "Witchwild String",
+  "狼嚎": "Wolfhowl",
+  "狼牙棒": "Spiked Club",
+  "狼頭": "Wolf Head",
+  "狼頭獸帽": "Wolf Head",
+  "猙獰奪魂者": "The Grim Reaper",
+  "猛狼頭盔": "Alpha Helm",
+  "猛禽斧": "Feral Axe",
+  "猛禽爪": "Feral Claws",
+  "獅子心": "Lionheart",
+  "獅牙頭盔": "Lion Helm",
+  "獅頭尖盔": "Lion Helm",
+  "獅鷲之眼": "Griffon's Eye",
+  "獅鷲獸頭帶": "Griffon Headdress",
+  "獅鷲獸頭飾": "Griffon Headdress",
+  "獵人的偽裝": "Hunter's Guise",
+  "獵人面罩": "Hunter's Guise",
+  "獵弓": "Hunter's Bow",
+  "獵頭人的榮耀": "Head Hunter's Glory",
+  "獵頭者的榮耀": "Head Hunter's Glory",
+  "獵鷹面具": "Falcon Mask",
+  "獵鹿弓": "Stag Bow",
+  "玉匕": "The Jade Tan Do",
+  "王冠": "Crown",
+  "王者的慈悲": "King's Grace",
+  "珠寶": "Jewel",
+  "理性之聲": "Voice Of Reason",
+  "瑞克塞斯的利刃": "Rixot's Keen",
+  "瑞克撒特的輓歌": "Rixot's Keen",
+  "瑞韓德之劍": "Zweihander",
+  "瑟": "Sur Rune",
+  "瑪哈姆橡木古董": "The Mahim-Oak Curio",
+  "瑪那得的治療": "Manald Heal",
+  "瑪那德的治療": "Manald Heal",
+  "環甲": "Ring Mail",
+  "甲殼鎧鱗甲": "Loricated Mail",
+  "男性之弓": "Stag Bow",
+  "畢格因的軟帽": "Biggin's Bonnet",
+  "異能法珠": "Eldritch Orb",
+  "疫病帶原者": "Plague Bearer",
+  "痛苦之槌": "The Gavel Of Pain",
+  "痛苦木槌": "The Gavel Of Pain",
+  "瘟疫": "Plague",
+  "白色": "White",
+  "白骨": "Bone",
+  "白骨盾牌": "Bone Shield",
+  "白骨陰影": "Boneshade",
+  "白骨頭盔": "Bone Helm",
+  "百夫長": "The Centurion",
+  "皇冠": "Crown",
+  "皇冠之盾": "Crown Shield",
+  "皇家盾": "Royal Shield",
+  "皇家盾牌": "Royal Shield",
+  "皮手套": "Leather Gloves",
+  "皮爾‧通把‧考恩特": "Pierre Tombale Couant",
+  "皮甲": "Leather Armor",
+  "皮革手套": "Leather Gloves",
+  "皮革甲": "Leather Armor",
+  "皮靴": "Boots",
+  "盜墓者": "Tomb Reaver",
+  "盜竊顱盔": "Stealskull",
+  "盜賊皇冠": "Crown Of Thieves",
+  "監視者之骨": "Overseer Skull",
+  "盧姆": "Lum Rune",
+  "眨眼蝙蝠的外觀": "Blinkbat's Form",
+  "眼光": "Insight",
+  "眼球": "The Oculus",
+  "督軍顱骨": "Overseer Skull",
+  "矛": "Pike",
+  "矛叉": "Fuscina",
+  "知識": "Lore",
+  "短刀": "Blade",
+  "短巨戰弓": "Short War Bow",
+  "短弓": "Short Bow",
+  "短戰戟": "Hurlbat",
+  "短戰鬥弓": "Short Battle Bow",
+  "短攻城弓": "Short Siege Bow",
+  "短斧": "Hatchet",
+  "短杖": "Short Staff",
+  "短棍": "Short Staff",
+  "短棒": "Club",
+  "短矛": "Short Spear",
+  "短鏢槍": "Pilum",
+  "矮人之星": "Dwarf Star",
+  "石之毛": "Rockfleece",
+  "石像鬼之噬": "Gargoyle's Bite",
+  "石像鬼之首": "Gargoyle Head",
+  "石像鬼頭顱": "Gargoyle Head",
+  "石塊": "Stone",
+  "石弓": "Arbalest",
+  "石木魔杖": "Petrified Wand",
+  "石烏鴉": "Stoneraven",
+  "石禦": "Rockstopper",
+  "石羊毛": "Rockfleece",
+  "石鴉": "Stoneraven",
+  "砲弩": "Ballista",
+  "破隱法杖": "Unearthed Wand",
+  "破骨": "Bonehew",
+  "硬皮甲": "Hard Leather Armor",
+  "碎擊釘錘": "Crushflange",
+  "碎片貪婪者": "Gimmershred",
+  "碎石者": "Stone Crusher",
+  "碎腦鎚": "The Cranium Basher",
+  "碎鋼": "Steelrend",
+  "碎骨": "Bonesnap",
+  "碎骨者之刃": "Boneslayer Blade",
+  "碧玉爪": "Jade Talon",
+  "碧藍怒火": "Azurewrath",
+  "社角久子": "Kuko Shakaku",
+  "祖父": "The Grandfather",
+  "祝福之光之手": "Hand Of Blessed Light",
+  "神使之杖": "Caduceus",
+  "神使權杖": "Caduceus",
+  "神屬權杖": "Divine Scepter",
+  "神秘之劍": "Cryptic Sword",
+  "神秘之斧": "Cryptic Axe",
+  "神秘寶典": "Occult Codex",
+  "神秘秘典": "Occult Tome",
+  "神聖天球": "Sacred Globe",
+  "神聖小盾": "Sacred Targe",
+  "神聖戰甲": "Sacred Armor",
+  "神聖盔甲": "Sacred Armor",
+  "神聖羽毛頭帶": "Sacred Feathers",
+  "神聖輕圓盾": "Sacred Rondache",
+  "神聖雷擊": "Holy Thunder",
+  "神話": "Myth",
+  "祭典之弓": "Ceremonial Bow",
+  "祭典之矛": "Ceremonial Spear",
+  "祭典之鏢槍": "Ceremonial Javelin",
+  "祭典之長矛": "Ceremonial Pike",
+  "祭司印記": "Hierophant Trophy",
+  "祭司首級": "Hierophant Trophy",
+  "禍根之灰": "Bane Ash",
+  "禦塔盾": "Aegis",
+  "科": "Ko Rune",
+  "秘儀之劍": "Mythical Sword",
+  "秘儀劍": "Mythical Sword",
+  "秘典": "Tome",
+  "秘銀小刀": "Mithril Point",
+  "秘銀尖刀": "Mithril Point",
+  "秘銀腰帶": "Mithril Coil",
+  "空間之刃": "Dimensional Blade",
+  "穿刺者": "The Impaler",
+  "穿擊剪刃": "Scissors Suwayyah",
+  "穿擊拳刃": "Suwayyah",
+  "突擊盔": "Assault Helmet",
+  "突擊頭盔": "Assault Helmet",
+  "窄刃匕首": "Stiletto",
+  "符文之弓": "Rune Bow",
+  "符文之棍": "Rune Staff",
+  "符文劍": "Rune Sword",
+  "符文大師": "Rune Master",
+  "符文弓": "Rune Bow",
+  "符文權杖": "Rune Scepter",
+  "符文法杖": "Rune Staff",
+  "符紋爪": "Runic Talons",
+  "箭止": "Shaftstop",
+  "節瘤木杖": "Shillelagh",
+  "米拉伯佳之杖": "Milabrega's Rod",
+  "米拉伯佳之球": "Milabrega's Orb",
+  "米拉伯佳之袍": "Milabrega's Robe",
+  "米拉伯佳外袍": "Milabrega's Robe",
+  "米拉伯佳戰裝": "Milabrega's Regalia",
+  "米拉伯佳權冠": "Milabrega's Diadem",
+  "米拉伯佳的王冠": "Milabrega's Diadem",
+  "米拉伯佳節杖": "Milabrega's Rod",
+  "粗野之冠": "Peasant Crown",
+  "粗齒大鋸": "Ripsaw",
+  "精神": "Spirit",
+  "精神錯亂": "Delirium",
+  "紋章盾": "Heraldic Shield",
+  "納卡": "Naga",
+  "紗織": "Silkweave",
+  "索爾": "Sol Rune",
+  "紫杉之杖": "Yew Wand",
+  "紫杉魔杖": "Yew Wand",
+  "組合弓": "Composite Bow",
+  "絕命": "Widowmaker",
+  "絕秘劍": "Cryptic Sword",
+  "絕秘斧": "Cryptic Axe",
+  "統御者法杖": "Archon Staff",
+  "統御者鎧甲": "Archon Plate",
+  "統治者大盾": "Monarch",
+  "維斯爾坦特": "Visceratuant",
+  "維爾登戈的心結": "Verdungo's Hearty Cord",
+  "維達拉之倒刺": "Vidala's Barb",
+  "維達拉的倒刺": "Vidala's Barb",
+  "維達拉的圈套": "Vidala's Snare",
+  "維達拉的突襲": "Vidala's Ambush",
+  "維達拉的足距": "Vidala's Fetlock",
+  "維達拉的距毛": "Vidala's Fetlock",
+  "維達拉的配備": "Vidala's Rig",
+  "維達拉的陷阱": "Vidala's Snare",
+  "綱要": "Compendium",
+  "綴鱗戰甲": "Loricated Mail",
+  "線羊毛皮甲": "Wire Fleece",
+  "織網之靴": "Mesh Boots",
+  "織網戰甲": "Mesh Armor",
+  "織網腰帶": "Mesh Belt",
+  "罪罰連枷": "Scourge",
+  "羅": "Lo Rune",
+  "羅佳柏斧": "Lochaber Axe",
+  "羅瑟戰甲": "Russet Armor",
+  "羅達門特之球體": "Radament's Sphere",
+  "羅達門特的領域": "Radament's Sphere",
+  "羅馬短劍": "Gladius",
+  "翼刀": "Winged Knife",
+  "翼斧": "Winged Axe",
+  "翼盔": "Winged Helm",
+  "翼魚叉": "Winged Harpoon",
+  "耙痕": "Rakescar",
+  "聖光之手": "Hand Of Blessed Light",
+  "聖堂": "Sanctuary",
+  "聖堂武士外袍": "Templar Coat",
+  "聖堂武士的力量": "Templar's Might",
+  "聖堂騎士之力": "Templar's Might",
+  "聖堂騎士戰甲": "Templar Coat",
+  "聖恩權杖": "Divine Scepter",
+  "聖教軍護手": "Crusader Gauntlets",
+  "聖教軍長弓": "Crusader Bow",
+  "聖水噴杖": "Holy Water Sprinkler",
+  "聖水禮杖": "Holy Water Sprinkler",
+  "聖甲蟲殼皮甲": "Scarab Husk",
+  "聖甲蟲殼皮靴": "Scarabshell Boots",
+  "聖甲蟲殼靴": "Scarabshell Boots",
+  "聖羽頭飾": "Sacred Feathers",
+  "聲韻": "Rhyme",
+  "肋骨粉碎者": "Ribcracker",
+  "肩胛骨": "Bladebone",
+  "背信": "Treachery",
+  "胡索丹‧依弗": "Husoldal Evo",
+  "胸甲": "Breast Plate",
+  "胸鎧": "Breast Plate",
+  "腐肉之風": "Carrion Wind",
+  "腐蝕的把手": "Rusthandle",
+  "腕刃": "Wrist Blade",
+  "腕刺": "Wrist Spike",
+  "腕劍": "Wrist Sword",
+  "腦袋": "Brainhew",
+  "腰刀": "Cestus",
+  "腰帶": "Belt",
+  "膿毒之刺": "Ichorsting",
+  "自殘枝椏": "Suicide Branch",
+  "自殺支系": "Suicide Branch",
+  "自然祥和": "Nature's Peace",
+  "舊書": "Old Book",
+  "艾利屈之眼": "The Eye Of Etlich",
+  "艾利曲之眼": "The Eye Of Etlich",
+  "艾德": "Eld Rune",
+  "艾文之盾": "Aerin Shield",
+  "艾斯屈塔的憤怒": "Eschuta's Temper",
+  "艾斯屈塔的脾氣": "Eschuta's Temper",
+  "艾爾": "El Rune",
+  "艾爾多的冷酷凝視": "Aldur's Stony Gaze",
+  "艾爾多的守衛": "Aldur's Watchtower",
+  "艾爾多的律動": "Aldur's Rhythm",
+  "艾爾多的成長": "Aldur's Advance",
+  "艾爾多的欺暪": "Aldur's Deception",
+  "艾爾多的欺瞞": "Aldur's Deception",
+  "艾爾多的進擊": "Aldur's Advance",
+  "艾迪亞布羅斯學術": "Ars Al'Diabolos",
+  "荊棘手套": "Bramble Mitts",
+  "荊棘連指手套": "Bramble Mitts",
+  "莊嚴權杖": "Grand Scepter",
+  "莊嚴王冠": "Grand Crown",
+  "華寧的保護": "Hwanin's Refuge",
+  "華寧的光輝": "Hwanin's Splendor",
+  "華寧的正義": "Hwanin's Justice",
+  "華寧的祝福": "Hwanin's Blessing",
+  "華麗戰甲": "Ornate Plate",
+  "萊坎德的側翼": "Lycander's Flank",
+  "萊坎德的準頭": "Lycander's Aim",
+  "落月": "Moonfall",
+  "葉子": "Leaf",
+  "著魔": "Obsession",
+  "著魔綱要": "Possessed Compendium",
+  "著魔魔典": "Possessed Grimoire",
+  "蒼白": "White",
+  "薄暮外觀": "Greyform",
+  "薩德": "Zod Rune",
+  "薩拉森的機會": "Saracen's Chance",
+  "藍姆": "Lem Rune",
+  "蘭古布利薩": "Langer Briser",
+  "蘭格‧布里瑟": "Langer Briser",
+  "蘿格之弓": "Rogue's Bow",
+  "處刑劍": "Executioner Sword",
+  "虛偽之刃": "Shamshir",
+  "虛無": "Void",
+  "虛無之": "Void",
+  "虹彩裂片": "Spectral Shard",
+  "蛇神守護者": "Guardian Naga",
+  "蛇索": "Snakecord",
+  "蛇魔叉": "Viperfork",
+  "蛇魔女十字弓": "Gorgon Crossbow",
+  "蛇魔弩": "Gorgon Crossbow",
+  "蛇魔法師之皮": "Skin Of The Vipermagi",
+  "蛋白石脈": "Opalvein",
+  "蛛網束帶": "Spiderweb Sash",
+  "蛛網腰帶": "Spiderweb Sash",
+  "蜘蛛之網": "Arachnid Mesh",
+  "蜘蛛弓": "Spider Bow",
+  "蝕肉騎士": "Gore Rider",
+  "蝮蛇叉": "Viperfork",
+  "螺旋頭盔": "Spired Helm",
+  "蠕蟲頭骨": "Wormskull",
+  "蠻族頭盔": "Savage Helmet",
+  "蠻獸爪": "Feral Claws",
+  "蠻野斧": "Feral Axe",
+  "血之偷": "Bloodthief",
+  "血升": "Bloodrise",
+  "血塊之鏟": "Goreshovel",
+  "血拳": "Bloodfist",
+  "血昇": "Bloodrise",
+  "血書": "Bloodletter",
+  "血月": "Bloodmoon",
+  "血樹殘株": "Bloodtree Stump",
+  "血王之骨": "Bloodlord Skull",
+  "血系靈獸帽": "Blood Spirit",
+  "血紅新月": "Blood Crescent",
+  "血肉吞食者": "Husoldal Evo",
+  "血肉撕裂者": "Fleshrender",
+  "血肉裁決者": "Fleshrender",
+  "血腥之靈": "Blood Spirit",
+  "血腥系手工戒指": "Blood Ring",
+  "血腥系手工手套": "Blood Gloves",
+  "血腥系手工武器": "Blood Weapon",
+  "血腥系手工盾牌": "Blood Shield",
+  "血腥系手工腰帶": "Blood Belt",
+  "血腥系手工護甲": "Blood Body",
+  "血腥系手工護身符": "Blood Amulet",
+  "血腥系手工鞋子": "Blood Boots",
+  "血腥系手工頭盔": "Blood Helm",
+  "血腳": "Gorefoot",
+  "血誓碎片": "Bloodpact Shard",
+  "血賊": "Bloodthief",
+  "血鍬": "Goreshovel",
+  "血鴉之擊": "Blood Raven's Charge",
+  "血鴉的襲擊": "Blood Raven's Charge",
+  "衣洛的火炬": "Torch Of Iro",
+  "被遺忘的書冊": "Forgotten Volume",
+  "裂縫": "Rift",
+  "裂肉者": "Fleshripper",
+  "裂脊者": "Spineripper",
+  "裂臀": "Tearhaunch",
+  "裂隙": "Rift",
+  "複合弓": "Composite Bow",
+  "褻瀆綱要": "Blasphemous Compendium",
+  "褻瀆魔典": "Blasphemous Grimoire",
+  "西剛之面甲": "Sigon's Visor",
+  "西剛的全套鋼甲": "Sigon's Complete Steel",
+  "西剛的守護": "Sigon's Guard",
+  "西剛的庇護": "Sigon's Shelter",
+  "西剛的披肩": "Sigon's Wrap",
+  "西剛的挑戰": "Sigon's Gage",
+  "西剛的木鞋": "Sigon's Sabot",
+  "西剛的硬靴": "Sigon's Sabot",
+  "西剛的裹腰": "Sigon's Wrap",
+  "西剛的護面": "Sigon's Visor",
+  "西剛的遮蔽": "Sigon's Shelter",
+  "覆頰盔": "Armet",
+  "角盔": "Horned Helm",
+  "解慕漱的堅決": "Haemosu's Adamant",
+  "解繃者頭顱": "Unraveller Head",
+  "記憶": "Memory",
+  "詩寇蒂的憤怒": "Skullder's Ire",
+  "詩歌匕首": "Rondel",
+  "誓約": "Oath",
+  "誦唸珠": "Telling Of Beads",
+  "諧角之冠": "Harlequin Crest",
+  "諸葛弩": "Chu-Ko-Nu",
+  "諾德的蝕肉藥": "Nord's Tenderizer",
+  "諾科藍遺物": "Nokozan Relic",
+  "謎團": "Enigma",
+  "謝夫特斯坦布": "Shaftstop",
+  "謹慎": "Prudence",
+  "謹重": "Prudence",
+  "警戒之牆": "Lidless Wall",
+  "護胸甲": "Cuirass",
+  "護脛": "Greaves",
+  "護臂": "Vambraces",
+  "護身符": "Amulet",
+  "變化": "Metamorphosis",
+  "豪傑大劍": "Champion Sword",
+  "豪傑斧": "Champion Axe",
+  "貓眼": "The Cat's Eye",
+  "貝": "Ber Rune",
+  "貝弗提的紀念": "Bverrit Keep",
+  "貝恩的權威": "Bane's Authority",
+  "貝恩的立誓者": "Bane's Oathmaker",
+  "貝恩的靈膚": "Bane's Wraithskin",
+  "貝西爾的漩渦": "Baezil's Vortex",
+  "財富": "Wealth",
+  "費屈瑪之斧": "Axe Of Fechmar",
+  "赤褐戰甲": "Russet Armor",
+  "赫拉森的傳承": "Horazon's Legacy",
+  "赫拉森的掌控": "Horazon's Hold",
+  "赫拉森的秘密": "Horazon's Secrets",
+  "赫拉森的統治": "Horazon's Dominion",
+  "赫拉森的面容": "Horazon's Countenance",
+  "軍刀": "Sabre",
+  "軍帽": "Shako",
+  "軍斧": "Military Axe",
+  "軍用鍬": "Military Pick",
+  "軍用鎬": "Military Pick",
+  "輕便頭盔": "Sallet",
+  "輕十字弓": "Light Crossbow",
+  "輕圓盾": "Rondache",
+  "輕型裝甲": "Light Plate",
+  "輕型護手": "Light Gauntlets",
+  "輕型金屬靴": "Light Plated Boots",
+  "輕型鎧甲": "Light Plate",
+  "輕型鐵手套": "Light Gauntlets",
+  "輕弩": "Light Crossbow",
+  "輕扣帶": "Light Belt",
+  "輕斧": "Tomahawk",
+  "輕盔": "Basinet",
+  "輕盾": "Kite Shield",
+  "輕腰帶": "Light Belt",
+  "輕鋼盔": "Basinet",
+  "輕鎧靴": "Light Plated Boots",
+  "輕風": "Wind",
+  "農夫王冠": "Peasant Crown",
+  "近身刃": "Suwayyah",
+  "近身剪": "Scissors Suwayyah",
+  "迪勒瑞姆": "Delirium",
+  "迪格勒": "The Diggler",
+  "迪馬克之劈砍": "Dimoak's Hew",
+  "迪馬克的砍刀": "Dimoak's Hew",
+  "述說之珠": "Telling Of Beads",
+  "迷霧": "Mist",
+  "連射十字弓": "Repeating Crossbow",
+  "連弩": "Repeating Crossbow",
+  "連扣戰甲": "Linked Mail",
+  "連枷": "Flail",
+  "運氣守護": "Chance Guards",
+  "達西安長刀": "Dacian Falx",
+  "遵從": "Obedience",
+  "邊緣": "Edge",
+  "那伽守護者": "Guardian Naga",
+  "那伽斧": "Naga",
+  "那夫": "Nef Rune",
+  "都瑞爾之殼": "Duriel's Shell",
+  "都瑞爾的殼": "Duriel's Shell",
+  "酋長": "The Chieftain",
+  "重劍": "Bastard Sword",
+  "重十字弓": "Heavy Crossbow",
+  "重型手鐲": "Heavy Bracers",
+  "重型標槍": "Great Pilum",
+  "重型護腕": "Heavy Bracers",
+  "重弩": "Heavy Crossbow",
+  "重手套": "Heavy Gloves",
+  "重扣帶": "Heavy Belt",
+  "重擊系手工戒指": "Hit Power Ring",
+  "重擊系手工手套": "Hit Power Gloves",
+  "重擊系手工武器": "Hit Power Weapon",
+  "重擊系手工盾牌": "Hit Power Shield",
+  "重擊系手工腰帶": "Hit Power Belt",
+  "重擊系手工護甲": "Hit Power Body",
+  "重擊系手工護身符": "Hit Power Amulet",
+  "重擊系手工鞋子": "Hit Power Boots",
+  "重擊系手工頭盔": "Hit Power Helm",
+  "重斧": "Large Axe",
+  "重盔": "Great Helm",
+  "重鎚": "Maul",
+  "重靴": "Heavy Boots",
+  "野戰鎧甲": "Field Plate",
+  "野獸": "Beast",
+  "野薔薇": "Bramble",
+  "金屬扣帶": "Plated Belt",
+  "金屬網格": "Metalgrid",
+  "金擊之拱": "Goldstrike Arch",
+  "金擊圓弧": "Goldstrike Arch",
+  "金瑟的裂縫": "Ginther's Rift",
+  "金瑟的裂隙": "Ginther's Rift",
+  "金紋盾": "Gilded Shield",
+  "金色包袱": "Goldwrap",
+  "金麥爾的錐子": "Kinemil's Awl",
+  "金麥爾的鑽錐": "Kinemil's Awl",
+  "釘鎚": "Mace",
+  "釘頭錘": "Mace",
+  "釘頭鎚": "Morning Star",
+  "鉛烏鴉": "Leadcrow",
+  "鉤鐮槍": "Voulge",
+  "銀刃斧": "Silver-Edged Axe",
+  "銳利之斧": "Thresher",
+  "銳匕": "Poignard",
+  "銳弓": "Edge Bow",
+  "銳矛": "Simbilan",
+  "銳矛標槍": "Simbilan",
+  "鋒利扣帶": "Bladebuckle",
+  "鋒銳之弓": "Edge Bow",
+  "鋸齒流星鎚": "Jagged Star",
+  "鋸齒釘頭鎚": "Jagged Star",
+  "鋼弩": "Arbalest",
+  "鋼影": "Steel Shade",
+  "鋼線毛皮甲": "Wire Fleece",
+  "鋼鐵": "Steel",
+  "鋼鐵之柱": "Steel Pillar",
+  "鋼鐵獸皮": "Iron Pelt",
+  "鋼鐵甲殼": "Steel Carapace",
+  "鋼鐵衝擊": "Steelclash",
+  "鋼鐵護手": "Gauntlets",
+  "鋼鐵鎧甲": "Steel Carapace",
+  "鋼鐵面紗": "Veil Of Steel",
+  "鋼鐵魔咒": "Spellsteel",
+  "鍊扣戰甲": "Linked Mail",
+  "鍊甲手套": "Chain Gloves",
+  "鎖子甲": "Chain Mail",
+  "鎖環甲": "Ring Mail",
+  "鎖鍊手套": "Chain Gloves",
+  "鎖鍊甲": "Chain Mail",
+  "鎖鍊靴": "Chain Boots",
+  "鎖鱗戰甲": "Tigulated Mail",
+  "鎧甲": "Plate Mail",
+  "鎧甲腰帶": "Plated Belt",
+  "鏡化靴": "Mirrored Boots",
+  "鏽蝕把手": "Rusthandle",
+  "鐘乳石之杖": "Stalagmite",
+  "鐘乳石杖": "Stalagmite",
+  "鐮刀": "Scythe",
+  "鐵刺棒": "Steelgoad",
+  "鐵手套": "Gauntlets",
+  "鐵柱": "Steel Pillar",
+  "鐵檢棒": "The Iron Jang Bong",
+  "鐵皮鞭": "Knout",
+  "鐵石": "Ironstone",
+  "鐵網戰甲": "Mesh Armor",
+  "鐵網腰帶": "Mesh Belt",
+  "鐵網靴": "Mesh Boots",
+  "鐵製大鎚": "Steeldriver",
+  "鐵長棒": "The Iron Jang Bong",
+  "鑲嵌甲": "Studded Leather",
+  "鑲釘皮甲": "Studded Leather",
+  "鑽石弓": "Diamond Bow",
+  "鑽石鎖子甲": "Diamond Mail",
+  "鑽石鎖甲": "Diamond Mail",
+  "長串之耳": "String Of Ears",
+  "長刃槍": "Glaive",
+  "長劍": "Long Sword",
+  "長匕首": "Dirk",
+  "長巨戰弓": "Long War Bow",
+  "長弓": "Long Bow",
+  "長戟": "Halberd",
+  "長戰斧": "Tabar",
+  "長戰鬥弓": "Long Battle Bow",
+  "長攻城弓": "Large Siege Bow",
+  "長杖": "Long Staff",
+  "長柄戰斧": "Poleaxe",
+  "長柄戰鎚": "Martel De Fer",
+  "長柄斧": "Poleaxe",
+  "長柄鍥": "Bill",
+  "長槍": "Lance",
+  "長槍守衛": "Lance Guard",
+  "長槍警衛": "Lance Guard",
+  "長標槍": "Pilum",
+  "長牙劍": "Tusk Sword",
+  "長矛": "Spear",
+  "長老之杖": "Elder Staff",
+  "長者法杖": "Elder Staff",
+  "門徒": "The Disciple",
+  "閃爍火焰": "Flickering Flame",
+  "閃耀之球": "Sparkling Ball",
+  "閃耀的鐮刀": "Gleamscythe",
+  "閃耀鐮刀": "Gleamscythe",
+  "閃蝠之軀": "Blinkbat's Form",
+  "闇族碎滅者": "Dark Clan Crusher",
+  "闊刃大劍": "Claymore",
+  "闊劍": "Broad Sword",
+  "闊斧": "Broad Axe",
+  "闊身短劍": "Cinquedeas",
+  "闊針長矛": "Spiculum",
+  "闊頭槍": "Partizan",
+  "防寒圓盾": "Heater",
+  "防禦盾": "Defender",
+  "防禦者的火焰": "Defender's Fire",
+  "防禦者的膽汁": "Defender's Bile",
+  "防腐之首": "Preserved Head",
+  "防腐頭顱": "Preserved Head",
+  "防護系手工戒指": "Safety Ring",
+  "防護系手工手套": "Safety Gloves",
+  "防護系手工武器": "Safety Weapon",
+  "防護系手工盾牌": "Safety Shield",
+  "防護系手工腰帶": "Safety Belt",
+  "防護系手工護甲": "Safety Body",
+  "防護系手工護身符": "Safety Amulet",
+  "防護系手工鞋子": "Safety Boots",
+  "防護系手工頭盔": "Safety Helm",
+  "防護者盾牌": "Protector Shield",
+  "阿凱尼的榮耀": "Arkaine's Valor",
+  "阿卡娜的死亡之杖": "Arcanna's Deathwand",
+  "阿卡娜的符印": "Arcanna's Sign",
+  "阿卡娜的符號": "Arcanna's Sign",
+  "阿卡娜的血肉": "Arcanna's Flesh",
+  "阿卡娜的詭計": "Arcanna's Tricks",
+  "阿卡娜的頭": "Arcanna's Head",
+  "阿卡拉圓盾": "Akaran Targe",
+  "阿卡拉輕圓盾": "Akaran Rondache",
+  "阿爾瑪‧尼格拉": "Alma Negra",
+  "阿爾發頭盔": "Alpha Helm",
+  "阿里巴巴之刃": "Blade Of Ali Baba",
+  "降雨": "Rain",
+  "陰影圓盤": "Umbral Disk",
+  "陰影弓": "Shadow Bow",
+  "陰影鎧甲": "Shadow Plate",
+  "陰影陷阱": "Gloom's Trap",
+  "陰森盾牌": "Grim Shield",
+  "陰森鐮刀": "Grim Scythe",
+  "陰森頭盔": "Grim Helm",
+  "陰森魔杖": "Grim Wand",
+  "隨侍之骨": "Minion Skull",
+  "隱密": "Stealth",
+  "隱門徒": "Dark Adherent",
+  "雄偉權杖": "Grand Scepter",
+  "雅典娜之怒": "Athena's Wrath",
+  "雅典娜的忿怒": "Athena's Wrath",
+  "雅該長矛": "Lance Of Yaggai",
+  "雕紋戰甲": "Embossed Plate",
+  "雙刃大刀": "Claymore",
+  "雙刃斧": "Double Axe",
+  "雙刃鐮": "Dacian Falx",
+  "雙弓": "Double Bow",
+  "雙手劍": "Two-Handed Sword",
+  "雙手重劍": "Espandon",
+  "雙手飾劍": "Flamberge",
+  "雙曲弓": "Double Bow",
+  "雙鋒戰戟": "Bec-De-Corbin",
+  "雙面斧": "Twin Axe",
+  "雙頭斧": "Ettin Axe",
+  "雪之衝突": "Snowclash",
+  "雲裂": "Cloudcrack",
+  "雲霧之球": "Cloudy Sphere",
+  "雷尼摩": "Lenymo",
+  "雷山德的側腹": "Lycander's Flank",
+  "雷山德的指標": "Lycander's Aim",
+  "雷擊": "Thunderstroke",
+  "雷神之力": "Thundergod's Vigor",
+  "雷錘": "Thunder Maul",
+  "雷霆之擊": "Thunderstroke",
+  "雷霆重鎚": "Thunder Maul",
+  "電光之甲": "Sparking Mail",
+  "震地者": "Earthshaker",
+  "震骨": "Rattlecage",
+  "霜燃": "Frostburn",
+  "霜風": "Frostwind",
+  "霸圖克的割喉爪": "Bartuc's Cut-Throat",
+  "靈光": "Insight",
+  "靈光法珠": "Glowing Orb",
+  "靈液之刺": "Ichorsting",
+  "靈狼面具": "Spirit Mask",
+  "靈魂帷幕": "The Spirit Shroud",
+  "靈魂採集者": "Soul Harvest",
+  "靈魂收割者": "Soul Harvest",
+  "靈魂熔爐": "Spirit Forge",
+  "靈魂狼頭面具": "Spirit Mask",
+  "靈魂看守者": "Spirit Keeper",
+  "青色忿怒": "Azurewrath",
+  "面具": "Mask",
+  "領唱者印記": "Cantor Trophy",
+  "領唱者首級": "Cantor Trophy",
+  "頭環": "Circlet",
+  "頭皮剝斧": "The Scalper",
+  "頭飾": "Circlet",
+  "顎骨帽": "Jawbone Cap",
+  "顎骨面甲": "Jawbone Visor",
+  "顱帽": "Skull Cap",
+  "風之力": "Windforce",
+  "風之鎚": "Windhammer",
+  "風暴同盟": "Stormguild",
+  "風暴追逐者": "Stormchaser",
+  "飛矛": "Throwing Spear",
+  "飛翼魚叉": "Winged Harpoon",
+  "飛鷹頭盔": "Hawk Helm",
+  "飛龍": "Dragon",
+  "飛龍皮靴": "Wyrmhide Boots",
+  "食人妖腰帶": "Troll Belt",
+  "食人妖骨盾": "Troll Nest",
+  "食人魔之斧": "Ogre Axe",
+  "食人魔之錘": "Ogre Maul",
+  "食人魔鐵手套": "Ogre Gauntlets",
+  "食屍鬼之皮": "Ghoulhide",
+  "食屍鬼外皮": "Ghoulhide",
+  "飾帶": "Sash",
+  "飾金盾牌": "Gilded Shield",
+  "饑荒": "Famine",
+  "馬拉的萬花筒": "Mara's Kaleidoscope",
+  "馬格納斯之皮": "Magnus' Skin",
+  "馬爾": "Mal Rune",
+  "馬維娜之戰鬥詩歌": "M'avina's Battle Hymn",
+  "馬維娜的冰握": "M'avina's Icy Clutch",
+  "馬維娜的強弓": "M'avina's Caster",
+  "馬維娜的擁抱": "M'avina's Embrace",
+  "馬維娜的教義": "M'avina's Tenet",
+  "馬維娜的施展": "M'avina's Caster",
+  "馬維娜的真實之眼": "M'avina's True Sight",
+  "驕傲": "Pride",
+  "驚怖焰亡靈": "Grim's Burning Dead",
+  "骨寸斷": "Hone Sundan",
+  "骨杖": "Bone Wand",
+  "骨焰": "Boneflame",
+  "骨盾": "Bone Shield",
+  "骨肉": "Boneflesh",
+  "骨髓行走": "Marrowwalk",
+  "骷髏帽": "Skull Cap",
+  "骷髏收集者": "Skull Collector",
+  "骸骨": "Bone",
+  "骸骨小刀": "Bone Knife",
+  "骸骨網甲": "Boneweave",
+  "骸骨網靴": "Boneweave Boots",
+  "骸骨鏈甲": "Boneweave",
+  "骸骨陰影": "Boneshade",
+  "骸骨面罩": "Bone Visage",
+  "骸骨靴": "Boneweave Boots",
+  "骸骨頭盔": "Bone Helm",
+  "骸骨魔杖": "Bone Wand",
+  "高地之劍": "Highland Blade",
+  "高地劍": "Highland Blade",
+  "高祖": "The Grandfather",
+  "高級戰甲": "Full Plate Mail",
+  "高級頭盔": "Full Helm",
+  "高速飛刀": "Flying Knife",
+  "高速飛斧": "Flying Axe",
+  "鬥士之禍": "The Gladiator's Bane",
+  "鬥士的禍根": "The Gladiator's Bane",
+  "鬥棍": "Cudgel",
+  "鬥腰刀": "Battle Cestus",
+  "鬼娃首級": "Fetish Trophy",
+  "鬼火": "Ghostflame",
+  "鬼火投射者": "Wisp Projector",
+  "鬼火焰": "Ghostflame",
+  "鬼魂之矛": "Ghost Spear",
+  "鬼魂刃槍": "Ghost Glaive",
+  "鬼魂尖槍": "Ghost Glaive",
+  "鬼魂戰甲": "Ghost Armor",
+  "鬼魂戰衣": "Ghost Armor",
+  "鬼魂法杖": "Ghost Wand",
+  "鬼魂長矛": "Ghost Spear",
+  "鬼魂魔杖": "Ghost Wand",
+  "魁黑剛的智慧": "Que-Hegan's Wisdom",
+  "魂系結界": "Spirit Ward",
+  "魂靈守衛者": "Spirit Keeper",
+  "魅魔顱骨": "Succubus Skull",
+  "魔典": "Grimoire",
+  "魔力肇生": "Darkforce Spawn",
+  "魔杖": "Wand",
+  "魔橡樹": "Felloak",
+  "魔皮勳帶": "Demonhide Sash",
+  "魔皮戰甲": "Demonhide Armor",
+  "魔皮手套": "Demonhide Gloves",
+  "魔皮束帶": "Demonhide Sash",
+  "魔皮護甲": "Demonhide Armor",
+  "魔皮長靴": "Demonhide Boots",
+  "魔皮靴": "Demonhide Boots",
+  "魔胎": "Homunculus",
+  "魔靈殺手": "Djinn Slayer",
+  "魔鬼之叉": "Fuscina",
+  "魔龍的非難": "Tiamat's Rebuke",
+  "魚叉": "Harpoon",
+  "鮫尾巨斧": "Giant Thresher",
+  "鮮血之王顱骨": "Bloodlord Skull",
+  "鯊皮之靴": "Sharkskin Boots",
+  "鯊皮手套": "Sharkskin Gloves",
+  "鯊皮腰帶": "Sharkskin Belt",
+  "鯊皮靴": "Sharkskin Boots",
+  "鯊魚皮套": "Sharkskin Gloves",
+  "鯊齒戰甲": "Sharktooth Armor",
+  "鱗甲": "Scale Mail",
+  "鱗盾": "Scutum",
+  "鱗鎧胸甲": "Great Hauberk",
+  "鳳凰": "Phoenix",
+  "鳶盾": "Kite Shield",
+  "鴉啼": "Crow Caw",
+  "鴉嘴鎬": "Crowbill",
+  "鴉鳴": "Crow Caw",
+  "鶴嘴": "Cranebeak",
+  "鷹之法珠": "Eagle Orb",
+  "鷹甲": "Hawkmail",
+  "鷹號角": "Eaglehorn",
+  "鷹角弓": "Eaglehorn",
+  "鹿角": "Antlers",
+  "黃昏深處": "Duskdeep",
+  "黃金之皮": "Goldskin",
+  "黃金之膚": "Goldskin",
+  "黃金裹腰": "Goldwrap",
+  "黑手之鑰": "Blackhand Key",
+  "黑摩蘇的堅決": "Haemosu's Adamant",
+  "黑暗信徒": "Dark Adherent",
+  "黑暗寶典": "Dark Codex",
+  "黑暗秘典": "Dark Tome",
+  "黑橡樹盾": "Blackoak Shield",
+  "黑水之刃": "Blackleach Blade",
+  "黑沼之鋒": "Blackbog's Sharp",
+  "黑舌": "Blacktongue",
+  "黑色": "Black",
+  "黑色之舌": "Blacktongue",
+  "黑色黑帝斯": "Black Hades",
+  "黑荊角面具": "Blackhorn's Face",
+  "黑蛭長刀": "Blackleach Blade",
+  "黑角面具": "Blackhorn's Face",
+  "黑錘": "Black",
+  "黑魂": "Alma Negra",
+  "齒緣小刀": "Fanged Knife",
+  "齒鋸": "Ripsaw",
+  "龍槍": "The Dragon Chang",
+  "龍皮甲": "Wyrmhide",
+  "龍皮靴": "Wyrmhide Boots",
+  "龍盾": "Dragon Shield",
+  "龍鱗": "Dragonscale",
+  "龐貝之怒": "Pompeii's Wrath"
+ },
+ "bases": [
+  "3x3 Key Set",
+  "A Jade Figurine",
+  "Aegis",
+  "Aerin Shield",
+  "Akaran Rondache",
+  "Akaran Targe",
+  "Alpha Helm",
+  "Amulet",
+  "Ancient Armor",
+  "Ancient Axe",
+  "Ancient Shield",
+  "Ancient Sword",
+  "Antidote Potion",
+  "Antlers",
+  "Arbalest",
+  "Archon Plate",
+  "Archon Staff",
+  "Armet",
+  "Arrows",
+  "Ashwood Bow",
+  "Assault Helmet",
+  "Ataghan",
+  "Avenger Guard",
+  "Axe",
+  "Baal's Eye",
+  "Balanced Axe",
+  "Balanced Knife",
+  "Ballista",
+  "Balrog Blade",
+  "Balrog Skin",
+  "Balrog Spear",
+  "Barbed Club",
+  "Barbed Shield",
+  "Bardiche",
+  "Basinet",
+  "Bastard Sword",
+  "Battle Axe",
+  "Battle Belt",
+  "Battle Boots",
+  "Battle Cestus",
+  "Battle Dart",
+  "Battle Gauntlets",
+  "Battle Hammer",
+  "Battle Scythe",
+  "Battle Staff",
+  "Battle Sword",
+  "Bearded Axe",
+  "Bec-De-Corbin",
+  "Belt",
+  "Berserker Axe",
+  "Bill",
+  "Blade",
+  "Blade Barrier",
+  "Blade Bow",
+  "Blade Talons",
+  "Blasphemous Compendium",
+  "Blasphemous Grimoire",
+  "Blood Spirit",
+  "Bloodlord Skull",
+  "Bolts",
+  "Bone Helm",
+  "Bone Knife",
+  "Bone Shield",
+  "Bone Visage",
+  "Bone Wand",
+  "Boneweave",
+  "Boneweave Boots",
+  "Book Of Skill",
+  "Boots",
+  "Bramble Mitts",
+  "Brandistock",
+  "Breast Plate",
+  "Broad Axe",
+  "Broad Sword",
+  "Buckler",
+  "Bul-Kathos' Nightmare",
+  "Burning Essence Of Terror",
+  "Burnt Text",
+  "Burnt Wand",
+  "Caduceus",
+  "Cantor Trophy",
+  "Cap",
+  "Carnage Helm",
+  "Casque",
+  "Cedar Bow",
+  "Cedar Staff",
+  "Ceremonial Bow",
+  "Ceremonial Javelin",
+  "Ceremonial Pike",
+  "Ceremonial Spear",
+  "Cestus",
+  "Chain Boots",
+  "Chain Gloves",
+  "Chain Mail",
+  "Champion Axe",
+  "Champion Sword",
+  "Chaos Armor",
+  "Charged Essence Of Hatred",
+  "Choking Gas Potion",
+  "Chu-Ko-Nu",
+  "Cinquedeas",
+  "Circlet",
+  "Clasped Orb",
+  "Claws",
+  "Claymore",
+  "Cleaver",
+  "Cloudy Sphere",
+  "Club",
+  "Codex",
+  "Colossus Blade",
+  "Colossus Crossbow",
+  "Colossus Girdle",
+  "Colossus Sword",
+  "Colossus Voulge",
+  "Compendium",
+  "Composite Bow",
+  "Conqueror Crown",
+  "Conquest Sword",
+  "Corona",
+  "Coronet",
+  "Crossbow",
+  "Crowbill",
+  "Crown",
+  "Crown Shield",
+  "Crusader Bow",
+  "Crusader Gauntlets",
+  "Cryptic Axe",
+  "Cryptic Sword",
+  "Crystal Sword",
+  "Crystalline Globe",
+  "Cudgel",
+  "Cuirass",
+  "Cutlass",
+  "Dacian Falx",
+  "Dagger",
+  "Dark Codex",
+  "Dark Tome",
+  "Death Mask",
+  "Decapitator",
+  "Deep Worldstone Shard",
+  "Defender",
+  "Demon Crossbow",
+  "Demon Head",
+  "Demon Heart",
+  "Demonhead",
+  "Demonhide Armor",
+  "Demonhide Boots",
+  "Demonhide Gloves",
+  "Demonhide Sash",
+  "Destroyer Helm",
+  "Devil Star",
+  "Diablo's Horn",
+  "Diadem",
+  "Diamond Bow",
+  "Diamond Mail",
+  "Dimensional Blade",
+  "Dimensional Shard",
+  "Dirk",
+  "Divine Scepter",
+  "Double Axe",
+  "Double Bow",
+  "Dragon Shield",
+  "Dream Spirit",
+  "Dusk Shroud",
+  "Eagle Orb",
+  "Ear",
+  "Earth Spirit",
+  "Eastern Worldstone Shard",
+  "Edge Bow",
+  "Elder Staff",
+  "Eldritch Orb",
+  "Elegant Blade",
+  "Elixir",
+  "Embossed Plate",
+  "Espandon",
+  "Ettin Axe",
+  "Executioner Sword",
+  "Exploding Potion",
+  "Falcata",
+  "Falchion",
+  "Falcon Mask",
+  "Fanged Helm",
+  "Fanged Knife",
+  "Fascia",
+  "Feral Axe",
+  "Feral Claws",
+  "Festering Essence Of Destruction",
+  "Fetish Trophy",
+  "Field Plate",
+  "Flail",
+  "Flamberge",
+  "Flanged Mace",
+  "Flying Axe",
+  "Flying Knife",
+  "Forgotten Volume",
+  "Francisca",
+  "Full Helm",
+  "Full Plate Mail",
+  "Full Rejuvenation Potion",
+  "Fulminating Potion",
+  "Fury Visor",
+  "Fuscina",
+  "Gargoyle Head",
+  "Gauntlets",
+  "Ghost Armor",
+  "Ghost Glaive",
+  "Ghost Spear",
+  "Ghost Wand",
+  "Giant Axe",
+  "Giant Conch",
+  "Giant Sword",
+  "Giant Thresher",
+  "Gilded Shield",
+  "Gladius",
+  "Glaive",
+  "Glorious Axe",
+  "Glowing Orb",
+  "Gnarled Staff",
+  "Gold",
+  "Gorgon Crossbow",
+  "Gothic Axe",
+  "Gothic Bow",
+  "Gothic Plate",
+  "Gothic Shield",
+  "Gothic Staff",
+  "Gothic Sword",
+  "Grand Charm",
+  "Grand Crown",
+  "Grand Matron Bow",
+  "Grand Scepter",
+  "Grave Wand",
+  "Great Axe",
+  "Great Bow",
+  "Great Hauberk",
+  "Great Helm",
+  "Great Maul",
+  "Great Pilum",
+  "Great Poleaxe",
+  "Great Sword",
+  "Greater Claws",
+  "Greater Healing Potion",
+  "Greater Mana Potion",
+  "Greater Talons",
+  "Greaves",
+  "Griffon Headdress",
+  "Grim Helm",
+  "Grim Scythe",
+  "Grim Shield",
+  "Grim Wand",
+  "Grimoire",
+  "Guardian Crown",
+  "Halberd",
+  "Hand Axe",
+  "Hand Scythe",
+  "Hard Leather Armor",
+  "Harpoon",
+  "Hatchet",
+  "Hatchet Hands",
+  "Hawk Helm",
+  "Healing Potion",
+  "Heater",
+  "Heavenly Stone",
+  "Heavy Belt",
+  "Heavy Boots",
+  "Heavy Bracers",
+  "Heavy Crossbow",
+  "Heavy Gloves",
+  "Hell Forge Hammer",
+  "Hellforge Plate",
+  "Hellspawn Skull",
+  "Helm",
+  "Heraldic Shield",
+  "Herb",
+  "Hierophant Trophy",
+  "Highland Blade",
+  "Holy Water Sprinkler",
+  "Horadric Cube",
+  "Horadric Malus",
+  "Horadric Scroll",
+  "Horadric Staff",
+  "Horned Helm",
+  "Hunter's Bow",
+  "Hunter's Guise",
+  "Hurlbat",
+  "Hydra Bow",
+  "Hydra Edge",
+  "Hydraskull",
+  "Hyperion",
+  "Hyperion Javelin",
+  "Hyperion Spear",
+  "Jagged Star",
+  "Jared's Stone",
+  "Javelin",
+  "Jawbone Cap",
+  "Jawbone Visor",
+  "Jewel",
+  "Jo Staff",
+  "Katar",
+  "Key",
+  "Key Of Destruction",
+  "Key Of Hate",
+  "Key Of Terror",
+  "Key To The Cairn Stones",
+  "Khalim's Brain",
+  "Khalim's Eye",
+  "Khalim's Flail",
+  "Khalim's Heart",
+  "Khalim's Will",
+  "Kite Shield",
+  "Knout",
+  "Korlic's Pain",
+  "Kraken Shell",
+  "Kris",
+  "Kurast Shield",
+  "Lacquered Plate",
+  "Lam Esen's Tome",
+  "Lance",
+  "Large Axe",
+  "Large Charm",
+  "Large Shield",
+  "Large Siege Bow",
+  "Leather Armor",
+  "Leather Gloves",
+  "Legend Spike",
+  "Legend Sword",
+  "Legendary Mallet",
+  "Lich Wand",
+  "Light Belt",
+  "Light Crossbow",
+  "Light Gauntlets",
+  "Light Healing Potion",
+  "Light Mana Potion",
+  "Light Plate",
+  "Light Plated Boots",
+  "Linked Mail",
+  "Lion Helm",
+  "Lochaber Axe",
+  "Long Battle Bow",
+  "Long Bow",
+  "Long Staff",
+  "Long Sword",
+  "Long War Bow",
+  "Loricated Mail",
+  "Luna",
+  "Mace",
+  "Madawc's Ire",
+  "Mage Plate",
+  "Maiden Javelin",
+  "Maiden Pike",
+  "Maiden Spear",
+  "Malah's Potion",
+  "Mana Potion",
+  "Mancatcher",
+  "Martel De Fer",
+  "Mask",
+  "Matriarchal Bow",
+  "Matriarchal Javelin",
+  "Matriarchal Pike",
+  "Matriarchal Spear",
+  "Maul",
+  "Mephisto's Brain",
+  "Mephisto's Soulstone",
+  "Mesh Armor",
+  "Mesh Belt",
+  "Mesh Boots",
+  "Mighty Scepter",
+  "Military Axe",
+  "Military Pick",
+  "Minion Skull",
+  "Minor Healing Potion",
+  "Minor Mana Potion",
+  "Mirrored Boots",
+  "Mithril Coil",
+  "Mithril Point",
+  "Monarch",
+  "Morning Star",
+  "Mummified Trophy",
+  "Myrmidon Greaves",
+  "Mythical Sword",
+  "Naga",
+  "Northern Worldstone Shard",
+  "Occult Codex",
+  "Occult Tome",
+  "Ogre Axe",
+  "Ogre Gauntlets",
+  "Ogre Maul",
+  "Oil Potion",
+  "Old Book",
+  "Ornate Plate",
+  "Overseer Skull",
+  "Partizan",
+  "Pavise",
+  "Pellet Bow",
+  "Petrified Wand",
+  "Phase Blade",
+  "Pike",
+  "Pilum",
+  "Plate Mail",
+  "Plated Belt",
+  "Poignard",
+  "Poleaxe",
+  "Polished Wand",
+  "Portal To Forgotten Sands",
+  "Portal To Furnace Of Pain",
+  "Portal To Matron's Den",
+  "Portal To The Secret Cow Level",
+  "Portal To Uber Tristram",
+  "Possessed Compendium",
+  "Possessed Grimoire",
+  "Potion Of Life",
+  "Preserved Head",
+  "Protector Shield",
+  "Quarterstaff",
+  "Quhab",
+  "Quilted Armor",
+  "Rage Mask",
+  "Rancid Gas Potion",
+  "Random Minor Key",
+  "Razor Bow",
+  "Reflex Bow",
+  "Reinforced Mace",
+  "Rejuvenation Potion",
+  "Repeating Crossbow",
+  "Ring",
+  "Ring Mail",
+  "Rondache",
+  "Rondel",
+  "Round Shield",
+  "Royal Shield",
+  "Rune Bow",
+  "Rune Scepter",
+  "Rune Staff",
+  "Rune Sword",
+  "Runic Talons",
+  "Russet Armor",
+  "Sabre",
+  "Sacred Armor",
+  "Sacred Feathers",
+  "Sacred Globe",
+  "Sacred Rondache",
+  "Sacred Targe",
+  "Sallet",
+  "Sash",
+  "Savage Helmet",
+  "Scale Mail",
+  "Scarab Husk",
+  "Scarabshell Boots",
+  "Scepter",
+  "Scimitar",
+  "Scissors Katar",
+  "Scissors Quhab",
+  "Scissors Suwayyah",
+  "Scourge",
+  "Scroll Of Identify",
+  "Scroll Of Inifuss",
+  "Scroll Of Knowledge",
+  "Scroll Of Resistance",
+  "Scroll Of Town Portal",
+  "Scutum",
+  "Scythe",
+  "Seraph Rod",
+  "Serpentskin Armor",
+  "Sexton Trophy",
+  "Shadow Bow",
+  "Shadow Plate",
+  "Shako",
+  "Shamshir",
+  "Shard Set",
+  "Sharkskin Belt",
+  "Sharkskin Boots",
+  "Sharkskin Gloves",
+  "Sharktooth Armor",
+  "Shillelagh",
+  "Short Battle Bow",
+  "Short Bow",
+  "Short Siege Bow",
+  "Short Spear",
+  "Short Staff",
+  "Short Sword",
+  "Short War Bow",
+  "Siege Crossbow",
+  "Silver-Edged Axe",
+  "Simbilan",
+  "Skull Cap",
+  "Sky Spirit",
+  "Slayer Guard",
+  "Small Charm",
+  "Small Crescent",
+  "Small Shield",
+  "Smoked Sphere",
+  "Southern Worldstone Shard",
+  "Sparkling Ball",
+  "Spear",
+  "Spetum",
+  "Spiculum",
+  "Spider Bow",
+  "Spiderweb Sash",
+  "Spiked Club",
+  "Spiked Shield",
+  "Spired Helm",
+  "Spirit Mask",
+  "Splint Mail",
+  "Staff Of Kings",
+  "Stag Bow",
+  "Stalagmite",
+  "Stamina Potion",
+  "Standard Of Heroes",
+  "Statue Set",
+  "Stiletto",
+  "Strangling Gas Potion",
+  "Studded Leather",
+  "Stygian Pike",
+  "Stygian Pilum",
+  "Succubus Skull",
+  "Sun Spirit",
+  "Super Healing Potion",
+  "Super Mana Potion",
+  "Suwayyah",
+  "Swirling Crystal",
+  "Tabar",
+  "Talic's Anguish",
+  "Targe",
+  "Templar Coat",
+  "Thawing Potion",
+  "The Black Tower Key",
+  "The Gidbinn",
+  "The Golden Bird",
+  "Thresher",
+  "Throwing Axe",
+  "Throwing Knife",
+  "Throwing Spear",
+  "Thunder Maul",
+  "Tiara",
+  "Tigulated Mail",
+  "Token Of Absolution",
+  "Tomahawk",
+  "Tomb Wand",
+  "Tome",
+  "Tome Of Identify",
+  "Tome Of Town Portal",
+  "Top Of The Horadric Staff",
+  "Torch",
+  "Totemic Mask",
+  "Tower Shield",
+  "Trellised Armor",
+  "Trident",
+  "Troll Belt",
+  "Troll Nest",
+  "Truncheon",
+  "Tulwar",
+  "Tusk Sword",
+  "Twin Axe",
+  "Twisted Essence Of Suffering",
+  "Two-Handed Sword",
+  "Tyrant Club",
+  "Unearthed Wand",
+  "Unraveller Head",
+  "Vambraces",
+  "Vampirebone Gloves",
+  "Vampirefang Belt",
+  "Vortex Orb",
+  "Vortex Shield",
+  "Voulge",
+  "Walking Stick",
+  "Wand",
+  "War Axe",
+  "War Belt",
+  "War Boots",
+  "War Club",
+  "War Dart",
+  "War Fist",
+  "War Fork",
+  "War Gauntlets",
+  "War Hammer",
+  "War Hat",
+  "War Javelin",
+  "War Pike",
+  "War Scepter",
+  "War Scythe",
+  "War Spear",
+  "War Spike",
+  "War Staff",
+  "War Sword",
+  "Ward",
+  "Ward Bow",
+  "Western Worldstone Shard",
+  "Winged Axe",
+  "Winged Harpoon",
+  "Winged Helm",
+  "Winged Knife",
+  "Wire Fleece",
+  "Wirt's Leg",
+  "Wolf Head",
+  "Worusk's End",
+  "Wrist Blade",
+  "Wrist Spike",
+  "Wrist Sword",
+  "Wyrmhide",
+  "Wyrmhide Boots",
+  "Yari",
+  "Yew Wand",
+  "Zakarum Shield",
+  "Zombie Head",
+  "Zweihander"
+ ],
+ "game_only": [
+  "Bane's Garments",
+  "Horazon's Splendor"
+ ]
+}

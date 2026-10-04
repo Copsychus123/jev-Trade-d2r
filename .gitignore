@@ -8,6 +8,10 @@ artifacts/
 *.egg-info/
 
 dist/
-api-ocr-2025/
-.tmp-*/
 archive/
+artifacts/
+.tmp-*/
+services/.build/
+extension/dist/
+extension/*.zip
+extension/dist-e2e/

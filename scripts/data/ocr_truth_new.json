@@ -1,0 +1,212 @@
+[
+ {
+  "file": "image-31.png",
+  "kind": "item",
+  "expect": "Gheed's Wager",
+  "visible_zh": "基德的賭註／洞穴巨魔腰帶",
+  "phone_photo": false
+ },
+ {
+  "file": "image-32.png",
+  "kind": "base",
+  "expect": "Legend Sword",
+  "visible_zh": "懼牙／傳說劍【精英】",
+  "phone_photo": true
+ },
+ {
+  "file": "image-33.png",
+  "kind": "item",
+  "expect": "Bloodletter",
+  "visible_zh": "放血者／羅馬短劍",
+  "phone_photo": true
+ },
+ {
+  "file": "image-34.png",
+  "kind": "base",
+  "expect": "Jewel",
+  "visible_zh": "防禦者的火焰／珠寶",
+  "phone_photo": false
+ },
+ {
+  "file": "image-35.png",
+  "kind": "base",
+  "expect": "Ring",
+  "visible_zh": "兇殘之箍／戒指[R]",
+  "phone_photo": true
+ },
+ {
+  "file": "image-36.png",
+  "kind": "item",
+  "expect": "War Traveler",
+  "visible_zh": "戰爭旅者／戰鬥靴（傳奇靴）",
+  "phone_photo": true
+ },
+ {
+  "file": "image-37.png",
+  "kind": "base",
+  "expect": "Amulet",
+  "visible_zh": "野獸標記／護身符",
+  "phone_photo": true
+ },
+ {
+  "file": "image-38.png",
+  "kind": "base",
+  "expect": "Light Plated Boots",
+  "visible_zh": "厭惡驅刺／輕鎧靴",
+  "phone_photo": false
+ },
+ {
+  "file": "image-39.png",
+  "kind": "base",
+  "expect": "Zweihander",
+  "visible_zh": "風暴毀損／日耳曼大劍",
+  "phone_photo": false
+ },
+ {
+  "file": "image-40.png",
+  "kind": "item",
+  "expect": "Lycander's Flank",
+  "visible_zh": "萊坎德的側翼／儀禮長槍",
+  "phone_photo": false
+ },
+ {
+  "file": "image-41.png",
+  "kind": "base",
+  "expect": "Ring",
+  "visible_zh": "瘟疫之圈／戒指[R]",
+  "phone_photo": false
+ },
+ {
+  "file": "image-42.png",
+  "kind": "base",
+  "expect": "Circlet",
+  "visible_zh": "死亡飾環／頭環【普通】",
+  "phone_photo": false
+ },
+ {
+  "file": "image-43.png",
+  "kind": "base",
+  "expect": "Light Plated Boots",
+  "visible_zh": "石岩尖鑽／輕鎧靴",
+  "phone_photo": false
+ },
+ {
+  "file": "image-44.png",
+  "kind": "item",
+  "expect": "Thundergod's Vigor",
+  "visible_zh": "雷神之力／征戰腰帶",
+  "phone_photo": true
+ },
+ {
+  "file": "image-45.png",
+  "kind": "item",
+  "expect": "Corpsemourn",
+  "visible_zh": "屍慟／華麗戰甲",
+  "phone_photo": true
+ },
+ {
+  "file": "image-46.png",
+  "kind": "base",
+  "expect": "Ring",
+  "visible_zh": "蛋白石脈／戒指 RING",
+  "phone_photo": true
+ },
+ {
+  "file": "image-47.png",
+  "kind": "base",
+  "expect": "Circlet",
+  "visible_zh": "靈魂之額／頭環",
+  "phone_photo": true
+ },
+ {
+  "file": "image-48.png",
+  "kind": "item",
+  "expect": "The Redeemer",
+  "visible_zh": "懺悔者／強威權杖",
+  "phone_photo": false
+ },
+ {
+  "file": "image-49.png",
+  "kind": "item",
+  "expect": "The Redeemer",
+  "visible_zh": "懺悔者（列表截圖）",
+  "phone_photo": false
+ },
+ {
+  "file": "image-50.png",
+  "kind": "base",
+  "expect": "Clasped Orb",
+  "visible_zh": "才華之烈火／握扣法珠",
+  "phone_photo": false
+ },
+ {
+  "file": "image-51.png",
+  "kind": "item",
+  "expect": "Arreat's Face",
+  "visible_zh": "亞瑞特的面容／殺手護盔",
+  "phone_photo": false
+ },
+ {
+  "file": "image-52.png",
+  "kind": "base",
+  "expect": "Smoked Sphere",
+  "visible_zh": "怨靈之歌／攏煙之球",
+  "phone_photo": true
+ },
+ {
+  "file": "image-53.png",
+  "kind": "item",
+  "expect": "Bramble",
+  "visible_zh": "刺藤／統御者鎧甲",
+  "phone_photo": false
+ },
+ {
+  "file": "image-54.png",
+  "kind": "item",
+  "expect": "Raven Frost",
+  "visible_zh": "烏鴉之霜／戒指[R]",
+  "phone_photo": false
+ },
+ {
+  "file": "image-55.png",
+  "kind": "item",
+  "expect": "Swordback Hold",
+  "visible_zh": "劍棘之盾／尖刺盾",
+  "phone_photo": false
+ },
+ {
+  "file": "image-56.png",
+  "kind": "base",
+  "expect": "Ring",
+  "visible_zh": "畏怖之箍／戒指",
+  "phone_photo": false
+ },
+ {
+  "file": "image-57.png",
+  "kind": "base",
+  "expect": "Chain Boots",
+  "visible_zh": "飛鷹蹂躪／鎖鍊靴",
+  "phone_photo": false
+ },
+ {
+  "file": "image-58.png",
+  "kind": "item",
+  "expect": "Ars Dul'Mephistos",
+  "visible_zh": "杜墨菲斯托斯學術／神秘秘典",
+  "phone_photo": false
+ },
+ {
+  "file": "image-59.png",
+  "kind": "item",
+  "expect": "Gloom's Trap",
+  "visible_zh": "陰影陷阱／鐵網腰帶（傳奇腰帶）",
+  "phone_photo": true
+ },
+ {
+  "file": "image-60.png",
+  "kind": "item",
+  "expect": "Nosferatu's Coil",
+  "visible_zh": "吸血鬼王之圈／吸血鬼牙腰帶",
+  "phone_photo": true
+ }
+]

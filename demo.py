@@ -2,12 +2,11 @@
 
 import os
 
-from scripts.login import main as login
-from scripts.login import needs_login
-
 from jev_ultrafast.chrome import chrome_mode
 from jev_ultrafast.config import load_dotenv
 from jev_ultrafast.demo import main
+from scripts.login import main as login
+from scripts.login import needs_login
 
 
 def ensure_login():

@@ -1,0 +1,266 @@
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, "Noto Sans TC", sans-serif;
+  font-size: 14px;
+}
+body {
+  margin: 0;
+  padding: 12px;
+}
+h1 {
+  font-size: 18px;
+  margin: 0 0 10px;
+}
+h2 {
+  font-size: 15px;
+  margin: 0 0 6px;
+}
+.card {
+  border: 1px solid rgba(128, 128, 128, 0.35);
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+label {
+  display: block;
+  margin: 8px 0 3px;
+  font-weight: 600;
+}
+input,
+select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px;
+}
+.row {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+.row input {
+  flex: 1;
+}
+.actions {
+  display: flex;
+  gap: 6px;
+}
+.head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+button {
+  padding: 6px 10px;
+  cursor: pointer;
+}
+button.primary {
+  background: #2563eb;
+  color: #fff;
+  border: 0;
+  border-radius: 4px;
+}
+.pager {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+.pager[hidden] {
+  display: none;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.muted {
+  color: gray;
+  margin: 6px 0 0;
+  word-break: break-all;
+}
+.pill {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: rgba(128, 128, 128, 0.25);
+}
+.pill[data-status="PASSED"] {
+  background: #16a34a;
+  color: #fff;
+}
+.pill[data-status="FAILED"],
+.pill[data-status="BLOCKED"] {
+  background: #dc2626;
+  color: #fff;
+}
+#status {
+  font-weight: 600;
+  margin: 8px 0 0;
+}
+#status[data-kind="error"] {
+  color: #dc2626;
+}
+#status[data-kind="ok"] {
+  color: #16a34a;
+}
+#log {
+  margin: 0;
+  padding-left: 20px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.scroll {
+  overflow-x: auto;
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+}
+th,
+td {
+  border-bottom: 1px solid rgba(128, 128, 128, 0.3);
+  padding: 4px 6px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.ocr-frame {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  margin-top: 6px;
+}
+#ocr-preview {
+  display: block;
+  max-width: 100%;
+  max-height: 260px;
+  cursor: crosshair;
+  touch-action: none;
+}
+#ocr-box {
+  position: absolute;
+  border: 2px solid #2563eb;
+  background: rgba(37, 99, 235, 0.15);
+  pointer-events: none;
+}
+#ocr-candidates {
+  flex-wrap: wrap;
+}
+#ocr-status[data-kind="error"] {
+  color: #dc2626;
+}
+#ocr-status[data-kind="ok"] {
+  color: #16a34a;
+}
+
+/* The 📷 entrance lives inside the name field: 26x26, with a tooltip and a one-time dot. */
+.field {
+  position: relative;
+}
+.field input {
+  padding-right: 38px;
+}
+.field-icon {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  line-height: 24px;
+  font-size: 14px;
+  border: 1px solid #2563eb;
+  border-radius: 4px;
+  background: #eef4ff;
+}
+.field-icon i {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ef4444;
+}
+.tooltip {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 5;
+  margin-top: 4px;
+  padding: 5px 9px;
+  border-radius: 4px;
+  background: #333;
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+.tooltip small {
+  color: #ccc;
+}
+.tag {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 1px 8px;
+  border-radius: 9px;
+  background: #fde68a;
+  color: #92400e;
+  font-size: 11px;
+}
+.dropzone {
+  margin-top: 6px;
+  padding: 14px 8px;
+  border: 2px dashed #2563eb;
+  border-radius: 6px;
+  background: #eaf2ff;
+  color: #2563eb;
+  font-weight: 600;
+  text-align: center;
+  pointer-events: none;
+}
+.small {
+  font-size: 11px;
+  margin: 4px 0;
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 400;
+  font-size: 12px;
+}
+.check input {
+  width: auto;
+}
+.ocr-panel {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px dashed #2563eb;
+  border-radius: 6px;
+}
+.ocr-bar {
+  display: flex;
+  gap: 6px;
+}
+.ocr-bar select {
+  flex: 1;
+  min-width: 0;
+}
+/* After a result the picture shrinks to a thumbnail (click it to enlarge). */
+.ocr-panel.done #ocr-preview {
+  max-height: 48px;
+}
+.ocr-panel.done #ocr-box {
+  display: none;
+}
+.ocr-panel[hidden],
+.tag[hidden],
+.tooltip[hidden],
+.dropzone[hidden],
+.field-icon i[hidden] {
+  display: none;
+}

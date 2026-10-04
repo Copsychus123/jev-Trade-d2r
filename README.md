@@ -12,7 +12,7 @@
 
 - 只有 **Jev（TypeSafe）** 負責決定瀏覽器要做什麼動作（點擊、輸入、捲動）。
 - 本階段**不做**任何 LLM 資料分析（沒有價格統計、沒有行情判讀）。
-- 表格是用**固定規則的文字解析**（`jev_ultrafast/traderie/parsing.py`）從網頁文字整理出來的，不是 AI 產生的。
+- 表格是用**固定規則的文字解析**（`core/jev_ultrafast/traderie/parsing.py`）從網頁文字整理出來的，不是 AI 產生的。
 - 顯示的是 Traderie 網頁上看得到的內容，不代表官方定價，也不保證涵蓋全部成交。
 
 ## 流程與分工
@@ -53,7 +53,7 @@ uv sync
 ### 3. 啟動網頁 demo
 
 ```bash
-uv run python jev_ultrafast/demo.py
+uv run python core/jev_ultrafast/demo.py
 ```
 
 開啟 http://127.0.0.1:8766，然後：
@@ -100,25 +100,26 @@ Agent 說「完成」不等於成功；是否成功只看上面的獨立檢查�
 2. 在視窗裡登入 Traderie；若看到「Patch Notes」之類的公告視窗，請按右上角 × 關掉（專用 Chrome 會記得，網站出新公告時可能需要再關一次）；登入後回到終端機按 Enter。
 3. 重新執行查詢。
 
-若改用 `JEV_CHROME=existing`，則在你自己的 Chrome 登入 traderie.com 即可（把 Chrome 登入資料匯出到 `.env` 的舊腳本已移到 `future/scripts/`）。
+若改用 `JEV_CHROME=existing`，則在你自己的 Chrome 登入 traderie.com 即可。
 
 ## 檔案地圖（本階段流程）
 
 | 檔案 | 職責 |
 | --- | --- |
-| `jev_ultrafast/demo.py` | 網頁 demo 伺服器（`127.0.0.1:8766`），指令 `reset`／`tick`／`report`，`GET /api/report` 取得報告 |
-| `jev_ultrafast/static/` | demo 介面（`index.html`、`app.js`、`style.css`、`csv.js`） |
-| `jev_ultrafast/agent.py` | Agent 主迴圈：觀察 → 決策 → 執行 |
-| `jev_ultrafast/browser.py` | 透過 Chrome DevTools Protocol 操作瀏覽器 |
-| `jev_ultrafast/chrome.py` | 啟動與關閉專用 Chrome（`JEV_CHROME` 模式） |
-| `jev_ultrafast/snapshot.js` | 在頁面內擷取可操作元素與捲動控制（含捲到底、捲到頂、等待） |
-| `jev_ultrafast/model.py`、`questions.py` | 呼叫 Jev（TypeSafe）做決策 |
-| `jev_ultrafast/config.py` | 設定與 `.env` 讀取 |
-| `jev_ultrafast/traderie/site.py` | 網址、Agent 目標文字（`build_goal`）、`LOAD_MORE_LIMIT`、防護頁偵測 |
-| `jev_ultrafast/traderie/controller.py` | 每個視圖讀一次、檢查、存檔（`read_view`、`verify_views`、`advance`、`run_agent`、`save_report`） |
-| `jev_ultrafast/traderie/parsing.py` | 固定規則的掛單／成交文字解析 |
-| `jev_ultrafast/traderie/verification.py` | 獨立檢查（`verify_market`、`read_settled_page`） |
-| `jev_ultrafast/traderie/auth.py` | 憑證與 cookie 處理 |
+| `core/jev_ultrafast/demo.py` | 網頁 demo 伺服器（`127.0.0.1:8766`），指令 `reset`／`tick`／`report`，`GET /api/report` 取得報告 |
+| `core/jev_ultrafast/static/` | demo 介面（`index.html`、`app.js`、`style.css`、`csv.js`） |
+| `core/jev_ultrafast/agent.py` | Agent 主迴圈：觀察 → 決策 → 執行 |
+| `core/jev_ultrafast/browser.py` | 透過 Chrome DevTools Protocol 操作瀏覽器 |
+| `core/jev_ultrafast/chrome.py` | 啟動與關閉專用 Chrome（`JEV_CHROME` 模式） |
+| `core/jev_ultrafast/snapshot.js` | 在頁面內擷取可操作元素與捲動控制（含捲到底、捲到頂、等待） |
+| `core/jev_ultrafast/model.py`、`questions.py` | 呼叫 Jev（TypeSafe）做決策 |
+| `core/jev_ultrafast/config.py` | 設定與 `.env` 讀取 |
+| `core/jev_ultrafast/traderie/site.py` | 網址、Agent 目標文字（`build_goal`）、`LOAD_MORE_LIMIT`、防護頁偵測 |
+| `core/jev_ultrafast/traderie/controller.py` | 每個視圖讀一次、檢查、存檔（`read_view`、`verify_views`、`advance`、`run_agent`、`save_report`） |
+| `core/jev_ultrafast/traderie/parsing.py` | 固定規則的掛單／成交文字解析 |
+| `core/jev_ultrafast/traderie/verification.py` | 獨立檢查（`verify_market`、`read_settled_page`） |
+| `core/jev_ultrafast/traderie/auth.py` | 憑證與 cookie 處理 |
+| `extension/`、`services/` | Chrome 擴充功能與後端（見各自的 README） |
 | `examples/traderie.py` | 命令列入口 |
 | `scripts/login_traderie.py` | 開啟專用 Chrome 視窗，讓你登入 Traderie 一次 |
 
@@ -128,8 +129,8 @@ Agent 說「完成」不等於成功；是否成功只看上面的獨立檢查�
 uv run ruff check .
 uv run pytest                          # 離線，預設不含 live
 uv run pytest -m live                  # 真實網站、Chrome、TypeSafe（計費）
-node --check jev_ultrafast/static/app.js
-node --check jev_ultrafast/static/csv.js
+node --check core/jev_ultrafast/static/app.js
+node --check core/jev_ultrafast/static/csv.js
 uv build
 ```
 
@@ -142,7 +143,3 @@ Agent 每次執行結果並不固定（非決定性）。單次 live 測試失�
 - 憑證只放在伺服器端與 `.env`，`.env` 不進版本庫；測試不得呼叫付費 API。
 - Agent 選擇 `DONE` 不是成功的證據，結果必須獨立驗證。
 - 只讀取，不聯絡賣家、不出價、不離開 Traderie D2R 商品／搜尋頁。
-
-## 未來擴展（本階段不做）
-
-下列模組與腳本屬於日後的資料分析／報告擴展，**不是目前流程的一部分**，已搬到 `future/` 資料夾（不維護、不測試、不打包），詳見 `future/README.md`。別的工具留下的舊檔案則放在 `archive/`（不進版本庫）。

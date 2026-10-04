@@ -1,0 +1,972 @@
+[
+ {
+  "id": "A01",
+  "group": "A",
+  "input": "Harlequin Crest",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Harlequin Crest",
+  "slug": "harlequin-crest",
+  "layer": "table"
+ },
+ {
+  "id": "A02",
+  "group": "A",
+  "input": "Enigma",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Enigma",
+  "slug": "enigma",
+  "layer": "table"
+ },
+ {
+  "id": "A03",
+  "group": "A",
+  "input": "Infinity",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Infinity",
+  "slug": "infinity",
+  "layer": "table"
+ },
+ {
+  "id": "A04",
+  "group": "A",
+  "input": "Grief",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Grief",
+  "slug": "grief",
+  "layer": "table"
+ },
+ {
+  "id": "A05",
+  "group": "A",
+  "input": "Spirit",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Spirit",
+  "slug": "spirit",
+  "layer": "table"
+ },
+ {
+  "id": "A06",
+  "group": "A",
+  "input": "Insight",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Insight",
+  "slug": "insight",
+  "layer": "table"
+ },
+ {
+  "id": "A07",
+  "group": "A",
+  "input": "Call To Arms",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Call To Arms",
+  "slug": "call-to-arms",
+  "layer": "table"
+ },
+ {
+  "id": "A08",
+  "group": "A",
+  "input": "Ber Rune",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Ber Rune",
+  "slug": "ber-rune",
+  "layer": "table"
+ },
+ {
+  "id": "A09",
+  "group": "A",
+  "input": "Jah Rune",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Jah Rune",
+  "slug": "jah-rune",
+  "layer": "table"
+ },
+ {
+  "id": "A10",
+  "group": "A",
+  "input": "Sur Rune",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Sur Rune",
+  "slug": "sur-rune",
+  "layer": "table"
+ },
+ {
+  "id": "A11",
+  "group": "A",
+  "input": "Zod Rune",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Zod Rune",
+  "slug": "zod-rune",
+  "layer": "table"
+ },
+ {
+  "id": "A12",
+  "group": "A",
+  "input": "Annihilus",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Annihilus",
+  "slug": "annihilus",
+  "layer": "table"
+ },
+ {
+  "id": "A13",
+  "group": "A",
+  "input": "Hellfire Torch",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Hellfire Torch",
+  "slug": "hellfire-torch",
+  "layer": "table"
+ },
+ {
+  "id": "A14",
+  "group": "A",
+  "input": "Arachnid Mesh",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Arachnid Mesh",
+  "slug": "arachnid-mesh",
+  "layer": "table"
+ },
+ {
+  "id": "A15",
+  "group": "A",
+  "input": "Windforce",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Windforce",
+  "slug": "windforce",
+  "layer": "table"
+ },
+ {
+  "id": "A16",
+  "group": "A",
+  "input": "Griffon's Eye",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Griffon's Eye",
+  "slug": "griffons-eye",
+  "layer": "table"
+ },
+ {
+  "id": "A17",
+  "group": "A",
+  "input": "Mara's Kaleidoscope",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Mara's Kaleidoscope",
+  "slug": "maras-kaleidoscope",
+  "layer": "table"
+ },
+ {
+  "id": "A18",
+  "group": "A",
+  "input": "Tal Rasha's Adjudication",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Tal Rasha's Adjudication",
+  "slug": "tal-rashas-adjudication",
+  "layer": "table"
+ },
+ {
+  "id": "A19",
+  "group": "A",
+  "input": "Atma's Scarab",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Atma's Scarab",
+  "slug": "atmas-scarab",
+  "layer": "table"
+ },
+ {
+  "id": "A20",
+  "group": "A",
+  "input": "Raven Frost",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Raven Frost",
+  "slug": "raven-frost",
+  "layer": "table"
+ },
+ {
+  "id": "A21",
+  "group": "A",
+  "input": "Perfect Skull",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Perfect Skull",
+  "slug": "perfect-skull",
+  "layer": "table"
+ },
+ {
+  "id": "A22",
+  "group": "A",
+  "input": "Flawless Ruby",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Flawless Ruby",
+  "slug": "flawless-ruby",
+  "layer": "table"
+ },
+ {
+  "id": "A23",
+  "group": "A",
+  "input": "Hit Power Gloves",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Hit Power Gloves",
+  "slug": "hit-power-gloves",
+  "layer": "table"
+ },
+ {
+  "id": "A24",
+  "group": "A",
+  "input": "Blood Ring",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Blood Ring",
+  "slug": "blood-ring",
+  "layer": "table"
+ },
+ {
+  "id": "A25",
+  "group": "A",
+  "input": "Caster Amulet",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Caster Amulet",
+  "slug": "caster-amulet",
+  "layer": "table"
+ },
+ {
+  "id": "A26",
+  "group": "A",
+  "input": "Safety Helm",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Safety Helm",
+  "slug": "safety-helm",
+  "layer": "table",
+  "allow_empty": true
+ },
+ {
+  "id": "A27",
+  "group": "A",
+  "input": "Dream",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Dream",
+  "slug": "dream",
+  "layer": "table"
+ },
+ {
+  "id": "A28",
+  "group": "A",
+  "input": "Fortitude",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Fortitude",
+  "slug": "fortitude",
+  "layer": "table"
+ },
+ {
+  "id": "B01",
+  "group": "B",
+  "input": "harlequin crest",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Harlequin Crest",
+  "slug": "harlequin-crest",
+  "layer": "table"
+ },
+ {
+  "id": "B02",
+  "group": "B",
+  "input": "  ENIGMA ",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Enigma",
+  "slug": "enigma",
+  "layer": "table"
+ },
+ {
+  "id": "B03",
+  "group": "B",
+  "input": "ber  rune",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Ber Rune",
+  "slug": "ber-rune",
+  "layer": "table"
+ },
+ {
+  "id": "B04",
+  "group": "B",
+  "input": "Tal Rashas Adjudication",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Tal Rasha's Adjudication",
+  "slug": "tal-rashas-adjudication",
+  "layer": "table"
+ },
+ {
+  "id": "B05",
+  "group": "B",
+  "input": "Stone of Jordan",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "The Stone Of Jordan",
+  "slug": "the-stone-of-jordan",
+  "layer": "table"
+ },
+ {
+  "id": "B06",
+  "group": "B",
+  "input": "ＨＡＲＬＥＱＵＩＮ　ＣＲＥＳＴ",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Harlequin Crest",
+  "slug": "harlequin-crest",
+  "layer": "table"
+ },
+ {
+  "id": "B07",
+  "group": "B",
+  "input": "Mara's  Kaleidoscope.",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Mara's Kaleidoscope",
+  "slug": "maras-kaleidoscope",
+  "layer": "table"
+ },
+ {
+  "id": "B08",
+  "group": "B",
+  "input": "griffons eye",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Griffon's Eye",
+  "slug": "griffons-eye",
+  "layer": "table"
+ },
+ {
+  "id": "B09",
+  "group": "B",
+  "input": "Call to arms",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Call To Arms",
+  "slug": "call-to-arms",
+  "layer": "table"
+ },
+ {
+  "id": "B10",
+  "group": "B",
+  "input": "JAH RUNE",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Jah Rune",
+  "slug": "jah-rune",
+  "layer": "table"
+ },
+ {
+  "id": "C01",
+  "group": "C",
+  "input": "諧角之冠",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Harlequin Crest",
+  "slug": "harlequin-crest",
+  "layer": "table"
+ },
+ {
+  "id": "C02",
+  "group": "C",
+  "input": "謎團",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Enigma",
+  "slug": "enigma",
+  "layer": "table"
+ },
+ {
+  "id": "C03",
+  "group": "C",
+  "input": "貝",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Ber Rune",
+  "slug": "ber-rune",
+  "layer": "table"
+ },
+ {
+  "id": "C04",
+  "group": "C",
+  "input": "喬",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Jah Rune",
+  "slug": "jah-rune",
+  "layer": "table"
+ },
+ {
+  "id": "C05",
+  "group": "C",
+  "input": "無限",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Infinity",
+  "slug": "infinity",
+  "layer": "table"
+ },
+ {
+  "id": "C06",
+  "group": "C",
+  "input": "精神",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Spirit",
+  "slug": "spirit",
+  "layer": "table"
+ },
+ {
+  "id": "C07",
+  "group": "C",
+  "input": "滅絕",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Annihilus",
+  "slug": "annihilus",
+  "layer": "table"
+ },
+ {
+  "id": "C08",
+  "group": "C",
+  "input": "喬丹之石",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "The Stone Of Jordan",
+  "slug": "the-stone-of-jordan",
+  "layer": "table"
+ },
+ {
+  "id": "C09",
+  "group": "C",
+  "input": "哈雷昆之冠",
+  "load_more": 0,
+  "expect": "error",
+  "contains": "對照表裡沒有"
+ },
+ {
+  "id": "C10",
+  "group": "C",
+  "input": "不存在的裝備",
+  "load_more": 0,
+  "expect": "error",
+  "contains": "對照表裡沒有"
+ },
+ {
+  "id": "C11",
+  "group": "C",
+  "input": "鉤斧",
+  "load_more": 0,
+  "expect": "error",
+  "contains": "對照表裡沒有"
+ },
+ {
+  "id": "C12",
+  "group": "C",
+  "input": "Harlequin 之冠",
+  "load_more": 0,
+  "expect": "error",
+  "contains": "對照表裡沒有"
+ },
+ {
+  "id": "D01",
+  "group": "D",
+  "input": "Rare Ring",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Ring",
+  "slug": "ring",
+  "layer": "base"
+ },
+ {
+  "id": "D02",
+  "group": "D",
+  "input": "Magic Grand Charm",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Grand Charm",
+  "slug": "grand-charm",
+  "layer": "base"
+ },
+ {
+  "id": "D03",
+  "group": "D",
+  "input": "White Archon Plate",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Archon Plate",
+  "slug": "archon-plate",
+  "layer": "base"
+ },
+ {
+  "id": "D04",
+  "group": "D",
+  "input": "Superior Cap",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Cap",
+  "slug": "cap",
+  "layer": "base",
+  "allow_empty": true
+ },
+ {
+  "id": "D05",
+  "group": "D",
+  "input": "Rare Amulet",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Amulet",
+  "slug": "amulet",
+  "layer": "base"
+ },
+ {
+  "id": "D06",
+  "group": "D",
+  "input": "Magic Jewel",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Jewel",
+  "slug": "jewel",
+  "layer": "base"
+ },
+ {
+  "id": "D07",
+  "group": "D",
+  "input": "Ethereal Archon Plate",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Archon Plate",
+  "slug": "archon-plate",
+  "layer": "base"
+ },
+ {
+  "id": "D08",
+  "group": "D",
+  "input": "Magic Small Charm",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Small Charm",
+  "slug": "small-charm",
+  "layer": "base"
+ },
+ {
+  "id": "D09",
+  "group": "D",
+  "input": "Rare Circlet",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Circlet",
+  "slug": "circlet",
+  "layer": "base"
+ },
+ {
+  "id": "D10",
+  "group": "D",
+  "input": "Magic Large Charm",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Large Charm",
+  "slug": "large-charm",
+  "layer": "base"
+ },
+ {
+  "id": "D11",
+  "group": "D",
+  "input": "Rare Coronet",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Coronet",
+  "slug": "coronet",
+  "layer": "base"
+ },
+ {
+  "id": "D12",
+  "group": "D",
+  "input": "Rare Diadem",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Diadem",
+  "slug": "diadem",
+  "layer": "base"
+ },
+ {
+  "id": "E01",
+  "group": "E",
+  "input": "Ring",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Ring",
+  "slug": "ring",
+  "layer": "table"
+ },
+ {
+  "id": "E02",
+  "group": "E",
+  "input": "Amulet",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Amulet",
+  "slug": "amulet",
+  "layer": "table"
+ },
+ {
+  "id": "E03",
+  "group": "E",
+  "input": "Jewel",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Jewel",
+  "slug": "jewel",
+  "layer": "table"
+ },
+ {
+  "id": "E04",
+  "group": "E",
+  "input": "Archon Plate",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Archon Plate",
+  "slug": "archon-plate",
+  "layer": "table"
+ },
+ {
+  "id": "E05",
+  "group": "E",
+  "input": "Shako",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Shako",
+  "slug": "shako",
+  "layer": "table"
+ },
+ {
+  "id": "E06",
+  "group": "E",
+  "input": "Grand Charm",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Grand Charm",
+  "slug": "grand-charm",
+  "layer": "table"
+ },
+ {
+  "id": "F01",
+  "group": "F",
+  "input": "asdfghjkl",
+  "load_more": 0,
+  "expect": "not_found",
+  "contains": "找不到這個裝備"
+ },
+ {
+  "id": "F02",
+  "group": "F",
+  "input": "!!!???",
+  "load_more": 0,
+  "expect": "error",
+  "contains": "英文字母"
+ },
+ {
+  "id": "F03",
+  "group": "F",
+  "input": "   ",
+  "load_more": 0,
+  "expect": "error",
+  "contains": "請輸入"
+ },
+ {
+  "id": "F04",
+  "group": "F",
+  "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "load_more": 0,
+  "expect": "error",
+  "contains": "太長"
+ },
+ {
+  "id": "F05",
+  "group": "F",
+  "input": "😀🔥",
+  "load_more": 0,
+  "expect": "error",
+  "contains": "英文字母"
+ },
+ {
+  "id": "F06",
+  "group": "F",
+  "input": "'; DROP TABLE items;--",
+  "load_more": 0,
+  "expect": "not_found",
+  "contains": "找不到這個裝備"
+ },
+ {
+  "id": "F07",
+  "group": "F",
+  "input": "<script>alert(1)</script>",
+  "load_more": 0,
+  "expect": "not_found",
+  "contains": "找不到這個裝備"
+ },
+ {
+  "id": "F08",
+  "group": "F",
+  "input": "Zzzz Qqqq",
+  "load_more": 0,
+  "expect": "not_found",
+  "contains": "找不到這個裝備"
+ },
+ {
+  "id": "G01",
+  "group": "G",
+  "input": "Cowboy Hat",
+  "load_more": 0,
+  "expect": "not_found",
+  "contains": "找不到這個裝備"
+ },
+ {
+  "id": "G02",
+  "group": "G",
+  "input": "Harlequin Crst",
+  "load_more": 0,
+  "expect": "not_found_or_slug",
+  "slug": "harlequin-crest"
+ },
+ {
+  "id": "G03",
+  "group": "G",
+  "input": "Shaco",
+  "load_more": 0,
+  "expect": "not_found_or_slug",
+  "slug": "shako"
+ },
+ {
+  "id": "G04",
+  "group": "G",
+  "input": "HoZ",
+  "load_more": 0,
+  "expect": "not_found",
+  "contains": "找不到這個裝備"
+ },
+ {
+  "id": "G05",
+  "group": "G",
+  "input": "SOJ",
+  "load_more": 0,
+  "expect": "not_found",
+  "contains": "找不到這個裝備"
+ },
+ {
+  "id": "G06",
+  "group": "G",
+  "input": "BK ring",
+  "load_more": 0,
+  "expect": "not_found",
+  "contains": "找不到這個裝備"
+ },
+ {
+  "id": "H01",
+  "group": "H",
+  "input": "Bing Sz Wang",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Bing Sz Wang",
+  "slug": "bing-sz-wang",
+  "layer": "table",
+  "allow_empty": true
+ },
+ {
+  "id": "H02",
+  "group": "H",
+  "input": "Blade Of Ali Baba",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Blade Of Ali Baba",
+  "slug": "blade-of-ali-baba",
+  "layer": "table",
+  "allow_empty": true
+ },
+ {
+  "id": "H03",
+  "group": "H",
+  "input": "Hell Forge Hammer",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Hell Forge Hammer",
+  "slug": "hell-forge-hammer",
+  "layer": "table",
+  "allow_empty": true
+ },
+ {
+  "id": "H04",
+  "group": "H",
+  "input": "Key To The Cairn Stones",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Key To The Cairn Stones",
+  "slug": "key-to-the-cairn-stones",
+  "layer": "table",
+  "allow_empty": true
+ },
+ {
+  "id": "H05",
+  "group": "H",
+  "input": "Khalim's Will",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Khalim's Will",
+  "slug": "khalims-will",
+  "layer": "table",
+  "allow_empty": true
+ },
+ {
+  "id": "H06",
+  "group": "H",
+  "input": "Lam Esen's Tome",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Lam Esen's Tome",
+  "slug": "lam-esens-tome",
+  "layer": "table",
+  "allow_empty": true
+ },
+ {
+  "id": "H07",
+  "group": "H",
+  "input": "Axe Of Fechmar",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Axe Of Fechmar",
+  "slug": "axe-of-fechmar",
+  "layer": "table",
+  "allow_empty": true
+ },
+ {
+  "id": "H08",
+  "group": "H",
+  "input": "Blackhand Key",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Blackhand Key",
+  "slug": "blackhand-key",
+  "layer": "table",
+  "allow_empty": true
+ },
+ {
+  "id": "I01",
+  "group": "I",
+  "input": "Enigma",
+  "load_more": 1,
+  "expect": "pass",
+  "name": "Enigma",
+  "slug": "enigma",
+  "layer": "table"
+ },
+ {
+  "id": "I02",
+  "group": "I",
+  "input": "Enigma",
+  "load_more": 2,
+  "expect": "pass",
+  "name": "Enigma",
+  "slug": "enigma",
+  "layer": "table"
+ },
+ {
+  "id": "I03",
+  "group": "I",
+  "input": "Enigma",
+  "load_more": 5,
+  "expect": "pass",
+  "name": "Enigma",
+  "slug": "enigma",
+  "layer": "table"
+ },
+ {
+  "id": "I04",
+  "group": "I",
+  "input": "Ber Rune",
+  "load_more": 1,
+  "expect": "pass",
+  "name": "Ber Rune",
+  "slug": "ber-rune",
+  "layer": "table"
+ },
+ {
+  "id": "I05",
+  "group": "I",
+  "input": "Shako",
+  "load_more": 3,
+  "expect": "pass",
+  "name": "Shako",
+  "slug": "shako",
+  "layer": "table"
+ },
+ {
+  "id": "J01",
+  "group": "J",
+  "input": "Enigma",
+  "load_more": 0,
+  "expect": "error",
+  "contains": "邀請碼",
+  "invite": "wrong"
+ },
+ {
+  "id": "J02",
+  "group": "J",
+  "input": "Enigma",
+  "load_more": 0,
+  "expect": "error",
+  "contains": "邀請碼",
+  "invite": "empty"
+ },
+ {
+  "id": "J03",
+  "group": "J",
+  "input": "Enigma",
+  "load_more": 0,
+  "expect": "error",
+  "contains": "已用完",
+  "invite": "tiny"
+ },
+ {
+  "id": "J04",
+  "group": "J",
+  "input": "Enigma",
+  "load_more": 0,
+  "expect": "stop",
+  "stop_after": 4
+ },
+ {
+  "id": "J05",
+  "group": "J",
+  "input": "Enigma",
+  "load_more": 0,
+  "expect": "pass",
+  "name": "Enigma",
+  "slug": "enigma",
+  "layer": "table",
+  "double_click": true
+ }
+]

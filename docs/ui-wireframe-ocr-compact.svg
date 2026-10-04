@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1580" height="900" viewBox="0 0 1580 900" font-family="Microsoft JhengHei, Noto Sans TC, Arial, sans-serif">
+  <rect width="1580" height="900" fill="#f4f4f4"/>
+  <text x="30" y="40" font-size="24" font-weight="bold" fill="#222">「📷 截圖」入口小型化：線框圖 v2（僅供確認，尚未實作）</text>
+  <text x="30" y="66" font-size="14" fill="#555">相較 v1：按鈕縮成名稱欄內的一顆小圖示、拿掉常駐說明文字、辨識區更緊湊（語言與按鈕併成一行）、已有模型時放入圖片後自動辨識（可關）。</text>
+
+  <!-- ============ Frame 1: default ============ -->
+  <text x="30" y="104" font-size="16" font-weight="bold" fill="#2563eb">① 平常：圖示收進名稱欄右側</text>
+  <rect x="30" y="116" width="340" height="360" rx="10" fill="#fff" stroke="#999"/>
+  <text x="46" y="146" font-size="18" font-weight="bold" fill="#222">Jev Traderie</text>
+  <rect x="42" y="158" width="316" height="300" rx="8" fill="#fff" stroke="#bbb"/>
+  <text x="54" y="186" font-size="13" font-weight="bold" fill="#333">邀請碼　（略）</text>
+  <text x="54" y="226" font-size="13" font-weight="bold" fill="#333">裝備名稱</text>
+  <rect x="54" y="234" width="292" height="34" rx="4" fill="#fff" stroke="#999"/>
+  <text x="64" y="256" font-size="14" fill="#222">Harlequin Crest</text>
+  <rect x="314" y="238" width="26" height="26" rx="4" fill="#eef4ff" stroke="#2563eb"/>
+  <text x="327" y="257" font-size="14" text-anchor="middle">📷</text>
+  <text x="54" y="296" font-size="13" font-weight="bold" fill="#333">載入更多次數　（略）</text>
+  <rect x="54" y="316" width="226" height="34" rx="4" fill="#2563eb"/><text x="167" y="338" font-size="14" text-anchor="middle" fill="#fff">開始查詢</text>
+  <rect x="288" y="316" width="58" height="34" rx="4" fill="#eee" stroke="#bbb"/><text x="317" y="338" font-size="13" text-anchor="middle" fill="#aaa">停止</text>
+  <text x="54" y="384" font-size="11" fill="#777">・名稱欄下方不再有常駐說明文字（少 2 行）</text>
+  <text x="54" y="402" font-size="11" fill="#777">・圖示 26×26，放在名稱欄裡面右側，不佔整排</text>
+  <text x="54" y="420" font-size="11" fill="#777">・名稱欄 placeholder 改成「輸入名稱，或貼上截圖」</text>
+
+  <!-- ============ Frame 2: hover tooltip + dragover ============ -->
+  <text x="400" y="104" font-size="16" font-weight="bold" fill="#2563eb">② 說明只在需要時出現</text>
+  <rect x="400" y="116" width="340" height="360" rx="10" fill="#fff" stroke="#999"/>
+  <text x="416" y="146" font-size="18" font-weight="bold" fill="#222">Jev Traderie</text>
+  <rect x="412" y="158" width="316" height="300" rx="8" fill="#fff" stroke="#bbb"/>
+  <text x="424" y="226" font-size="13" font-weight="bold" fill="#333">裝備名稱</text>
+  <rect x="424" y="234" width="292" height="34" rx="4" fill="#fff" stroke="#999"/>
+  <text x="434" y="256" font-size="14" fill="#999">輸入名稱，或貼上截圖</text>
+  <rect x="684" y="238" width="26" height="26" rx="4" fill="#2563eb"/><text x="697" y="257" font-size="14" text-anchor="middle">📷</text>
+  <rect x="560" y="272" width="152" height="40" rx="4" fill="#333"/>
+  <text x="570" y="290" font-size="11" fill="#fff">用截圖查名稱</text>
+  <text x="570" y="305" font-size="10" fill="#ccc">或按 Ctrl+V、拖圖進來</text>
+  <text x="424" y="340" font-size="12" fill="#2563eb" font-weight="bold">滑鼠移到圖示 → 顯示提示（上圖）</text>
+  <rect x="424" y="358" width="292" height="70" rx="6" fill="#eaf2ff" stroke="#2563eb" stroke-dasharray="6 4"/>
+  <text x="570" y="388" font-size="13" text-anchor="middle" fill="#2563eb" font-weight="bold">把圖片拖到這裡放開</text>
+  <text x="570" y="408" font-size="11" text-anchor="middle" fill="#555">拖曳時才出現，整張卡片都可以放</text>
+  <text x="424" y="446" font-size="11" fill="#777">＊首次使用時，圖示旁有一個小圓點提示一次，之後不再出現</text>
+
+  <!-- ============ Frame 3: loaded, compact panel ============ -->
+  <text x="770" y="104" font-size="16" font-weight="bold" fill="#2563eb">③ 放進圖片：緊湊辨識區（語言與按鈕同一行）</text>
+  <rect x="770" y="116" width="340" height="590" rx="10" fill="#fff" stroke="#999"/>
+  <text x="786" y="146" font-size="18" font-weight="bold" fill="#222">Jev Traderie</text>
+  <rect x="782" y="158" width="316" height="530" rx="8" fill="#fff" stroke="#bbb"/>
+  <text x="794" y="226" font-size="13" font-weight="bold" fill="#333">裝備名稱</text>
+  <rect x="794" y="234" width="292" height="34" rx="4" fill="#fff" stroke="#999"/>
+  <text x="804" y="256" font-size="14" fill="#222">Harlequin Crest</text>
+  <rect x="1054" y="238" width="26" height="26" rx="4" fill="#2563eb"/><text x="1067" y="257" font-size="14" text-anchor="middle">📷</text>
+
+  <rect x="794" y="278" width="292" height="260" rx="6" fill="#f8fbff" stroke="#2563eb" stroke-dasharray="6 4"/>
+  <rect x="806" y="290" width="160" height="28" rx="4" fill="#fff" stroke="#999"/><text x="814" y="309" font-size="12" fill="#222">繁體中文 ✓離線</text><text x="952" y="309" font-size="11" fill="#666">▼</text>
+  <rect x="974" y="290" width="54" height="28" rx="4" fill="#2563eb"/><text x="1001" y="309" font-size="12" text-anchor="middle" fill="#fff">辨識</text>
+  <text x="1058" y="309" font-size="13" text-anchor="middle" fill="#666">✕</text>
+  <rect x="806" y="328" width="268" height="150" rx="4" fill="#2b2b36" stroke="#888"/>
+  <text x="940" y="366" font-size="12" text-anchor="middle" fill="#ddd">（截圖預覽）</text>
+  <rect x="840" y="378" width="190" height="64" fill="#3b82f6" fill-opacity="0.25" stroke="#3b82f6" stroke-width="2"/>
+  <text x="935" y="414" font-size="11" text-anchor="middle" fill="#bcd">拖框只讀這一塊（選填）</text>
+  <text x="806" y="500" font-size="11" fill="#666">換一張：再按 📷，或直接貼上／拖入新圖</text>
+  <text x="806" y="520" font-size="11" fill="#2563eb">⚙ 進階：看辨識文字、手動匯入模型</text>
+  <text x="794" y="566" font-size="12" font-weight="bold" fill="#2563eb">自動辨識（預設開）</text>
+  <text x="794" y="584" font-size="11" fill="#555">已有該語言模型時，放入圖片就自動辨識，少按一次；</text>
+  <text x="794" y="600" font-size="11" fill="#555">沒有模型時不會自動下載，一定先問你。</text>
+  <text x="794" y="624" font-size="11" fill="#555">自動辨識用「⚙ 進階」裡的開關關閉。</text>
+
+  <!-- ============ Frame 4: result ============ -->
+  <text x="1140" y="104" font-size="16" font-weight="bold" fill="#2563eb">④ 辨識後：填入名稱，辨識區自動縮成一行</text>
+  <rect x="1140" y="116" width="340" height="500" rx="10" fill="#fff" stroke="#999"/>
+  <text x="1156" y="146" font-size="18" font-weight="bold" fill="#222">Jev Traderie</text>
+  <rect x="1152" y="158" width="316" height="440" rx="8" fill="#fff" stroke="#bbb"/>
+  <text x="1164" y="226" font-size="13" font-weight="bold" fill="#333">裝備名稱</text>
+  <rect x="1164" y="234" width="292" height="34" rx="4" fill="#fffbe0" stroke="#f59e0b" stroke-width="2"/>
+  <text x="1174" y="256" font-size="14" fill="#222">Mara's Kaleidoscope</text>
+  <rect x="1424" y="238" width="26" height="26" rx="4" fill="#2563eb"/><text x="1437" y="257" font-size="14" text-anchor="middle">📷</text>
+  <text x="1164" y="288" font-size="11" fill="#92400e">● 來自截圖，請確認（改名後消失）</text>
+
+  <rect x="1164" y="300" width="292" height="62" rx="6" fill="#f8fbff" stroke="#2563eb" stroke-dasharray="6 4"/>
+  <rect x="1174" y="310" width="46" height="26" rx="3" fill="#2b2b36"/><text x="1197" y="327" font-size="9" text-anchor="middle" fill="#ddd">縮圖</text>
+  <text x="1230" y="323" font-size="11" fill="#16a34a">已辨識（2.1 秒）</text>
+  <rect x="1230" y="330" width="132" height="24" rx="12" fill="#fff" stroke="#2563eb"/><text x="1296" y="346" font-size="10" text-anchor="middle" fill="#2563eb">Mara's Kaleidoscope</text>
+  <rect x="1368" y="330" width="80" height="24" rx="12" fill="#fff" stroke="#999"/><text x="1408" y="346" font-size="10" text-anchor="middle" fill="#333">Maras Gaze</text>
+  <text x="1440" y="323" font-size="11" fill="#666" text-anchor="end">展開 ▾</text>
+
+  <rect x="1164" y="378" width="226" height="40" rx="4" fill="#2563eb" stroke="#1d4ed8" stroke-width="3"/><text x="1277" y="404" font-size="15" text-anchor="middle" fill="#fff">開始查詢</text>
+  <text x="1164" y="442" font-size="11" fill="#666">・認不出：名稱欄不變，辨識區顯示「認不出，請手動輸入」並保持展開。</text>
+  <text x="1164" y="460" font-size="11" fill="#666">・只認出底材：標籤改寫「只認出底材（不會依品質篩選）」。</text>
+  <text x="1164" y="478" font-size="11" fill="#666">・「展開 ▾」可看完整辨識文字、換語言、再辨識。</text>
+
+  <!-- ============ Notes ============ -->
+  <rect x="30" y="740" width="1450" height="140" rx="8" fill="#fff" stroke="#bbb"/>
+  <text x="46" y="768" font-size="14" font-weight="bold" fill="#333">v2 相對 v1 的改動與取捨</text>
+  <text x="46" y="792" font-size="12" fill="#444">1. 按鈕：由「54×34、兩行字」改成「26×26 圖示」，放在名稱欄內側右邊；說明改用提示框（hover）與 placeholder，名稱欄下少兩行常駐文字。</text>
+  <text x="46" y="812" font-size="12" fill="#444">2. 辨識區：語言選單、「辨識」鈕、關閉鈕併成一行，截圖預覽縮小；進階項目（看辨識文字、手動匯入模型）收進「⚙ 進階」。</text>
+  <text x="46" y="832" font-size="12" fill="#444">3. 少一次點擊（可選）：已有模型時放入圖片就自動辨識；沒有模型仍先問你、不會自動下載，也不會自動查詢。</text>
+  <text x="46" y="852" font-size="12" fill="#444">4. 辨識完成後辨識區縮成一行（縮圖＋結果＋其他候選），名稱與「開始查詢」更靠近，玩家視線不用往下捲。</text>
+  <text x="46" y="870" font-size="12" fill="#b45309">需要你決定：圖示是否太小（觸控不易）？自動辨識要預設開還是關？「來自截圖」標籤是否保留？</text>
+</svg>

@@ -1,0 +1,170 @@
+[
+ {
+  "file": "image-1.png",
+  "kind": "item",
+  "expect": "Griswold's Honor",
+  "visible_zh": "格里斯瓦德的榮耀",
+  "phone_photo": false
+ },
+ {
+  "file": "image-2.png",
+  "kind": "item",
+  "expect": "Smoke",
+  "visible_zh": "煙霧",
+  "phone_photo": false
+ },
+ {
+  "file": "image-3.png",
+  "kind": "skip",
+  "expect": null,
+  "visible_zh": "名稱看不清楚，不計分",
+  "phone_photo": false
+ },
+ {
+  "file": "image-4.png",
+  "kind": "base",
+  "expect": "Small Charm",
+  "visible_zh": "小型咒符",
+  "phone_photo": false
+ },
+ {
+  "file": "image-5.png",
+  "kind": "item",
+  "expect": "Mara's Kaleidoscope",
+  "visible_zh": "馬拉的萬花筒",
+  "phone_photo": false
+ },
+ {
+  "file": "image-6.png",
+  "kind": "base",
+  "expect": "Grand Charm",
+  "visible_zh": "特大咒符",
+  "phone_photo": false
+ },
+ {
+  "file": "image-7.png",
+  "kind": "base",
+  "expect": "Ring",
+  "visible_zh": "戒指",
+  "phone_photo": false
+ },
+ {
+  "file": "image-8.png",
+  "kind": "item",
+  "expect": "Rainbow Facet",
+  "visible_zh": "彩虹刻面",
+  "phone_photo": false
+ },
+ {
+  "file": "image-9.png",
+  "kind": "skip",
+  "expect": null,
+  "visible_zh": "法杖／法珠，名稱看不清楚，不計分",
+  "phone_photo": false
+ },
+ {
+  "file": "image-10.png",
+  "kind": "base",
+  "expect": "Ring",
+  "visible_zh": "戒指",
+  "phone_photo": false
+ },
+ {
+  "file": "image-11.png",
+  "kind": "base",
+  "expect": "Ring",
+  "visible_zh": "戒指",
+  "phone_photo": false
+ },
+ {
+  "file": "image-12.png",
+  "kind": "item",
+  "expect": "Andariel's Visage",
+  "visible_zh": "安達莉爾的面容",
+  "phone_photo": false
+ },
+ {
+  "file": "image-13.png",
+  "kind": "base",
+  "expect": "Alpha Helm",
+  "visible_zh": "阿爾發頭盔",
+  "phone_photo": false
+ },
+ {
+  "file": "image-14.png",
+  "kind": "base",
+  "expect": "Grand Charm",
+  "visible_zh": "特大咒符",
+  "phone_photo": false
+ },
+ {
+  "file": "image-15.png",
+  "kind": "item",
+  "expect": "Arachnid Mesh",
+  "visible_zh": "蜘蛛之網",
+  "phone_photo": false
+ },
+ {
+  "file": "image-16.png",
+  "kind": "base",
+  "expect": "Diadem",
+  "visible_zh": "權冠",
+  "phone_photo": false
+ },
+ {
+  "file": "image-17.png",
+  "kind": "item",
+  "expect": "Alma Negra",
+  "visible_zh": "阿爾瑪-尼格拉",
+  "phone_photo": false
+ },
+ {
+  "file": "image-18.png",
+  "kind": "item",
+  "expect": "Verdungo's Hearty Cord",
+  "visible_zh": "維爾登戈的心結",
+  "phone_photo": false
+ },
+ {
+  "file": "image-19.png",
+  "kind": "item",
+  "expect": "Nightwing's Veil",
+  "visible_zh": "夜視之盔",
+  "phone_photo": false
+ },
+ {
+  "file": "image-20.png",
+  "kind": "base",
+  "expect": "Ring",
+  "visible_zh": "戒指",
+  "phone_photo": false
+ },
+ {
+  "file": "6C7899AD-A65C-4F2F-B9E6-8E0C4C4AECE8.jpg",
+  "kind": "base",
+  "expect": "Coronet",
+  "visible_zh": "寶冠",
+  "phone_photo": true
+ },
+ {
+  "file": "IMG_0340.jpg",
+  "kind": "item",
+  "expect": "Mara's Kaleidoscope",
+  "visible_zh": "馬拉的萬花筒",
+  "phone_photo": true
+ },
+ {
+  "file": "IMG_0379.jpg",
+  "kind": "item",
+  "expect": "Arreat's Face",
+  "visible_zh": "亞瑞特的面容",
+  "phone_photo": true
+ },
+ {
+  "file": "IMG_0401.jpg",
+  "kind": "base",
+  "expect": "Grand Crown",
+  "visible_zh": "莊嚴王冠",
+  "phone_photo": true
+ }
+]

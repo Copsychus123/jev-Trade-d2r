@@ -3,7 +3,7 @@
 import re
 from pathlib import Path
 
-STATIC = Path(__file__).resolve().parent.parent.parent / "future" / "jev_ultrafast" / "static"
+STATIC = Path(__file__).resolve().parent.parent.parent / "core" / "jev_ultrafast" / "static"
 HTML = (STATIC / "index.html").read_text(encoding="utf-8")
 JS = (STATIC / "app.js").read_text(encoding="utf-8")
 TABS = ("run", "results", "usage")
