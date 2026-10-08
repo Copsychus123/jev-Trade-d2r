@@ -1,6 +1,7 @@
 """Build extension/dist and the zip: uv run python extension/build.py [--api URL]."""
 
 import argparse
+import json
 import os
 import re
 import shutil
@@ -9,34 +10,33 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+from jev_ultrafast.config import load_dotenv  # noqa: E402
+
 EXT = ROOT / "extension"
 DIST = EXT / "dist"
 ZIP = EXT / "jev-traderie-extension.zip"
-PKG = ROOT / "core" / "jev_ultrafast"
+PKG = ROOT / "src" / "jev_ultrafast"
 DEFAULT_API = "https://jev-trade-d2r.vercel.app"
 SECRET_NAMES = ("TYPESAFE_API_KEY", "RUN_TOKEN_SECRET", "KV_REST_API_TOKEN")
 SECRET_PATTERN = re.compile(r"TYPESAFE_API_KEY|RUN_TOKEN_SECRET|KV_REST_API_TOKEN|Bearer\s+[A-Za-z0-9._-]{20,}")
-PAGE_SCRIPTS = ("snapshot.js", "after_input.js", "resolve_target.js", "settle.js")
+PAGE_SCRIPTS = ("snapshot.js", "after_input.js", "resolve_target.js", "covered_overlay.js", "settle.js")
+# What extension/src/traderie/lookup.js (indexTables, productUrl) reads; the audit-only fields stay in the source table.
+SHIPPED_TABLE_KEYS = ("generated_at", "version", "products", "zh", "bases", "game_only")
+SHIPPED_PRODUCT_KEYS = ("name", "slug")
 
 
-def read_dotenv(path: Path) -> dict[str, str]:
-    values: dict[str, str] = {}
-    if not path.exists():
-        return values
-    for line in path.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#") or "=" not in stripped:
-            continue
-        key, value = stripped.split("=", 1)
-        value = value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
-            value = value[1:-1]
-        values.setdefault(key.strip(), value)
-    return values
+def ship_table(table: dict) -> dict:
+    """The committed table reduced to what the extension reads at runtime (`lookup.js` indexTables/productUrl)."""
+    shipped = {key: table[key] for key in SHIPPED_TABLE_KEYS}
+    shipped["products"] = [{key: product[key] for key in SHIPPED_PRODUCT_KEYS} for product in table["products"]]
+    return shipped
 
 
 def secret_values() -> list[str]:
-    dotenv = read_dotenv(ROOT / ".env")
+    dotenv: dict[str, str] = {}
+    load_dotenv(ROOT / ".env", environ=dotenv)
     values = []
     for name in SECRET_NAMES:
         value = os.environ.get(name) or dotenv.get(name) or ""
@@ -68,6 +68,9 @@ def build(api: str, out: Path | None = None) -> int:
             target = DIST_DIR / source.relative_to(EXT / "src")
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, target)
+    items = DIST_DIR / "traderie" / "data" / "items.json"  # the source stays readable; the shipped copy is one line
+    table = ship_table(json.loads(items.read_text(encoding="utf-8")))
+    items.write_text(json.dumps(table, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     manifest = (EXT / "manifest.json").read_text(encoding="utf-8").replace("__API__", api)
     (DIST_DIR / "manifest.json").write_text(manifest, encoding="utf-8")
     (DIST_DIR / "config.js").write_text(f'export const API_BASE = "{api}";\n', encoding="utf-8")
@@ -77,6 +80,7 @@ def build(api: str, out: Path | None = None) -> int:
     for name in PAGE_SCRIPTS:
         shutil.copyfile(PKG / name, page / name)
     shutil.copyfile(PKG / "traderie" / "settled_page.js", page / "settled_page.js")
+    shutil.copyfile(PKG / "traderie" / "fetch_json.js", page / "fetch_json.js")
     shutil.copyfile(PKG / "static" / "csv.js", DIST_DIR / "csv.js")
 
     files = sorted(p for p in DIST_DIR.rglob("*") if p.is_file())

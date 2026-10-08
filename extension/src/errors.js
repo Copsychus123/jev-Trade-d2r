@@ -16,6 +16,14 @@ export class TimeoutError extends Error {
   }
 }
 
+/** The user pressed Stop (or the panel closed): the query window was closed under a command that was running. */
+export class AbortedError extends Error {
+  constructor(message = "查詢已停止") {
+    super(message);
+    this.name = "AbortedError";
+  }
+}
+
 /** The backend refused or could not be reached. `status` is 0 for a network failure. */
 export class ApiError extends Error {
   constructor(status, message) {

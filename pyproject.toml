@@ -10,7 +10,7 @@ dependencies = ["browser-harness==0.1.13", "httpx>=0.28,<1"]
 [project.scripts]
 jev = "jev_ultrafast.demo:main"
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27,<2"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.sdist]
@@ -18,26 +18,33 @@ exclude = [
     "/.tmp-*",
     "/artifacts",
     "/archive",
+    "/scripts/data",
+    "/extension",
+    "/services",
+    "/docs",
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["core/jev_ultrafast"]
-sources = ["core"]
+packages = ["src/jev_ultrafast"]
+sources = ["src"]
 
 [dependency-groups]
 dev = ["pytest>=8.4,<9", "ruff>=0.14,<1"]
+# Chrome end-to-end scripts (scripts/extension_e2e.py, extension_batch.py, ocr_e2e.py, build_item_tables.py):
+# uv run --group e2e python scripts/<name>.py
+e2e = ["websockets>=15,<16", "pillow>=11,<13"]
 
 [tool.ruff]
 line-length = 120
-src = [".", "core", "services"]
+src = [".", "src", "services"]
 exclude = ["archive", "services/.build"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
 
 [tool.pytest.ini_options]
-testpaths = ["scripts/tests", "services/tests"]
-pythonpath = [".", "core", "services"]
+testpaths = ["tests"]
+pythonpath = [".", "src", "services"]
 addopts = ["-m", "not live"]
 
 markers = [

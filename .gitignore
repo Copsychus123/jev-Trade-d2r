@@ -1,4 +1,6 @@
 .env
+.env.*
+!.env.example
 .venv/
 __pycache__/
 .pytest_cache/
@@ -15,3 +17,4 @@ services/.build/
 extension/dist/
 extension/*.zip
 extension/dist-e2e/
+extension/jev-traderie-extension-*/

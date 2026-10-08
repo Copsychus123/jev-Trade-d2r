@@ -92,6 +92,30 @@ test("a table page that is not the promised item falls back to search from the h
   assert.match(args.market.lookup.notes.join(" "), /改用搜尋/);
 });
 
+test("table jumps and misses are counted across runs and each miss note says how old the table is", async () => {
+  const tableStats = { jumps: 0, misses: 0 };
+  const wrong = { url: `${ROOT}/product/harlequin-crest`, title: "Shako - Diablo II: Resurrected (D2R) Trade" };
+  const right = { url: `${ROOT}/product/harlequin-crest`, title: "Harlequin Crest - Diablo II: Resurrected (D2R) Trade" };
+  const notes = [];
+  for (const landing of [right, wrong, wrong]) {
+    const { args } = setup({ landing, agents: [done] });
+    await findAndRead({ ...args, tableStats });
+    notes.push(args.market.lookup.notes.join(" "));
+  }
+  assert.deepEqual(tableStats, { jumps: 3, misses: 2 });
+  assert.equal(notes[0], "");
+  assert.match(notes[1], /查表落空 1\/2 次/);
+  assert.match(notes[2], /查表落空 2\/3 次/);
+  assert.match(notes[2], /名稱表更新於 2026-01-01/);
+});
+
+test("a site challenge on the table page is not counted as a miss", async () => {
+  const tableStats = { jumps: 0, misses: 0 };
+  const { args } = setup({ landing: { url: `${ROOT}/product/harlequin-crest`, title: "Just a moment...", text: "" }, agents: [] });
+  assert.equal(await findAndRead({ ...args, tableStats }), "guard");
+  assert.deepEqual(tableStats, { jumps: 1, misses: 0 });
+});
+
 test("a site challenge on the table page stops the run instead of searching", async () => {
   const { args } = setup({ landing: { url: `${ROOT}/product/harlequin-crest`, title: "Just a moment...", text: "" }, agents: [] });
   assert.equal(await findAndRead(args), "guard");

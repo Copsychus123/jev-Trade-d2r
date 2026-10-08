@@ -1,15 +1,27 @@
-"""Real-Chrome end-to-end check of the extension: uv run python scripts/extension_e2e.py [--headed].
+"""Real-Chrome end-to-end check of the extension: uv run --group e2e python scripts/extension_e2e.py [--headed].
 
-Starts the local backend, loads extension/dist into the dedicated Chrome profile (already logged in to Traderie),
-runs one query through the side panel and checks the tables and CSV files. Exit 0 pass, 1 failed, 2 environment.
+Windows-only tool (Chrome paths and fonts of a Windows install; it was never run elsewhere). Builds the extension into
+extension/dist-e2e, starts the local backend, loads it into the dedicated Chrome profile (already logged in to
+Traderie), runs one query through the side panel and checks the tables and CSV files. It closes the dedicated Chrome
+first (same profile) and spends one real Jev query per run. Exit 0 pass, 1 failed, 2 environment.
+
+--stub-chooser runs the same checks on the same real pages for nothing: the local backend answers every step itself
+(serve_stub_backend below serves services/jevsvc's own routes with a chooser injected), so TypeSafe is never reached
+and TYPESAFE_API_KEY is not needed. The plan follows the goal the backend builds: it scrolls the Trading list to the
+bottom when Load More batches were asked for (the panel's own phase-finish rule then makes the presses), answers DONE
+on the view it must end on, and clicks the page's Recent Trades tab before ending phase B.
 """
 
 import argparse
 import asyncio
 import json
+import os
 import re
+import secrets
+import socket
 import subprocess
 import sys
+import threading
 import time
 import urllib.parse
 from pathlib import Path
@@ -19,17 +31,18 @@ import websockets
 
 ROOT = Path(__file__).resolve().parents[1]
 E2E_DIST = ROOT / "extension" / "dist-e2e"  # never extension/dist: that one is what friends load
-sys.path.insert(0, str(ROOT / "core"))
+sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _cdp import Environment, attach  # noqa: E402
 
 from jev_ultrafast.chrome import CHROME_PORT, PROFILE_DIR, chrome_binary  # noqa: E402
+from jev_ultrafast.traderie.site import product_section  # noqa: E402
 
 DEBUG_PORT = 9356
-LOCAL_API = "http://127.0.0.1:8788"
+BACKEND_PORT = 8788
+LOCAL_API = f"http://127.0.0.1:{BACKEND_PORT}"
 DONE = "查詢完成，兩段資料都通過檢查"
-
-
-class Environment(Exception):
-    """Something outside the extension is wrong (exit code 2)."""
 
 
 def say(message: str) -> None:
@@ -61,27 +74,265 @@ def build_extension(api: str) -> None:
     subprocess.run(command, cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
 
 
-def start_backend() -> tuple[subprocess.Popen, str]:
-    say("啟動本機後端…")
+def port_free(port: int) -> bool:
+    with socket.socket() as probe:
+        probe.settimeout(1)
+        return probe.connect_ex(("127.0.0.1", port)) != 0
+
+
+class BackendLog:
+    """The backend's stdout/stderr kept on disk while a thread empties the pipe.
+
+    The pipe must keep being read (an unread one fills up and stalls the backend), so nothing is discarded: every
+    line is also written to artifacts/perf/backend-<timestamp>.log, which a later hung run can be diagnosed from.
+    """
+
+    def __init__(self) -> None:
+        PERF_DIR.mkdir(parents=True, exist_ok=True)
+        self.path = PERF_DIR / f"backend-{time.strftime('%Y%m%d-%H%M%S')}.log"
+        self._handle = self.path.open("w", encoding="utf-8")
+        self._thread: threading.Thread | None = None
+
+    def keep(self, line: str) -> None:
+        if self._handle.closed:
+            return
+        self._handle.write(line)
+        self._handle.flush()
+
+    def drain(self, process: subprocess.Popen) -> None:
+        self._thread = threading.Thread(target=self._pump, args=(process,), daemon=True)
+        self._thread.start()
+
+    def _pump(self, process: subprocess.Popen) -> None:
+        for line in process.stdout:
+            self.keep(line)
+
+    def close(self) -> None:
+        if self._thread is not None:
+            self._thread.join(timeout=5)
+        if not self._handle.closed:
+            self._handle.close()
+
+
+STUB_SERVER = "import extension_e2e; extension_e2e.serve_stub_backend()"
+# The stub has to know which phase it is answering for, and the only phase signal a chooser is handed is the goal:
+# services/jevsvc/app.py builds it per phase from traderie.site.phase_plan, which ends with "Current phase: Phase A
+# (Trading) only…" or "Phase B (Recent Trades)…". The letter -> view name map is the repo's own phase order.
+PHASE_IN_GOAL = re.compile(r"Current phase: Phase ([AB])")
+PHASE_BY_LETTER = {"A": "trading", "B": "recent_trades"}
+# site.build_goal writes the two phases differently depending on the requested batches: with them the goal says the
+# program "ends the phase itself after N presses", without them it says to choose DONE as soon as the view is open.
+BATCHES_IN_GOAL = re.compile(r"ends the phase itself after (\d+) presses")
+RECENT_TAB = "recent trades"  # the accessible name Traderie gives the Recent Trades tab (measured: "Recent Trades")
+LOAD_MORE = "load more"
+
+
+def stub_stamp() -> str:
+    """Wall-clock time with milliseconds: a log reader counts requests per second when a run looks slow."""
+    now = time.time()
+    return f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(now))}.{int(now % 1 * 1000):03d}"
+
+
+def _label(action) -> str:
+    """An action's accessible name, whitespace collapsed (the page's own text, never a hardcoded name)."""
+    return re.sub(r"\s+", " ", str(action.get("label") or "")).strip()
+
+
+def stub_phase(goal: str) -> str:
+    """The phase the backend is asking about, read from the goal it built for that phase."""
+    found = PHASE_IN_GOAL.search(goal or "")
+    # Every goal this repo produces carries the line (site.phase_plan appends it), so a goal without one means the
+    # backend changed and the guess is wrong: the first phase is the safe answer, and the log shows what was sent.
+    return PHASE_BY_LETTER.get(found.group(1), "trading") if found else "trading"
+
+
+def goal_batches(goal: str) -> int:
+    """How many Load More presses the goal asks for this phase (0 when it asks for none)."""
+    found = BATCHES_IN_GOAL.search(goal or "")
+    return int(found.group(1)) if found else 0
+
+
+def recent_tab(actions) -> dict | None:
+    """The page's own Recent Trades tab: looked up by its accessible name, never by an element id (ids come from the
+    order of one observation, so they are only meaningful inside that same page)."""
+    clicks = [action for action in actions if action.get("kind") == "click"]
+    for action in clicks:
+        if _label(action).casefold() == RECENT_TAB:
+            return action
+    return next((action for action in clicks if RECENT_TAB in _label(action).casefold()), None)
+
+
+def stub_decision(operation: str, choice: str, probabilities: dict) -> dict:
+    """One chooser answer in the shape model.choose returns (tests/test_services.py stubs the same keys)."""
+    return {
+        "choice": choice,
+        "operation": operation,
+        "target": None,  # the stub answers with an element id it already picked, so there is no target head to read
+        "probabilities": probabilities,
+        "operation_probabilities": {operation: 1.0},
+        "target_probabilities": {},
+        "usage": {},
+        "reasked": None,
+        "model_calls": 1,
+        "latency_ms": 0,
+    }
+
+
+class StubChooser:
+    """The fixed answers that let one real query through the side panel finish without a single Jev call.
+
+    The plan, and why each answer is given:
+      * Phase A (trading) — the panel opened the item's product page itself (the table jump needs no model), so the
+        Trading view is already the view phase A must end on. When the goal asks for Load More batches, the one move
+        the stub makes is the same first move the real chooser makes (measured: SCROLL_BOTTOM in every recorded run
+        with batches): the page's Load More button only enters the action list once the list bottom is on screen, and
+        from there the extension's own phase-finish rule (site.phase_finish_rule) runs the press/scroll cycle and ends
+        the phase after the requested number of presses, without asking anyone. Otherwise — and whenever the phase
+        already moved once, which is the goal's own "choose DONE only after scrolling to the bottom when no Load More
+        button is visible" — the answer is DONE.
+      * Phase B (recent_trades) — the page is still the Trading view. The Recent Trades tab is found in the action
+        list the panel sent, by its accessible name, and clicked by its id; once the address says that section is
+        open (site.product_section — the same rule controller.read_view verifies the read with), the view is there:
+        DONE.
+
+    Every request is logged with a timestamp, the phase, the page and the answer, so the backend log shows the stub
+    answering and holds no line about a real model.
+    """
+
+    def __init__(self, log=say) -> None:
+        self.log = log
+        self.requests = 0
+
+    def __call__(self, page, goal, history, typed=None, *, timeout=None, deadline=None, allow_blocked=True):
+        """choose_step's chooser signature: (page, goal, history, typed, *, timeout, deadline, allow_blocked)."""
+        self.requests += 1
+        phase = stub_phase(goal)
+        actions = page.get("actions") or []
+        answer, why = self._answer(phase, page, actions, goal, history)
+        more = next((action for action in actions if LOAD_MORE in _label(action).casefold()), None)
+        more_label = "none" if more is None else _label(more)
+        self.log(
+            f"[{stub_stamp()}] stub #{self.requests} phase={phase} url={page.get('url')} actions={len(actions)}"
+            f" load_more={more_label!r} -> {answer['operation']} {answer['choice']} ({why})"
+        )
+        return answer
+
+    def _answer(self, phase: str, page: dict, actions, goal: str, history) -> tuple[dict, str]:
+        if phase == "recent_trades":
+            if product_section(page.get("url") or "") == "recent":
+                return stub_decision("DONE", "DONE", {"DONE": 1.0}), "Recent Trades view is open"
+            tab = recent_tab(actions)
+            if tab is not None:
+                return stub_decision("CLICK", tab["id"], {tab["id"]: 1.0}), f"clicked the {_label(tab)!r} tab"
+            return stub_decision("DONE", "DONE", {"DONE": 1.0}), "no Recent Trades tab on the page: DONE as it is"
+        batches = goal_batches(goal)
+        scrolling = any(action.get("id") == "scroll_bottom" for action in actions)
+        if batches and not history and scrolling:
+            return (
+                stub_decision("SCROLL_BOTTOM", "scroll_bottom", {"scroll_bottom": 1.0}),
+                f"goal asks for {batches} Load More presses: scrolling to the bottom so the rule can press them",
+            )
+        return stub_decision("DONE", "DONE", {"DONE": 1.0}), "Trading view is open; DONE"
+
+
+def stub_routes(chooser=None) -> dict:
+    """The backend's own routes with a chooser behind /api/choose: the only thing stub mode replaces.
+
+    `services/jevsvc/app.py`'s choose_step takes the chooser as an argument, so the route table itself is the seam;
+    every other route (run start, base picking, the store, token checks, usage accounting) is the backend's own.
+    """
+    from jevsvc.app import ROUTES, choose_step
+
+    stub = chooser or StubChooser()
+
+    def choose_with_stub(body, ip, store, secret, now):
+        return choose_step(body, store, secret, now, chooser=stub)
+
+    return {**ROUTES, "/api/choose": choose_with_stub}
+
+
+def serve_stub_backend() -> None:
+    """Serve the backend's own routes with StubChooser behind them (what `start_backend(stub=True)` starts).
+
+    Nothing under services/** is touched: the routes, the request pipeline and the store are the ones
+    services/dev_server.py uses, and the only difference is the chooser handed to the /api/choose route. The paid API
+    is unreachable from here on purpose — TYPESAFE_API_KEY is removed from this process, so even a route that ignored
+    the chooser could not spend anything, and the log would say so.
+    """
+    sys.path.insert(0, str(ROOT / "services"))
+    sys.path.insert(0, str(ROOT / "src"))
+    os.environ.pop("TYPESAFE_API_KEY", None)
+    if len(os.environ.get("RUN_TOKEN_SECRET", "")) < 32:
+        os.environ["RUN_TOKEN_SECRET"] = secrets.token_hex(32)
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    from jevsvc import invites
+    from jevsvc.http import serve
+    from jevsvc.store import MemoryStore
+
+    store = MemoryStore()
+    routes = stub_routes(StubChooser())
+
+    class Handler(BaseHTTPRequestHandler):
+        def _serve(self):
+            serve(self, routes, store)
+
+        do_GET = do_POST = do_PUT = do_PATCH = do_DELETE = do_OPTIONS = _serve
+
+        def log_message(self, format, *args):
+            pass
+
+    print(f"開發用邀請碼：{invites.add(store, 'dev')}", flush=True)
+    print(f"Jev backend: http://127.0.0.1:{BACKEND_PORT}（stub 選擇器：這支後端不會呼叫 Jev）", flush=True)
+    ThreadingHTTPServer(("127.0.0.1", BACKEND_PORT), Handler).serve_forever()
+
+
+def start_backend(stub: bool = False) -> tuple[subprocess.Popen, str, BackendLog]:
+    """Starts the local backend: returns it, its dev invite code and its log.
+
+    Without `stub` it is services/dev_server.py, which needs TYPESAFE_API_KEY in .env because every step asks Jev.
+    With `stub` the same routes are served by serve_stub_backend in a child process with an injected chooser: a query
+    finishes with zero Jev calls and no key at all.
+    """
+    if not port_free(BACKEND_PORT):
+        raise Environment(f"本機後端的連接埠 {BACKEND_PORT} 已被佔用（舊的後端還在跑？），請先關閉")
+    say("啟動本機後端（stub 選擇器，不會呼叫 Jev）…" if stub else "啟動本機後端…")
+    log = BackendLog()
+    if stub:
+        inherited = os.environ.get("PYTHONPATH", "")
+        env = {
+            **os.environ,
+            "PYTHONPATH": os.pathsep.join(part for part in (str(Path(__file__).resolve().parent), inherited) if part),
+        }
+        command, missing = [sys.executable, "-u", "-c", STUB_SERVER], "stub 後端沒有啟動（見上面的後端輸出）"
+    else:
+        env, command = None, [sys.executable, "-u", "services/dev_server.py"]
+        missing = "後端沒有啟動（.env 需要有 TYPESAFE_API_KEY）"
     process = subprocess.Popen(
-        [sys.executable, "-u", "services/dev_server.py"],
+        command,
         cwd=ROOT,
+        env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
         encoding="utf-8",
     )
-    code, deadline = "", time.time() + 30
+    code, deadline, output = "", time.time() + 30, []
     while time.time() < deadline:
         line = process.stdout.readline()
         if not line:
             break
+        log.keep(line)
+        output.append(line)
         if "開發用邀請碼：" in line:
             code = line.split("開發用邀請碼：", 1)[1].strip()
         if "Jev backend:" in line and code:
-            return process, code
+            log.drain(process)
+            return process, code, log
     process.terminate()
-    raise Environment("後端沒有啟動（.env 需要有 TYPESAFE_API_KEY）")
+    log.close()
+    say("".join(output[-10:]))  # whatever the backend printed before dying: the log file is not printed on this path
+    raise Environment(missing)
 
 
 def free_profile() -> None:
@@ -114,7 +365,7 @@ def headless_user_agent() -> str:
     )
 
 
-def launch_chrome(headed: bool) -> subprocess.Popen:
+def launch_chrome(headed: bool, extra_args: tuple[str, ...] = ()) -> subprocess.Popen:
     say("啟動 Chrome（有視窗）…" if headed else "啟動 Chrome（無視窗）…")
     args = [
         chrome_binary(),
@@ -124,6 +375,7 @@ def launch_chrome(headed: bool) -> subprocess.Popen:
         "--no-first-run",
         "--no-default-browser-check",
         *([] if headed else ["--headless=new", f"--user-agent={headless_user_agent()}"]),
+        *extra_args,
         "about:blank",
     ]
     process = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -156,35 +408,163 @@ HOOKS = """(() => {
   navigator.clipboard.writeText = async (text) => { window.__copied.push(text); };
 })()"""
 
-SNAPSHOT = """JSON.stringify({
-  status: document.getElementById('status').textContent,
-  verification: document.getElementById('verification').textContent,
-  usage: document.getElementById('usage').textContent,
-  lookup: document.getElementById('lookup').textContent,
-  pills: ['trading', 'recent-trades'].map((p) => document.getElementById(p + '-status').textContent),
-  rows: ['trading', 'recent-trades'].map((p) =>
-    parseInt(document.getElementById(p + '-meta').textContent.replace(/^\\D+/, ''), 10) || 0),
-  shown: ['trading', 'recent-trades'].map((p) => document.querySelectorAll('#' + p + '-table tbody tr').length),
-  pager: ['trading', 'recent-trades'].map((p) => document.getElementById(p + '-page').textContent),
-  log: [...document.querySelectorAll('#log li')].map((l) => l.textContent),
-  idle: !document.getElementById('start').disabled,
-  locked: document.getElementById('load-more').disabled
-})"""
+# One picture of the side panel for the Chrome checks. `status` is the old one-line summary, worked out from the
+# screen: the banner text, "已停止", or "查詢完成…" when the trust line says the data was checked.
+SNAPSHOT = """(() => {
+  const $ = (id) => document.getElementById(id);
+  const text = (id) => $(id).textContent.trim();
+  const view = document.body.dataset.view;
+  const labels = { table: '查表直接開啟', search: '站內搜尋', base: '底材清單' };
+  const trust = $('trust').dataset.kind;
+  const reasons = [...$('trust-reasons').children].map((li) => li.textContent).join('、');
+  const verification = trust === 'ok' ? text('trust-line')
+    : trust === 'warn' ? text('trust-head') + '：' + reasons : '';
+  const banner = $('banner').hidden ? '' : [text('banner-message'), text('banner-hint')].filter(Boolean).join(' ');
+  const status = banner || (view === 'stopped' ? '已停止' : view === 'done'
+    ? (trust === 'ok' ? '查詢完成，兩段資料都通過檢查' : '查詢完成，但檢查未通過：' + reasons) : '');
+  const layer = $('trust').dataset.layer;
+  // The step counter under the four-step list and, once a query has ended, the decisions of its run: a stuck query
+  // freezes the counter (the harness prints it, so a hung run and a slow one look different in the log).
+  const decisions = ((window.__jevLastRun ?? {}).decisions ?? []).slice(-4)
+    .map((d) => `${d.label ?? d.choice}·${d.phase}·${d.step}${d.by_rule ? '·規則' : ''}`);
+  return JSON.stringify({
+    view,
+    status,
+    verification,
+    lookup: [layer ? '查詢方式：' + labels[layer] : '', text('part-notes')].filter(Boolean).join('。'),
+    quota: text('quota'),
+    pills: ['trading', 'recent-trades'].map((p) => $(p + '-tab').dataset.status),
+    meta: ['trading', 'recent-trades'].map((p) => text(p + '-meta')),
+    rows: ['trading', 'recent-trades'].map((p) => parseInt($(p + '-count').textContent, 10) || 0),
+    shown: ['#trading-list li', '#recent-trades-list li'].map((s) => document.querySelectorAll(s).length),
+    pager: ['trading', 'recent-trades'].map((p) => text(p + '-page')),
+    step: text('progress-status'),
+    decisions,
+    idle: view !== 'running',
+    locked: ['item', 'more-minus', 'more-plus', 'settings-open'].every((id) => $(id).disabled),
+    run: window.__jevLastRun ?? null
+  });
+})()"""
+
+PERF_DIR = ROOT / "artifacts" / "perf"
+
+
+def timing_rows(run: dict | None) -> list[tuple[str, int]]:
+    """(stage, ms) for each timeline entry of the panel's last query, in order."""
+    return [(entry["stage"], int(entry["ms"])) for entry in (run or {}).get("timeline", [])]
+
+
+def report_timing(run: dict | None) -> None:
+    """Prints the per-stage table of the last query and keeps the raw record in artifacts/perf/run-<timestamp>.json."""
+    if not run:
+        say("沒有計時資料（側邊欄沒有留下 __jevLastRun）")
+        return
+    rows = timing_rows(run)
+    width = max((len(stage) for stage, _ in rows), default=5)
+    for stage, ms in rows:
+        print(f"  {stage:<{width}}  {ms:>7} ms", flush=True)
+    timeline = run.get("timeline", [])
+    total = max((e["start_ms"] + e["ms"] for e in timeline), default=0)
+    print(f"  {'total':<{width}}  {total:>7} ms   (visibility: {run.get('visibility')})", flush=True)
+    PERF_DIR.mkdir(parents=True, exist_ok=True)
+    path = PERF_DIR / f"run-{time.strftime('%Y%m%d-%H%M%S')}.json"
+    path.write_text(json.dumps(run, ensure_ascii=False, indent=2), encoding="utf-8")
+    say(f"計時資料：{path.relative_to(ROOT)}")
+
+ROW_SELECTOR = {"trading": "#trading-list li", "recent-trades": "#recent-trades-list li"}
+
+PROGRESS_KEYS = ("view", "status", "step", "pills", "rows", "quota", "locked")
+
+
+def progress_key(sample: dict) -> tuple:
+    """A comparable picture of the fields a wait-loop sample can change, so equal samples print no line."""
+    return tuple(
+        tuple(sample.get(key) or []) if isinstance(sample.get(key), list) else sample.get(key)
+        for key in PROGRESS_KEYS
+    )
+
+
+def parse_sample(raw: str | None) -> dict | None:
+    """A sample's raw JSON as a state dict, or None when the panel gave nothing usable (no answer, or not JSON)."""
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+
+
+def progress_fields(sample: dict) -> str:
+    """The fields a hung run leaves behind: the step counter, view, rows, status, per-tab pills, quota and lock."""
+    rows = sample.get("rows") or [0, 0]
+    pills = sample.get("pills") or []
+    state = sample.get("status") or sample.get("verification") or "—"
+    decisions = sample.get("decisions") or []
+    log = f"  決策：{' | '.join(decisions)}" if decisions else ""
+    return (
+        f"{sample.get('view') or '?'}  步驟：{sample.get('step') or '—'}"
+        f"  掛單 {rows[0]}/近期 {rows[1]}  狀態：{state}"
+        f"  兩段：{'/'.join(str(pill or '—') for pill in pills)}"
+        f"  額度：{sample.get('quota') or '—'}  鎖定：{'是' if sample.get('locked') else '否'}{log}"
+    )
+
+
+SET_FILTER = """(() => {
+  document.getElementById('settings-open').click();
+  const select = document.getElementById('filter-platform');
+  select.value = 'PC';
+  select.dispatchEvent(new Event('change'));
+  document.getElementById('settings-back').click();
+  document.getElementById('trading-tab').click();
+  return document.getElementById('trading-count').textContent;
+})()"""
+CLEAR_FILTER = """(() => {
+  document.getElementById('settings-open').click();
+  document.getElementById('filter-clear').click();
+  document.getElementById('settings-back').click();
+  return document.getElementById('trading-count').textContent;
+})()"""
+
+
+async def check_filter(evaluate) -> dict:
+    """A display filter (platform PC) changes the visible count without a new query; CSV rows are the kept rows."""
+    active = await evaluate(SET_FILTER)
+    kept, _, read = active.partition("/")
+    await evaluate("window.__blobs.length = 0")
+    await evaluate("document.getElementById('result-csv').click()")
+    await asyncio.sleep(0.5)
+    text = await evaluate("window.__blobs[0] || ''")
+    lines = text.split("\r\n")[:-1] if text.endswith("\r\n") else text.split("\r\n")
+    cleared = await evaluate(CLEAR_FILTER)
+    return {
+        "active_count": active,
+        "kept": int(kept),
+        "read": int(read or 0),
+        "csv_lines": len(lines) if text else 0,
+        "cleared_count": cleared,
+    }
+
+# The pages each tab was read from, taken from what 前往網站 would open (opening is intercepted, nothing opens).
+OPEN_URLS = """(async () => {
+  const opened = [];
+  chrome.tabs.create = async (options) => { opened.push(options.url); };
+  const selected = document.querySelector('[role=tab][aria-selected=true]');
+  const urls = [];
+  for (const prefix of ['trading', 'recent-trades']) {
+    document.getElementById(prefix + '-tab').click();
+    const button = document.getElementById('result-open');
+    opened.length = 0;
+    if (!button.disabled) button.click();
+    urls.push(opened[0] ?? null);
+  }
+  selected.click();
+  return urls;
+})()"""
 
 
 async def drive(ws_url: str, code: str, item: str, load_more: int, timeout: int) -> dict:
-    async with websockets.connect(ws_url, max_size=None) as ws:
-        counter = 0
-
-        async def evaluate(expression: str):
-            nonlocal counter
-            counter += 1
-            params = {"expression": expression, "returnByValue": True, "awaitPromise": True}
-            await ws.send(json.dumps({"id": counter, "method": "Runtime.evaluate", "params": params}))
-            while True:
-                message = json.loads(await ws.recv())
-                if message.get("id") == counter:
-                    return message["result"].get("result", {}).get("value")
+    async with attach(ws_url) as panel:
+        evaluate = panel.evaluate
 
         for _ in range(40):  # the panel page must be loaded before it can be driven
             if await evaluate("document.readyState === 'complete' && !!document.getElementById('start')"):
@@ -193,23 +573,37 @@ async def drive(ws_url: str, code: str, item: str, load_more: int, timeout: int)
         else:
             raise Environment("側邊欄頁面沒有載入")
         await evaluate(HOOKS)
+        # The code is only held in memory until the backend accepts it (first successful start).
         await evaluate(
-            f"(() => {{ document.getElementById('invite').value = {json.dumps(code)};"
-            " document.getElementById('save-invite').click();"
+            f"(() => {{ document.getElementById('welcome-invite').value = {json.dumps(code)};"
+            " document.getElementById('welcome-go').click();"
+            " document.getElementById('choose-name').click();"
             f" document.getElementById('item').value = {json.dumps(item)};"
-            f" document.getElementById('load-more').value = '{load_more}';"
-            " document.getElementById('load-more').dispatchEvent(new Event('change'));"
+            f" for (let i = 0; i < {load_more}; i++) document.getElementById('more-plus').click();"
             " })()"
         )
         await evaluate("document.getElementById('start').click()")
         say("查詢中…")
         started, result, locked = time.time(), None, None
+        seen = None
+        samples_ok = samples_failed = 0
         while time.time() - started < timeout:
             await asyncio.sleep(3)
-            raw = await evaluate(SNAPSHOT)
-            if raw is None:
+            parsed = parse_sample(await evaluate(SNAPSHOT))
+            if parsed is None:  # the panel did not answer, or answered with something that is not JSON
+                samples_failed += 1
+                if samples_failed == 1:
+                    say(
+                        f"  [{int(time.time() - started):>3d}s] 取樣失敗："
+                        "側邊欄沒有回應或回傳的不是 JSON（之後只記錄次數）"
+                    )
                 continue
-            result = json.loads(raw)
+            samples_ok += 1
+            result = parsed
+            sample = progress_key(result)
+            if sample != seen:  # only the samples that changed something get a line
+                seen = sample
+                say(f"  [{int(time.time() - started):>3d}s] {progress_fields(result)}")
             if locked is None and not result["idle"]:
                 locked = result["locked"]  # the first look while the query is running
             if result["idle"] and time.time() - started > 10:
@@ -218,34 +612,43 @@ async def drive(ws_url: str, code: str, item: str, load_more: int, timeout: int)
             if result is None:
                 raise Environment("讀不到側邊欄的狀態")
             result["timeout"] = True
+            say(f"最後一次看到的狀態：{progress_fields(result)}")
+        result["samples_ok"], result["samples_failed"] = samples_ok, samples_failed
         result["locked_while_running"], result["locked_after"] = locked, result["locked"]
+        report_timing(result.get("run"))
+        result["urls"] = await evaluate(OPEN_URLS)
         if result["rows"] == [0, 0]:  # nothing was read (for example "not found"): no tables to page through
             result["paging"], result["csv"] = {}, {}
             return result
         result["paging"] = {}
-        for prefix in ("trading", "recent-trades"):
-            first = await evaluate(f"document.querySelector('#{prefix}-table tbody tr').textContent")
+        filled = [prefix for prefix, n in zip(("trading", "recent-trades"), result["rows"], strict=True) if n]
+        for prefix in filled:
+            rows = ROW_SELECTOR[prefix]
+            first = await evaluate(f"document.querySelector('{rows}').textContent")
             await evaluate(f"document.getElementById('{prefix}-next').click()")
             page2 = await evaluate(
                 f"JSON.stringify({{page: document.getElementById('{prefix}-page').textContent,"
-                f" shown: document.querySelectorAll('#{prefix}-table tbody tr').length,"
-                f" first: document.querySelector('#{prefix}-table tbody tr').textContent,"
+                f" shown: document.querySelectorAll('{rows}').length,"
+                f" first: document.querySelector('{rows}').textContent,"
                 f" prev: !document.getElementById('{prefix}-prev').disabled}})"
             )
             await evaluate(f"document.getElementById('{prefix}-prev').click()")
             back = await evaluate(f"document.getElementById('{prefix}-page').textContent")
             result["paging"][prefix] = {"first": first, "page2": json.loads(page2), "back": back}
         result["csv"] = {}
-        for prefix in ("trading", "recent-trades"):
+        for prefix in filled:
+            await evaluate(f"document.getElementById('{prefix}-tab').click()")  # the buttons act on the selected tab
             await evaluate("window.__blobs.length = 0")
-            await evaluate(f"document.getElementById('{prefix}-csv').click()")
+            await evaluate("document.getElementById('result-csv').click()")
             await asyncio.sleep(0.5)
             text = await evaluate("window.__blobs[0] || ''")
             result["csv"][prefix] = {"name": await evaluate("window.__dl"), "text": text}
             await evaluate("window.__copied.length = 0")
-            await evaluate(f"document.getElementById('{prefix}-copy').click()")
+            await evaluate("document.getElementById('result-copy').click()")
             await asyncio.sleep(0.3)
             result["csv"][prefix]["copied"] = await evaluate("window.__copied[0] || ''")
+        if "trading" in filled:
+            result["filter"] = await check_filter(evaluate)
         return result
 
 
@@ -270,12 +673,10 @@ def check(
         failures.append(f"兩段狀態不是 PASSED：{result['pills']}")
     if not all(n > 0 for n in result["rows"]):
         failures.append(f"表格是空的：{result['rows']}")
-    if not any("Recent Trades" in line for line in result["log"]):
-        failures.append("步驟紀錄裡沒有點 Recent Trades")
-    if load_more and not any(line.endswith("（規則）") for line in result["log"]):
-        failures.append("步驟紀錄裡沒有規則步驟")
+    if load_more and not result["rows"][0] > 50:
+        failures.append(f"載入更多 {load_more} 批，掛單只有 {result['rows'][0]} 筆")
     for index, (prefix, label) in enumerate((("trading", "目前掛單"), ("recent-trades", "近期成交"))):
-        total, paging = result["rows"][index], result["paging"][prefix]
+        total, paging = result["rows"][index], result["paging"].get(prefix)
         if total > 10:
             if result["shown"][index] != 10:
                 failures.append(f"{label} 第一頁顯示 {result['shown'][index]} 筆，應為 10 筆")
@@ -286,14 +687,17 @@ def check(
             if not paging["back"].startswith("第 1 /"):
                 failures.append(f"{label} 上一頁沒有回到第 1 頁：{paging['back']}")
     if result["locked_while_running"] is not True:
-        failures.append("查詢中「載入更多次數」沒有被鎖住")
+        failures.append("查詢中輸入欄、載入批數或設定沒有被鎖住")
     if result["locked_after"]:
-        failures.append("查詢結束後「載入更多次數」沒有解鎖")
-    if "Jev 呼叫 0 次" in result["usage"]:
-        failures.append("Jev 呼叫 0 次")
+        failures.append("查詢結束後欄位沒有解鎖")
+    roots = [re.sub(r"/recent/?$", "", url or "") for url in result["urls"]]
+    if not roots[0] or roots[0] != roots[1]:
+        failures.append(f"兩段讀的不是同一個商品頁：{result['urls']}")
     safe = "".join(c if c.isascii() and (c.isalnum() or c in " _-") else "_" for c in item).strip()
     views = (("trading", "目前掛單", result["rows"][0]), ("recent-trades", "近期成交", result["rows"][1]))
     for prefix, label, rows in views:
+        if not rows:
+            continue
         csv = result["csv"][prefix]
         lines = csv["text"].split("\r\n")[:-1] if csv["text"].endswith("\r\n") else csv["text"].split("\r\n")
         if len(lines) != rows + 1:
@@ -303,6 +707,17 @@ def check(
             failures.append(f"{label} 複製內容不對：{len(copied)} 行，應為 {rows + 1} 行且欄數一致")
         if csv["name"] != f"traderie-{safe}-{label}.csv":
             failures.append(f"{label} CSV 檔名不對：{csv['name']}")
+    flt = result.get("filter")
+    if flt:
+        if flt["kept"] > flt["read"]:
+            failures.append(f"篩選後的筆數 {flt['kept']} 比讀到的 {flt['read']} 還多")
+        if flt["active_count"] != f"{flt['kept']}/{flt['read']}":
+            failures.append(f"篩選中分頁筆數應為「{flt['kept']}/{flt['read']}」，實際：{flt['active_count']!r}")
+        expected = flt["kept"] + 1 if flt["kept"] else 0  # nothing kept: the download button is off, no file
+        if flt["csv_lines"] != expected:
+            failures.append(f"篩選後 CSV 有 {flt['csv_lines']} 行，應為 {expected}")
+        if flt["cleared_count"] != str(flt["read"]):
+            failures.append(f"清除篩選後筆數應回到 {flt['read']}，實際：{flt['cleared_count']!r}")
     return failures
 
 
@@ -331,17 +746,24 @@ def main() -> int:
     parser.add_argument("--timeout", type=int, default=300)
     parser.add_argument("--api", help="測已部署的後端網址（需要同時給 --invite）；省略時用本機後端")
     parser.add_argument("--invite", help="已部署後端的邀請碼")
+    parser.add_argument(
+        "--stub-chooser",
+        action="store_true",
+        help="用 stub 選擇器跑同一組檢查：後端自己回答，不會呼叫 Jev，也不需要 TYPESAFE_API_KEY",
+    )
     parser.add_argument("--hold", type=int, default=0, help="查完後讓視窗再開幾秒再關閉（展示用）")
     parser.add_argument("--expect-layer", choices=["table", "search", "base"], help="預期用哪一層找到商品")
     parser.add_argument("--expect-name", help="預期實際查的名稱（CSV 檔名用）；省略時等於 --item")
     parser.add_argument("--expect-not-found", action="store_true", help="預期結果是「找不到這個裝備」")
     args = parser.parse_args()
-    chrome = backend = None
+    chrome = backend = backend_log = None
     try:
         if bool(args.api) != bool(args.invite):
             raise Environment("--api 和 --invite 要一起給")
+        if args.stub_chooser and args.api:
+            raise Environment("--stub-chooser 只適用本機後端，不能和 --api 一起用")
         build_extension(args.api or LOCAL_API)
-        backend, code = (None, args.invite) if args.api else start_backend()
+        backend, code, backend_log = (None, args.invite, None) if args.api else start_backend(args.stub_chooser)
         free_profile()
         chrome = launch_chrome(args.headed)
         ext_id = load_extension()
@@ -358,15 +780,19 @@ def main() -> int:
         return 2
     finally:
         cleanup(chrome, backend)
+        if backend_log is not None:
+            backend_log.close()  # flushed and closed even on failure or timeout: a hung run must still leave a log
+            if args.stub_chooser:
+                say("這次執行了 0 次 Jev 呼叫：每一步都由 stub 選擇器回答，這個後端從頭到尾沒有連到 TypeSafe。")
+            say(f"後端紀錄：{backend_log.path.relative_to(ROOT)}")
     failures = check(result, args.expect_name or args.item, args.load_more, args.expect_layer, args.expect_not_found)
+    say(f"取樣：成功 {result['samples_ok']} 次、失敗 {result['samples_failed']} 次")
     if failures:
         say("失敗：")
         for failure in failures:
             say(f"  - {failure}")
-        say("步驟紀錄：" + (" → ".join(result["log"]) or "（空）"))
         return 1
-    calls = result["usage"].split("次")[0].replace("Jev 呼叫", "").strip()
-    say(f"通過：掛單 {result['rows'][0]} 筆、成交 {result['rows'][1]} 筆、Jev 呼叫 {calls} 次")
+    say(f"通過：掛單 {result['rows'][0]} 筆、成交 {result['rows'][1]} 筆")
     say(f"畫面上的查詢方式：{result['lookup']}")
     return 0
 

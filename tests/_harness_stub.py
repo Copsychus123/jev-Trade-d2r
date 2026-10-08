@@ -1,0 +1,24 @@
+"""A `browser_harness` stand-in for the offline tests, installed before the package is imported.
+
+The real package starts the dedicated Chrome daemon (and talks to it over CDP) on first use; the offline lane
+must never do that. A test module that imports `jev_ultrafast`, or a script that does, calls `install()` first —
+which is why those imports carry `# noqa: E402`.
+"""
+
+import sys
+import types
+
+
+def install() -> None:
+    """Make `browser_harness` and its `.admin` / `.helpers` modules no-ops in `sys.modules`."""
+    browser_harness = types.ModuleType("browser_harness")
+    admin = types.ModuleType("browser_harness.admin")
+    helpers = types.ModuleType("browser_harness.helpers")
+    admin.ensure_daemon = lambda: None
+    helpers.cdp = lambda *args, **kwargs: {}
+    helpers.drain_events = lambda: []
+    browser_harness.admin = admin
+    browser_harness.helpers = helpers
+    sys.modules["browser_harness"] = browser_harness
+    sys.modules["browser_harness.admin"] = admin
+    sys.modules["browser_harness.helpers"] = helpers

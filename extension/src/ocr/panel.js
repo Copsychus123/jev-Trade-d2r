@@ -1,28 +1,56 @@
-// The "截圖辨識" card: paste / drop / pick a screenshot, optionally drag a box, read it, offer 1 to 3 names to pick.
+// The screenshot reader under the name field: paste / drop / pick a screenshot, optionally drag a box, read it, offer 1 to 3 names to pick.
 // All page-unrelated text comes from OCR, so everything is written with textContent.
-import { createEngine, loadTesseract, prepareForOcr } from "./engine.js";
+import { createEngineCache, createOcrEngine, readPixels, OCR_CAPABILITY } from "./engine.js";
 import { buildMatchIndex, matchOcrText } from "./match.js";
-import { DEFAULT_LANGUAGE, LANGUAGE_OPTIONS, ModelError, createModelManager, idbStore } from "./models.js";
+import { ModelError, PPOCR, createModelManager, formatMB, idbStore } from "./models.js";
+import { labelWithChinese } from "../traderie/lookup.js";
 
 const $ = (id) => document.getElementById(id);
-const mb = (bytes) => (bytes / 1e6).toFixed(1);
 
-export function initOcrPanel({ tables, onPick, isBusy }) {
+export function initOcrPanel({ tables, onPick, onText = () => {}, onImage, isBusy }) {
   const manager = createModelManager({ store: idbStore() });
   const index = buildMatchIndex(tables);
+  let reading = false; // only while a picture is being read does the engine's stage message reach the screen
+  const engines = createEngineCache({
+    create: async () => {
+      const bytes = await manager.load();
+      if (!bytes) throw new ModelError("init", "本機的辨識模型不完整");
+      return createOcrEngine({ models: bytes, onStatus: (message) => { if (reading) say(message); } });
+    },
+  });
   let image = null; // the Blob being read
   let region = null; // { x, y, width, height } in image pixels, or null for the whole picture
-  let engine = null;
-  let engineLanguage = null;
+  let previewUrl = null; // object URL of the shown picture; revoked when it is replaced or closed
+  let pictureVersion = 0; // bumped when the picture changes or closes: an older read then drops its result
+  let downloading = null; // AbortController of the running model download
+
+  // 換圖或關圖時，正在跑的下載會被取消。
+  const supersede = () => {
+    pictureVersion += 1;
+    downloading?.abort();
+  };
+  const showPreview = (blob) => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = URL.createObjectURL(blob);
+    preview.src = previewUrl;
+    preview.hidden = false;
+  };
+  const clearPreview = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = null;
+    preview.removeAttribute("src");
+    preview.hidden = true;
+  };
 
   const say = (text, kind = "") => {
     $("ocr-status").textContent = text;
     $("ocr-status").dataset.kind = kind;
   };
 
-  // Writes the name into the item field (the caller refuses while a query runs) and marks it as coming from a picture.
-  const fill = (name) => {
-    if (onPick(name)) $("ocr-tag").hidden = false;
+  // Hands the name (and whether it is an item or only a base) to the form, which may refuse it while a query runs or
+  // when it has no field for it, and marks it as coming from a picture.
+  const fill = (name, kind) => {
+    if (onPick(name, kind)) $("ocr-tag").hidden = false;
   };
 
   // ---- the picture and the optional box -------------------------------------------------------------------------
@@ -30,227 +58,220 @@ export function initOcrPanel({ tables, onPick, isBusy }) {
   const box = $("ocr-box");
   const drag = { active: false, x: 0, y: 0, moved: false };
 
+  // The 辨識 button is only needed when reading does not start by itself: auto-read is off,
+  // or the player boxed a region to read again.
+  function updateGo() {
+    $("ocr-go").hidden = $("ocr-auto").checked && !region;
+  }
+
   async function setImage(blob) {
+    supersede();
+    onImage();
     image = blob;
     region = null;
     box.hidden = true;
     $("ocr-candidates").replaceChildren();
-    preview.src = URL.createObjectURL(blob);
-    preview.hidden = false;
+    showPreview(blob);
     $("ocr-panel").hidden = false;
     $("ocr-go").disabled = false;
     $("ocr-panel").classList.remove("done");
+    updateGo();
+    // With the model already on this computer, reading starts by itself (nothing is downloaded, nothing searched).
+    if ($("ocr-go").hidden && !isBusy()) {
+      say("已讀入圖片，正在辨識…");
+      $("ocr-go").click();
+      return;
+    }
+    $("ocr-go").hidden = false; // reading waits for the player (a query may be running right now)
     say("已讀入圖片。可在圖上拖一個框只讀那一塊（不框就讀整張），再按「辨識」。");
-    // With the language pack already on this computer, reading starts by itself (nothing is downloaded, nothing searched).
-    if ($("ocr-auto").checked && !isBusy() && !(await manager.missing([language()])).codes.length) $("ocr-go").click();
   }
 
-  preview.addEventListener("pointerdown", (event) => {
-    const rect = preview.getBoundingClientRect();
-    drag.active = true;
-    drag.moved = false;
-    drag.x = event.clientX - rect.left;
-    drag.y = event.clientY - rect.top;
-    preview.setPointerCapture(event.pointerId);
-  });
-  preview.addEventListener("pointermove", (event) => {
-    if (!drag.active) return;
-    const rect = preview.getBoundingClientRect();
-    const x = Math.max(0, Math.min(event.clientX - rect.left, rect.width));
-    const y = Math.max(0, Math.min(event.clientY - rect.top, rect.height));
-    Object.assign(box.style, {
-      left: `${Math.min(drag.x, x)}px`,
-      top: `${Math.min(drag.y, y)}px`,
-      width: `${Math.abs(x - drag.x)}px`,
-      height: `${Math.abs(y - drag.y)}px`,
+  /** One drag on the picture: the box follows the pointer and becomes the read region when it is released. */
+  function wirePictureBox() {
+    preview.addEventListener("pointerdown", (event) => {
+      const rect = preview.getBoundingClientRect();
+      drag.active = true;
+      drag.moved = false;
+      drag.x = event.clientX - rect.left;
+      drag.y = event.clientY - rect.top;
+      preview.setPointerCapture(event.pointerId);
     });
-    if (Math.abs(x - drag.x) > 4 || Math.abs(y - drag.y) > 4) drag.moved = true;
-    box.hidden = false;
-  });
-  preview.addEventListener("pointerup", () => {
-    drag.active = false;
-    if (box.hidden) return;
-    const rect = preview.getBoundingClientRect();
-    const scale = preview.naturalWidth / rect.width;
-    const w = Math.round(parseFloat(box.style.width) * scale);
-    const h = Math.round(parseFloat(box.style.height) * scale);
-    region = w > 20 && h > 10 ? { x: Math.round(parseFloat(box.style.left) * scale), y: Math.round(parseFloat(box.style.top) * scale), width: w, height: h } : null;
-    if (!region) box.hidden = true;
-  });
+    preview.addEventListener("pointermove", (event) => {
+      if (!drag.active) return;
+      const rect = preview.getBoundingClientRect();
+      const x = Math.max(0, Math.min(event.clientX - rect.left, rect.width));
+      const y = Math.max(0, Math.min(event.clientY - rect.top, rect.height));
+      Object.assign(box.style, {
+        left: `${Math.min(drag.x, x)}px`,
+        top: `${Math.min(drag.y, y)}px`,
+        width: `${Math.abs(x - drag.x)}px`,
+        height: `${Math.abs(y - drag.y)}px`,
+      });
+      if (Math.abs(x - drag.x) > 4 || Math.abs(y - drag.y) > 4) drag.moved = true;
+      box.hidden = false;
+    });
+    preview.addEventListener("pointerup", () => {
+      drag.active = false;
+      if (box.hidden) return;
+      const rect = preview.getBoundingClientRect();
+      const scale = preview.naturalWidth / rect.width;
+      const w = Math.round(parseFloat(box.style.width) * scale);
+      const h = Math.round(parseFloat(box.style.height) * scale);
+      region = w > 20 && h > 10 ? { x: Math.round(parseFloat(box.style.left) * scale), y: Math.round(parseFloat(box.style.top) * scale), width: w, height: h } : null;
+      if (!region) box.hidden = true;
+      updateGo(); // a box means the player wants a manual read
+    });
+    preview.addEventListener("click", () => {
+      if (!drag.moved) $("ocr-panel").classList.toggle("done"); // thumbnail <-> full picture
+    });
+  }
 
-  const fromFiles = (files) => {
-    const file = [...files].find((f) => f.type.startsWith("image/"));
-    if (file) setImage(file);
-    else say("這不是圖片檔", "error");
-  };
-  document.addEventListener("paste", (event) => {
-    const files = [...(event.clipboardData?.files ?? [])];
-    if (files.length) fromFiles(files); // plain text pasted into the name field is left alone
-  });
-  $("ocr-file").addEventListener("change", (event) => {
-    if (event.target.files.length) fromFiles(event.target.files); // cancelling the dialog does nothing
-  });
-  const drop = $("ocr-drop");
-  drop.addEventListener("dragover", (event) => event.preventDefault());
-  drop.addEventListener("drop", (event) => {
-    event.preventDefault();
-    if (event.dataTransfer.files.length) fromFiles(event.dataTransfer.files);
-  });
+  /** The three ways a picture gets in: paste anywhere, the file picker, or a drop on the panel. */
+  function wirePictureSources() {
+    const fromFiles = (files) => {
+      const file = [...files].find((f) => f.type.startsWith("image/"));
+      if (file) setImage(file);
+      else say("這不是圖片檔", "error");
+    };
+    document.addEventListener("paste", (event) => {
+      const files = [...(event.clipboardData?.files ?? [])];
+      if (files.length) fromFiles(files); // plain text pasted into the name field is left alone
+    });
+    $("ocr-file").addEventListener("change", (event) => {
+      if (event.target.files.length) fromFiles(event.target.files); // cancelling the dialog does nothing
+    });
+    const drop = $("ocr-drop");
+    const zone = $("ocr-dropzone");
+    let depth = 0; // dragenter/dragleave fire for every element crossed; only the empty stack shows the zone
+    drop.addEventListener("dragover", (event) => event.preventDefault());
+    drop.addEventListener("drop", (event) => {
+      event.preventDefault();
+      if (event.dataTransfer.files.length) fromFiles(event.dataTransfer.files);
+    });
+    drop.addEventListener("dragenter", (event) => {
+      if ([...(event.dataTransfer?.types ?? [])].includes("Files")) {
+        depth += 1;
+        zone.hidden = false;
+      }
+    });
+    drop.addEventListener("dragleave", () => {
+      depth = Math.max(0, depth - 1);
+      if (!depth) zone.hidden = true;
+    });
+    drop.addEventListener("drop", () => {
+      depth = 0;
+      zone.hidden = true;
+    });
+  }
 
-  // The screenshot entrance sits next to the item name; the reading panel only exists while there is a picture.
-  $("ocr-pick").addEventListener("click", () => $("ocr-file").click());
-  const closePanel = () => {
-    image = null;
-    region = null;
-    box.hidden = true;
-    preview.hidden = true;
-    $("ocr-panel").hidden = true;
-    $("ocr-go").disabled = true;
-    $("ocr-candidates").replaceChildren();
-    $("ocr-file").value = "";
-  };
-  $("ocr-close").addEventListener("click", closePanel);
-  preview.addEventListener("click", () => {
-    if (!drag.moved) $("ocr-panel").classList.toggle("done"); // thumbnail <-> full picture
-  });
+  /** The screenshot entrance sits next to the item name; the reading panel only exists while there is a picture. */
+  function wirePanelControls() {
+    $("ocr-pick").addEventListener("click", () => $("ocr-file").click());
+    const closePanel = () => {
+      supersede();
+      image = null;
+      region = null;
+      box.hidden = true;
+      clearPreview();
+      $("ocr-panel").hidden = true;
+      $("ocr-go").disabled = true;
+      $("ocr-candidates").replaceChildren();
+      $("ocr-file").value = "";
+    };
+    $("ocr-close").addEventListener("click", closePanel);
+  }
 
-  // Small entrance, explained only when needed: a tooltip on hover/focus, a drop zone while dragging, a dot once.
-  const hint = $("ocr-hint");
-  const showHint = () => {
-    hint.hidden = false;
-  };
-  const hideHint = () => {
-    hint.hidden = true;
-  };
-  $("ocr-pick").addEventListener("mouseenter", showHint);
-  $("ocr-pick").addEventListener("mouseleave", hideHint);
-  $("ocr-pick").addEventListener("focus", showHint);
-  $("ocr-pick").addEventListener("blur", hideHint);
-  $("ocr-pick").addEventListener("click", () => {
-    $("ocr-dot").hidden = true;
-    chrome.storage.local.set({ ocrHintSeen: true });
-  });
-  const zone = $("ocr-dropzone");
-  let depth = 0;
-  drop.addEventListener("dragenter", (event) => {
-    if ([...(event.dataTransfer?.types ?? [])].includes("Files")) {
-      depth += 1;
-      zone.hidden = false;
-    }
-  });
-  drop.addEventListener("dragleave", () => {
-    depth = Math.max(0, depth - 1);
-    if (!depth) zone.hidden = true;
-  });
-  drop.addEventListener("drop", () => {
-    depth = 0;
-    zone.hidden = true;
-  });
+  /** Small entrance, explained only when needed: a tooltip on hover/focus, and a dot that goes away once. */
+  function wireHint() {
+    const hint = $("ocr-hint");
+    const showHint = () => {
+      hint.hidden = false;
+    };
+    const hideHint = () => {
+      hint.hidden = true;
+    };
+    $("ocr-pick").addEventListener("mouseenter", showHint);
+    $("ocr-pick").addEventListener("mouseleave", hideHint);
+    $("ocr-pick").addEventListener("focus", showHint);
+    $("ocr-pick").addEventListener("blur", hideHint);
+    $("ocr-pick").addEventListener("click", () => {
+      $("ocr-dot").hidden = true;
+      chrome.storage.local.set({ ocrHintSeen: true });
+    });
+  }
+
+  wirePictureBox();
+  wirePictureSources();
+  wirePanelControls();
+  wireHint();
 
   async function initPreferences() {
     const saved = await chrome.storage.local.get(["ocrAuto", "ocrHintSeen"]);
     $("ocr-auto").checked = saved.ocrAuto !== false; // on unless the player turned it off
-    $("ocr-auto").addEventListener("change", () => chrome.storage.local.set({ ocrAuto: $("ocr-auto").checked }));
+    $("ocr-auto").addEventListener("change", () => {
+      chrome.storage.local.set({ ocrAuto: $("ocr-auto").checked });
+      updateGo();
+    });
     $("ocr-dot").hidden = Boolean(saved.ocrHintSeen);
   }
   // The name no longer comes from the screenshot as soon as the player edits it.
   $("item").addEventListener("input", () => {
     $("ocr-tag").hidden = true;
   });
+  $("ocr-cancel").addEventListener("click", () => downloading?.abort());
 
-  // ---- models: ask first, download once, keep -------------------------------------------------------------------
-  async function ensureModels() {
-    const code = language();
-    const { codes, bytes } = await manager.missing([code]);
-    if (!codes.length) return true;
-    const ok = await askToDownload(codes, bytes);
-    if (!ok) return false;
-    for (const missingCode of codes) {
-      await manager.download(missingCode, {
-        onProgress: (got, total) => say(`下載辨識模型「${labelOf(missingCode)}」：${mb(got)} / ${mb(total)} MB`),
-      });
-      await markStoredLanguages();
+  // ---- models: download once on first use, then keep ------------------------------------------------------------
+  /** Downloads `names` in order; `onProgress(got, total)` counts the bytes of every file so far. */
+  async function runDownloads(names, bytes, { signal, onProgress }) {
+    let done = 0;
+    for (const name of names) {
+      await manager.download(name, { signal, onProgress: (got) => onProgress(done + got, bytes) });
+      done += PPOCR[name].bytes;
     }
-    return true;
   }
 
-  function askToDownload(codes, bytes) {
-    return new Promise((resolve) => {
-      $("ocr-consent-text").textContent =
-        `首次使用「${labelOf(codes[0])}」需下載辨識模型（約 ${mb(bytes)} MB，只下載一次，存在這個瀏覽器裡，之後可離線使用）。`;
-      $("ocr-consent").hidden = false;
-      const done = (answer) => {
-        $("ocr-consent").hidden = true;
-        $("ocr-agree").onclick = $("ocr-decline").onclick = null;
-        resolve(answer);
-      };
-      $("ocr-agree").onclick = () => done(true);
-      $("ocr-decline").onclick = () => done(false);
-    });
-  }
-
-  $("ocr-model-file").addEventListener("change", async (event) => {
-    for (const file of event.target.files) {
-      const code = file.name.replace(/\.traineddata(\.gz)?$/u, "");
-      try {
-        if (!known.has(code)) throw new Error(`不認得的檔名：${file.name}（檔名要像 ${DEFAULT_LANGUAGE}.traineddata.gz）`);
-        await manager.importFile(code, new Uint8Array(await file.arrayBuffer()));
-        say(`${labelOf(code)} 模型已匯入並通過檢查碼驗證`, "ok");
-        await markStoredLanguages();
-      } catch (error) {
-        say(`匯入失敗：${error.message}`, "error");
+  /** True when reading can proceed (models present, or downloaded now). False when the download was cancelled. */
+  async function ensureModels() {
+    const { names, bytes } = await manager.missing();
+    if (!names.length) return true;
+    const controller = new AbortController();
+    downloading = controller;
+    $("ocr-download-text").textContent =
+      `首次使用，正在下載辨識模型（約 ${formatMB(bytes)} MB，只下載一次，存在這個瀏覽器裡，之後可以離線使用）。`;
+    $("ocr-download").hidden = false;
+    $("ocr-progress").value = 0;
+    try {
+      await runDownloads(names, bytes, {
+        signal: controller.signal,
+        onProgress: (got) => {
+          $("ocr-progress").value = bytes ? Math.round((got / bytes) * 100) : 0;
+          say(`下載辨識模型（${formatMB(got)} / ${formatMB(bytes)} MB）`);
+        },
+      });
+      return true;
+    } finally {
+      if (downloading === controller) {
+        downloading = null;
+        $("ocr-download").hidden = true;
       }
     }
-    event.target.value = "";
-  });
-
-  // ---- language choice: one language at a time, downloaded when first chosen, then offline -------------------------
-  const select = $("ocr-lang");
-  const known = new Set(LANGUAGE_OPTIONS.map((l) => l.code));
-  const language = () => (known.has(select.value) ? select.value : DEFAULT_LANGUAGE);
-  const labelOf = (code) => LANGUAGE_OPTIONS.find((l) => l.code === code).label;
-
-  async function markStoredLanguages() {
-    for (const option of select.options) {
-      const stored = !(await manager.missing([option.value])).codes.length;
-      option.textContent = `${labelOf(option.value)}${stored ? "（已存在本機，可離線）" : ""}`;
-    }
-  }
-
-  async function initLanguageChoice() {
-    for (const { code } of LANGUAGE_OPTIONS) select.append(new Option(labelOf(code), code));
-    const saved = (await chrome.storage.local.get("ocrLanguage")).ocrLanguage;
-    select.value = known.has(saved) ? saved : DEFAULT_LANGUAGE;
-    select.addEventListener("change", () => chrome.storage.local.set({ ocrLanguage: language() }));
-    await markStoredLanguages();
-  }
-
-  async function getEngine() {
-    const wanted = language();
-    if (engine && engineLanguage === wanted) return engine;
-    await engine?.terminate();
-    engine = null;
-    engine = await createEngine({
-      Tesseract: await loadTesseract(),
-      baseUrl: chrome.runtime.getURL(""),
-      languages: [wanted],
-    });
-    engineLanguage = wanted;
-    return engine;
   }
 
   function showCandidates(candidates) {
     const list = $("ocr-candidates");
     list.replaceChildren();
+    // Exposed for the end-to-end check: the kind is not readable from the label any more.
+    list.dataset.firstKind = candidates[0]?.kind ?? "";
+    list.dataset.firstName = candidates[0]?.name ?? "";
     if (!candidates.length) {
       say("認不出裝備名稱，請手動輸入英文名稱（或換一張更清楚的圖、框出名稱那幾行）。", "error");
       return;
     }
-    const baseOnly = candidates.every((c) => c.kind === "base");
-    fill(candidates[0].name); // the best result goes straight into the name field; the player decides to search
+    const baseOnly = candidates[0]?.kind === "base";
+    fill(candidates[0].name, candidates[0].kind); // the best result goes straight into the name field; the player decides to search
     say(
       (baseOnly ? "只認出底材（不會依品質篩選）" : "已辨識") +
-        `，並填入裝備名稱「${candidates[0].name}」。請確認後自己按「開始查詢」。` +
+        `，並填入裝備名稱「${labelWithChinese(candidates[0].name, tables, candidates[0].matched)}」。請確認後自己按「開始查詢」。` +
         (candidates.length > 1 ? "不對的話，可改點下面其他名稱：" : ""),
       baseOnly ? "" : "ok",
     );
@@ -258,44 +279,109 @@ export function initOcrPanel({ tables, onPick, isBusy }) {
     for (const candidate of candidates) {
       const button = document.createElement("button");
       button.type = "button";
-      button.textContent = candidate.kind === "base" ? `${candidate.name}（底材）` : candidate.name;
+      button.dataset.kind = candidate.kind;
+      button.dataset.name = candidate.name;
+      button.textContent = labelWithChinese(candidate.name, tables, candidate.matched);
       button.addEventListener("click", () => {
-        fill(candidate.name);
-        say(`已改填「${candidate.name}」。請確認後自己按「開始查詢」。`, "ok");
+        fill(candidate.name, candidate.kind);
+        say(`已改填「${labelWithChinese(candidate.name, tables, candidate.matched)}」。請確認後自己按「開始查詢」。`, "ok");
       });
       list.append(button);
     }
   }
 
-  $("ocr-go").addEventListener("click", async () => {
+  async function readPicture(blob, area, isCurrent) {
+    $("ocr-panel").classList.remove("done");
+    $("ocr-time").textContent = "";
+    $("ocr-text").textContent = "";
+    $("ocr-candidates").replaceChildren();
+    const pixels = await readPixels(blob, area);
+    reading = true;
+    say("辨識中…");
+    const started = performance.now();
+    const slowNoticeTimer = setTimeout(() => {
+      if (isCurrent() && reading) say("這張圖比較大，還在辨識中…");
+    }, 15_000);
+    let text;
+    try {
+      text = await engines.run(OCR_CAPABILITY, (engine) => engine.recognize(pixels));
+    } finally {
+      clearTimeout(slowNoticeTimer);
+    }
+    if (!isCurrent()) return;
+    const seconds = ((performance.now() - started) / 1000).toFixed(1);
+    const found = matchOcrText(text, index);
+    showCandidates(found);
+    onText(text);
+    $("ocr-panel").classList.toggle("done", found.length > 0); // a result shrinks the picture to a thumbnail
+    $("ocr-time").textContent = `辨識用時 ${seconds} 秒`;
+    $("ocr-text").textContent = text;
+  }
+
+  async function handleReadFailure(error) {
+    if (error instanceof ModelError && error.kind === "cancelled") {
+      say("已取消下載，沒有辨識模型就無法辨識。");
+      return;
+    }
+    if (error instanceof ModelError && error.kind === "init") {
+      await manager.forgetAll();
+      updateGo();
+      say(`辨識引擎啟動失敗（${error.message || error}）。已清除已下載的模型紀錄，再按一次「辨識」會重新下載。`, "error");
+      return;
+    }
+    say(`辨識失敗：${error.message || error}。可以再按一次「辨識」重試。`, "error");
+  }
+
+  /** 辨識: make sure the models are here, then read the picture (or the boxed region) shown right now. */
+  async function readCurrentPicture() {
     if (!image || isBusy()) return;
+    const mine = pictureVersion;
+    const isCurrent = () => mine === pictureVersion; // false once the picture was replaced or closed
+    const blob = image;
+    const area = region;
     $("ocr-go").disabled = true;
     try {
       if (!(await ensureModels())) {
-        say("沒有下載這個語言的辨識模型，無法辨識。可以改選已下載的語言、手動輸入名稱，或用下面的「手動匯入模型」。", "error");
+        if (isCurrent()) {
+          say("沒有下載辨識模型，無法辨識。可以再按一次「辨識」重新下載，或手動輸入名稱。", "error");
+        }
         return;
       }
-      $("ocr-panel").classList.remove("done");
-      $("ocr-time").textContent = "";
-      $("ocr-text").textContent = "";
-      $("ocr-candidates").replaceChildren();
-      say("辨識中…");
-      const started = performance.now();
-      const text = await (await getEngine()).recognize(await prepareForOcr(image, { region }));
-      const seconds = ((performance.now() - started) / 1000).toFixed(1);
-      const found = matchOcrText(text, index);
-      showCandidates(found);
-      $("ocr-panel").classList.toggle("done", found.length > 0); // a result shrinks the picture to a thumbnail
-      $("ocr-time").textContent = `辨識用時 ${seconds} 秒`;
-      $("ocr-text").textContent = text;
+      if (!isCurrent()) return;
+      await readPicture(blob, area, isCurrent);
     } catch (error) {
-      const hint = error instanceof ModelError ? "。可以再按一次「辨識」重試，或用「手動匯入模型」" : "";
-      say(`辨識失敗：${error.message || error}${hint}`, "error");
+      if (!isCurrent()) return;
+      await handleReadFailure(error);
     } finally {
-      $("ocr-go").disabled = !image;
+      reading = false;
+      if (isCurrent()) $("ocr-go").disabled = !image;
     }
-  });
+  }
 
-  initLanguageChoice();
+  $("ocr-go").addEventListener("click", readCurrentPicture);
+
   initPreferences();
+
+  // ---- what the gear scanner shares with this panel: the model store, the one engine and the matcher ---------------
+  // The scanner must not open a second engine cache or a second download path, so it works through these.
+  return {
+    /** The four assets still missing on this computer: { names, bytes }. */
+    missingModels: () => manager.missing(),
+    /** Downloads what is missing, in order, on the given progress scale. */
+    async downloadModels({ signal, onProgress = () => {} } = {}) {
+      const { names, bytes } = await manager.missing();
+      await runDownloads(names, bytes, { signal, onProgress });
+    },
+    /** A cropped tooltip (Blob) as OCR text. A broken engine drops the stored models, so a download is offered again. */
+    async recognize(blob) {
+      try {
+        return await engines.run(OCR_CAPABILITY, async (engine) => engine.recognize(await readPixels(blob)));
+      } catch (error) {
+        if (error instanceof ModelError && error.kind === "init") await manager.forgetAll();
+        throw error;
+      }
+    },
+    /** Candidate names for OCR text, best first (at most three). */
+    match: (text) => matchOcrText(text, index),
+  };
 }

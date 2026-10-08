@@ -1,6 +1,6 @@
 # 後端（Vercel 小後端）
 
-這個後端只做三件事：檢查邀請碼、計算每日次數、替擴充功能問 Jev。**Jev 金鑰只放在這裡**，擴充功能裡沒有。
+這個後端只做三件事：檢查邀請碼、計算使用次數、替擴充功能問 Jev。**Jev 金鑰只放在這裡**，擴充功能裡沒有。
 
 ```
 擴充功能 ──HTTPS──▶ Vercel（Python 函式） ──▶ Upstash Redis（邀請碼、次數）
@@ -9,10 +9,10 @@
 
 | 端點 | 作用 |
 |---|---|
-| `POST /api/run/start` | 檢查邀請碼，今日次數加一（上限預設 100），回傳 30 分鐘有效的查詢憑證 |
+| `POST /api/run/start` | 檢查邀請碼，已用次數加一（上限預設 100，是這組邀請碼總共可用的次數），回傳 30 分鐘有效的查詢憑證 |
 | `POST /api/choose` | 帶查詢憑證與頁面內容，回傳 Jev 的選擇；每次查詢最多 30 次 Jev 呼叫 |
 
-每日次數按台灣時間午夜 0 點重置。「一次」是一次完整查詢，不是一次點擊。
+次數是這組邀請碼的總次數，用完就不能再用，不會重置。「一次」是一次完整查詢，不是一次點擊。每位使用者在 Redis 裡只有一筆資料（雜湊 `invite:<邀請碼雜湊>`）。
 
 ## 部署（用 Vercel CLI）
 
@@ -33,14 +33,16 @@
 
 之後改程式，只要重新執行第 2 步和第 6 步。入口是 `services/app.py`（一個 WSGI 應用）。
 
+`httpx` 的版本在兩個地方各有一份宣告：本機用 `pyproject.toml` 的 `httpx>=0.28,<1`，Vercel 用 `services/requirements.txt` 釘死的 `httpx==0.28.1`（部署包只裝這一個套件）。升版時兩邊都要改，否則本機測過、線上跑的是另一個版本。
+
 ## 管理邀請碼
 
 在專案根目錄執行（需要 `.env` 裡有 KV_REST_API_URL 與 KV_REST_API_TOKEN）：
 
 ```
 uv run python services/invite.py add 小明              # 產生邀請碼，只顯示一次
-uv run python services/invite.py add 小華 --limit 50 --expires 2026-12-31
-uv run python services/invite.py list                  # 看誰用了幾次
+uv run python services/invite.py add 小華 --limit 50 --expires 2026-12-31   # --limit 50 = 總共可查 50 次
+uv run python services/invite.py list                  # 看每個人的總次數上限與已用次數
 uv run python services/invite.py revoke 小明           # 立刻停用，不影響別人
 ```
 
@@ -58,5 +60,5 @@ uv run python services/dev_server.py
 
 - Jev：每次查詢約 $0.001–0.002。
 - Vercel Hobby 方案是免費，但限個人、非商業使用。
-- Upstash 免費方案每月 50 萬次指令；一次查詢約用 20 次，十個人每天都用滿 100 次會超過，超過時改成隨用隨付即可，不用改程式。
+- Upstash 免費方案每月 50 萬次指令；一次查詢約用 20 次指令。每人總共 100 次，十個人共約 1000 次查詢 ≈ 2 萬次指令，遠低於免費額度。
 - 後端不記錄請求內容，只記邀請碼代號、時間和 token 數。頁面文字會經過這個後端送給 TypeSafe，請告訴使用者。

@@ -1,152 +1,292 @@
 import { chooseNext, pickBase, startRun } from "./api.js";
-import { Agent } from "./agent.js";
+import { Agent, newCallBudget } from "./agent.js";
 import { API_BASE } from "./config.js";
-import { Tab, loadPageScripts } from "./cdp.js";
-import { csvFileName, toCsv } from "./csv.js";
-import { PAGE_SIZE, clampPage, pageCount, pageRows } from "./paginate.js";
-import { toTsv } from "./tsv.js";
+import { Tab, closeStaleWindows, loadPageScripts } from "./cdp.js";
 import { ApiError } from "./errors.js";
+import { statusLabel } from "./labels.js";
+import { SECTION_NAMES, deriveView, visibleSections } from "./panel-state.js";
+import { PAGE_SIZE, clampPage, pageCount, pageRows } from "./paginate.js";
+import { drawProgress, drawTrust } from "./panel-dom.js";
 import {
-  RECENT_COLUMNS,
-  TRADING_COLUMNS,
-  VIEW_LABELS,
-  newMarket,
-  recentCells,
-  tradingCells,
-  verifyViews,
-} from "./traderie/controller.js";
-import { LAYER_LABELS, findAndRead } from "./traderie/finder.js";
+  COMMON_PRESET,
+  EMPTY_FILTERS,
+  FILTER_FIELDS,
+  FILTER_OPTION_LABELS,
+  applyFilters,
+  describeFilters,
+  filtersActive,
+  normalizeFilters,
+} from "./filters.js";
+import { filterLine, filteredAway, tabCount, viewNote } from "./rows.js";
+import { nextTab } from "./tabs.js";
+import { newMarket, verifyViews } from "./traderie/controller.js";
+import { findAndRead } from "./traderie/finder.js";
 import { indexTables, searchShowsItem } from "./traderie/lookup.js";
+import { initNameSuggest } from "./name-suggest.js";
 import { initOcrPanel } from "./ocr/panel.js";
-import { TRADERIE_D2R_URL, detectGuard, phaseFinishRule, productRootUrl } from "./traderie/site.js";
+import { initScanPanel } from "./scan/scan-panel.js";
+import { cachedProperties } from "./traderie/properties.js";
+import { MAX_LOAD_MORE, TRADERIE_D2R_URL, detectGuard, phaseFinishRule } from "./traderie/site.js";
+import { marketViews, openable, tabKeysFor, viewConfigFor } from "./result-views.js";
+import { createResultActions } from "./result-actions.js";
+import { judgeStats, runStatsFlow } from "./stats-query.js";
+import { initStatsForm } from "./stats-form.js";
+import { newTimeline, timed } from "./timeline.js";
 
-const GUARD_HINT = `Traderie 要求驗證或登入。請自己在這個 Chrome 開 ${TRADERIE_D2R_URL} 處理完，再按開始。`;
-
-/** Opens the page this table was read from, in a normal tab (the query window is already closed by then). */
-function openSite(key) {
-  const url = market[key].url;
-  if (productRootUrl(url || "")) chrome.tabs.create({ url });
-}
 const $ = (id) => document.getElementById(id);
-const dash = (value) => (value === null || value === undefined || value === "" ? "—" : String(value));
 
-const marketViews = {
-  trading: { prefix: "trading", head: TRADING_COLUMNS, cells: tradingCells, label: VIEW_LABELS.trading },
-  recent_trades: {
-    prefix: "recent-trades",
-    head: RECENT_COLUMNS,
-    cells: recentCells,
-    label: VIEW_LABELS.recent_trades,
-  },
+const MODE_TEXT = {
+  name: { title: "精準搜尋", help: "輸入裝備名稱就能查（暗金、套裝等固定名稱）" },
+  stats: { title: "模糊搜尋", help: "用底材、品質和詞綴條件找" },
 };
 
 const pages = { trading: 1, recent_trades: 1 };
 let running = false;
 let stopRequested = false;
 let market = newMarket();
-let itemName = "";
+let itemName = ""; // the name the query really used (English, from the run)
+let queryText = ""; // what the player typed
 let agent = null;
-let loggedSteps = 0;
+let current = null; // the session of the query that is running now: Stop and closing the panel act on its tab
+let statusText = "";
+let activeTab = "trading";
+let loadMore = 0;
+let settingsOpen = false;
+let after = null; // how the last query ended: "done" | "problem" | "stopped" | null
+let banner = null; // { message, hint?, site?, settings?, retry? } shown for a problem
+let quota = null; // { used, limit } from the last accepted start
+let savedInvite = ""; // in chrome.storage.local
+let pendingInvite = ""; // typed but not accepted by the backend yet: kept in memory only
+let editingInvite = false;
+let filters = EMPTY_FILTERS; // display-time row filters, saved in chrome.storage.local
+let queryMode = null; // null: not chosen yet (the panel asks) | "name" | "stats" | "scan"
+let modeFromPicture = false; // the mode was set by a picture, not by the player: the reading may still switch it
+let statsForm = null; // the second form (stats-form.js), made once the page is up
+let ocr = null; // the screenshot reader's shared API (models, engine, matcher); the scan screen reads through it
 
-function setStatus(text, kind = "") {
-  const el = $("status");
-  el.textContent = text;
-  el.dataset.kind = kind;
+const currentInvite = () => pendingInvite || savedInvite;
+const hasRows = () => [market.trading, market.recent_trades].some((view) => view.rows.length);
+/** What the screen, the copy button and the CSV file use: the rows the filter keeps (all rows without a filter). */
+const filteredRows = (key) => applyFilters(market[key].rows, filters);
+
+function setStatus(text) {
+  statusText = text;
+  renderProgress();
 }
 
-// Page text is untrusted: every cell is written with textContent, never innerHTML.
+// ---- results: every cell is written with textContent (page text is untrusted), never innerHTML --------------------
+
 function renderMarket(key) {
-  const config = marketViews[key];
+  const config = viewConfigFor(market, key);
   const view = market[key];
-  const p = config.prefix;
-  const status = $(`${p}-status`);
-  status.textContent = view.status;
-  status.dataset.status = view.status;
-  $(`${p}-csv`).disabled = !view.rows.length;
-  $(`${p}-copy`).disabled = !view.rows.length;
-  $(`${p}-open`).disabled = !productRootUrl(view.url || "");
-  const time = view.observed_at ? new Date(view.observed_at).toLocaleTimeString("zh-TW", { hour12: false }) : "";
-  $(`${p}-meta`).textContent =
-    view.status === "NOT_RUN"
-      ? "尚未讀取。"
-      : view.status === "PASSED" && !view.rows.length
-        ? `${view.reason} · 讀取時間 ${time} · ${view.url}`
-        : view.status === "PASSED"
-          ? `共 ${view.rows.length} 筆（${view.has_more ? "網站上還有更多，已達載入次數上限" : "已全部載入"}） · 讀取時間 ${time} · ${view.url}`
-          : view.reason || "讀取失敗";
-  const table = $(`${p}-table`);
-  const page = clampPage(pages[key], view.rows.length);
+  const prefix = config.prefix;
+  const { rows } = filteredRows(key);
+  const total = rows.length;
+  $(`${prefix}-tab`).dataset.status = view.status;
+  $(`${prefix}-count`).textContent = tabCount(view, total, filtersActive(filters));
+  $(`${prefix}-mark`).textContent = view.status === "PASSED" ? "" : statusLabel(view.status);
+  const note = viewNote(view, total);
+  $(`${prefix}-meta`).textContent = note;
+  $(`${prefix}-meta`).hidden = !note;
+  $(`${prefix}-clear`).hidden = !filteredAway(view, total);
+  const page = clampPage(pages[key], total);
   pages[key] = page;
-  const pager = $(`${p}-pager`);
-  pager.hidden = view.rows.length <= PAGE_SIZE;
-  $(`${p}-page`).textContent = `第 ${page} / ${pageCount(view.rows.length)} 頁（共 ${view.rows.length} 筆）`;
-  $(`${p}-prev`).disabled = page <= 1;
-  $(`${p}-next`).disabled = page >= pageCount(view.rows.length);
-  const stamp = `${view.status}|${view.observed_at}|${page}`;
-  if (table.dataset.stamp === stamp) return;
-  table.dataset.stamp = stamp;
-  table.replaceChildren();
-  if (!view.rows.length) {
-    table.hidden = true;
-    return;
-  }
-  table.hidden = false;
-  const headRow = table.createTHead().insertRow();
-  for (const name of config.head) {
-    const th = document.createElement("th");
-    th.textContent = name;
-    headRow.append(th);
-  }
-  const body = table.createTBody();
-  for (const row of pageRows(view.rows, page)) {
-    const tr = body.insertRow();
-    for (const cell of config.cells(row)) tr.insertCell().textContent = dash(cell);
-  }
+  $(`${prefix}-pager`).hidden = total <= PAGE_SIZE;
+  $(`${prefix}-page`).textContent = `第 ${page} / ${pageCount(total)} 頁`;
+  $(`${prefix}-prev`).disabled = page <= 1;
+  $(`${prefix}-next`).disabled = page >= pageCount(total);
+  const body = $(`${prefix}-list`);
+  const stamp = `${view.status}|${view.observed_at}|${view.rows.length}|${JSON.stringify(filters)}|${page}`;
+  if (body.dataset.stamp === stamp) return;
+  body.dataset.stamp = stamp;
+  body.replaceChildren();
+  body.hidden = !total;
+  if (total) config.draw(body, pageRows(rows, page));
 }
 
-function renderVerification() {
-  const v = market.verification;
-  $("verification").textContent = !v
-    ? "尚未檢查。"
-    : v.passed
-      ? "全部檢查通過。"
-      : `未通過：${v.failed_checks.join("、")}`;
+function selectTab(key, focus = false) {
+  activeTab = key;
+  for (const [k, config] of Object.entries(marketViews)) {
+    const tab = $(`${config.prefix}-tab`);
+    const selected = k === key;
+    tab.setAttribute("aria-selected", String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+    $(`${config.prefix}-panel`).hidden = !selected;
+    if (selected && focus) tab.focus();
+  }
+  resultActions.resetCopyLabel();
+  renderActions();
+  renderFilterLine();
 }
 
-function renderLog() {
-  const history = agent?.state.history ?? [];
-  const log = $("log");
-  for (; loggedSteps < history.length; loggedSteps++) {
-    const h = history[loggedSteps];
-    const li = document.createElement("li");
-    li.textContent = `第 ${h.step} 步：${h.action}${h.by_rule ? "（規則）" : ""}`;
-    log.append(li);
+/** The three buttons under the tabs act on the selected tab: enabled by its (filtered) rows and its page address. */
+function renderActions() {
+  const view = market[activeTab];
+  const kept = filteredRows(activeTab).rows.length;
+  $("result-csv").disabled = !kept;
+  $("result-copy").disabled = !kept;
+  $("result-open").disabled = !openable(view.url);
+}
+
+/** Shown only while a filter is active and something was read; follows the selected tab. */
+function renderFilterLine() {
+  const line = $("filter-line");
+  line.hidden = !filtersActive(filters) || !hasRows();
+  if (line.hidden) return;
+  const view = market[activeTab];
+  const result = filteredRows(activeTab);
+  $("filter-text").textContent = filterLine({
+    description: describeFilters(filters),
+    hidden: result.hidden,
+    unknown: result.unknown,
+    kept: result.rows.length,
+    hasMore: market.mode === "stats" ? false : view.has_more, // "read more batches" does not exist in the stats search
+  });
+  $("filter-edit").disabled = running;
+}
+
+function renderProgress() {
+  drawProgress({ market, phase: agent?.state.phase ?? null, running, statusText });
+}
+
+// ---- screens ---------------------------------------------------------------------------------------------------
+
+const mask = (code) => (code ? `${"•".repeat(8)}${code.length > 8 ? code.slice(-4) : ""}` : "（還沒有邀請碼）");
+
+/** Caption, summary line and tab labels of the results: the two search kinds name their list differently. */
+function renderResultsHeader(view) {
+  const stats = market.mode === "stats";
+  const description = market.lookup?.description ?? "";
+  $("results-caption").hidden = stats ? view !== "done" || !description : view !== "ready" || !queryText;
+  $("results-caption").textContent = stats ? `條件：${description}` : `上一次查詢的結果：${queryText}`;
+  $("summary-text").textContent = `查詢：${stats && description ? description : queryText}`;
+  $("recent-trades-tab").hidden = stats; // the stats search has no recent-trades list
+  $("trading-label").textContent = stats ? "符合條件的掛單" : "目前掛單";
+}
+
+/** The query form of the chosen search kind: name box or base box plus the affix part; locked while a query runs. */
+function renderModeForm() {
+  $("item").disabled = running;
+  const statsMode = queryMode === "stats";
+  document.body.dataset.mode = queryMode ?? "";
+  const text = MODE_TEXT[queryMode];
+  $("mode-title").textContent = text?.title ?? "";
+  $("mode-help").textContent = text?.help ?? "";
+  $("mode-change").disabled = running;
+  $("item-label").textContent = statsMode ? "底材名稱" : "裝備名稱";
+  $("item-label").htmlFor = statsMode ? "stats-base" : "item";
+  $("item").hidden = statsMode;
+  $("stats-base").hidden = !statsMode;
+  $("item-help").textContent = statsMode ? "可輸入中文或英文裝備" : "中文或英文都可以，也可貼上截圖";
+  $("part-stats").hidden = !statsMode;
+  $("more-box").hidden = statsMode;
+  statsForm?.setBusy(running);
+}
+
+/** The problem banner: shown for a problem, never over the settings or the running screen. */
+function renderBanner(view) {
+  const showBanner = Boolean(banner) && !["settings", "running"].includes(view);
+  $("banner").hidden = !showBanner;
+  if (!banner) return;
+  $("banner-message").textContent = banner.message;
+  $("banner-hint").textContent = banner.hint ?? "";
+  $("banner-hint").hidden = !banner.hint;
+  $("banner-open-site").hidden = !banner.site;
+  $("banner-settings").hidden = !banner.settings;
+  $("banner-retry").hidden = !banner.retry;
+  $("banner-retry").textContent = banner.retry ?? "";
+}
+
+/** The quota line under the name field: used up while a query runs or has just ended, remaining before that. */
+function renderQuota(view) {
+  const used = quota && ["running", "done", "problem", "stopped"].includes(view);
+  $("quota").textContent = !currentInvite()
+    ? ""
+    : used
+      ? `已用 ${quota.used}/${quota.limit}`
+      : quota
+        ? `剩 ${Math.max(0, quota.limit - quota.used)} 次`
+        : "已用 —";
+}
+
+/** The invite area of the settings screen, and every settings control that a running query locks. */
+function renderInvite() {
+  for (const id of ["settings-open", "invite-change", "invite-new", "invite-new-ok", "welcome-invite", "welcome-go"]) {
+    $(id).disabled = running;
   }
-  log.lastElementChild?.scrollIntoView({ block: "nearest" });
-  const decisions = agent?.state.decisions ?? [];
-  const calls = decisions.reduce((n, d) => n + (d.model_calls || 0), 0);
-  const tokens = decisions.reduce((n, d) => n + (d.usage?.input_tokens || 0), 0);
-  $("usage").textContent = `Jev 呼叫 ${calls} 次 · 輸入 ${tokens} token`;
+  $("invite-masked").textContent = mask(currentInvite());
+  $("invite-edit").hidden = !editingInvite;
+  $("invite-change").hidden = editingInvite;
+  $("invite-note").textContent = "新的邀請碼要等下一次查詢成功，才會儲存。";
+  $("invite-note").hidden = !pendingInvite;
+  $("invite-quota").textContent = quota ? `已用 ${quota.used} / ${quota.limit} 次（剩 ${Math.max(0, quota.limit - quota.used)} 次）` : "";
+  $("invite-quota").hidden = !quota;
+}
+
+function renderChrome() {
+  const view = deriveView({ settingsOpen, hasInvite: Boolean(currentInvite()), running, after, mode: queryMode });
+  document.body.dataset.view = view;
+  const notes = (market.lookup?.notes ?? []).join("。");
+  const shown = visibleSections(view, hasRows());
+  for (const name of SECTION_NAMES) $(`part-${name}`).hidden = !shown.has(name);
+  $("part-notes").textContent = notes;
+  $("part-notes").hidden = !notes || !shown.has("notes");
+  $("part-requery").hidden = !shown.has("requery") || Boolean(banner?.retry);
+  renderResultsHeader(view);
+  $("start").hidden = running;
+  $("stop").hidden = !running;
+  updateStart();
+  renderBanner(view);
+  renderQuota(view);
+  renderModeForm();
+  $("more-value").textContent = loadMore;
+  $("more-minus").disabled = running || loadMore <= 0;
+  $("more-plus").disabled = running || loadMore >= MAX_LOAD_MORE;
+  renderInvite();
+}
+
+/** The settings selects mirror `filters`; they are locked like every other setting while a query runs. */
+function renderFilterFields() {
+  for (const { key } of FILTER_FIELDS) {
+    $(`filter-${key}`).value = filters[key];
+    $(`filter-${key}`).disabled = running;
+  }
+  $("filter-preset").disabled = running;
+  $("filter-clear").disabled = running || !filtersActive(filters);
+}
+
+/** Applies new filters: saved, shown at once, both lists back on page 1. Never starts a query. */
+function setFilters(next) {
+  filters = normalizeFilters(next);
+  chrome.storage.local.set({ filters });
+  pages.trading = 1;
+  pages.recent_trades = 1;
+  render();
 }
 
 function render() {
+  renderFilterFields();
+  renderChrome();
   renderMarket("trading");
   renderMarket("recent_trades");
-  renderVerification();
-  renderLookup();
-  renderLog();
+  selectTab(activeTab);
+  drawTrust(market);
+  renderProgress();
 }
 
-function setRunning(value) {
-  running = value;
-  for (const id of ["invite", "save-invite", "item", "load-more"]) $(id).disabled = value;
-  $("start").disabled = value;
-  $("stop").disabled = !value;
+/** Back to the query form with the name kept (the old results stay until the next start). */
+function backToForm() {
+  after = null;
+  banner = null;
+  render();
 }
+
+// ---- running a query ---------------------------------------------------------------------------------------------
 
 let tables = null;
+const tableStats = { jumps: 0, misses: 0 }; // table jumps and misses since the panel opened (shown in the miss note)
 
-async function loadTables() {
+export async function loadTables() {
   if (!tables) {
     const response = await fetch(chrome.runtime.getURL("traderie/data/items.json"));
     tables = indexTables(await response.json());
@@ -154,47 +294,153 @@ async function loadTables() {
   return tables;
 }
 
-function renderLookup() {
-  const lookup = market.lookup;
-  $("lookup").textContent = lookup
-    ? [lookup.layer ? `查詢方式：${LAYER_LABELS[lookup.layer]}` : "", ...lookup.notes].filter(Boolean).join("。")
-    : "";
+// The backend has accepted the code (the run started): only now is it worth keeping.
+async function rememberInvite(invite) {
+  if (invite !== savedInvite) {
+    await chrome.storage.local.set({ invite });
+    savedInvite = invite;
+  }
+  pendingInvite = "";
+}
+
+const GUARD_MESSAGE = "Traderie 要求驗證或登入。請在這個 Chrome 開啟 Traderie 處理完，再回來重新查詢。";
+
+function describeError(error, session) {
+  const tab = session.tab;
+  if (error instanceof ApiError && !session.run && (error.status === 401 || error.status === 429)) {
+    pendingInvite = ""; // refused: never stored
+    return { message: error.message, settings: Boolean(savedInvite) };
+  }
+  if (error instanceof ApiError) return { message: error.message, retry: "重新查詢" };
+  if (tab?.detached) {
+    return {
+      message: "查詢視窗被關閉，或「偵錯」被取消，查詢已停止。",
+      hint: `原因：${tab.detachReason || "未知"}；${error?.message || ""}`,
+      retry: "重新查詢",
+    };
+  }
+  return { message: error?.message || String(error), retry: "重新查詢" };
+}
+
+const guardProblem = (hint) => ({ message: GUARD_MESSAGE, hint, site: true, retry: "我處理好了，重新查詢" });
+
+async function judge(session) {
+  if (stopRequested) return { after: "stopped" };
+  if (session.outcome === "guard") return { after: "problem", banner: guardProblem() };
+  if (session.outcome === "not_found") {
+    return { after: "problem", banner: { message: "找不到這個裝備", hint: "試試英文全名，或用截圖" } };
+  }
+  if (agent.state.status === "blocked") {
+    const guard = await detectGuard(agent.state.page, session.tab).catch(() => null);
+    if (guard) return { after: "problem", banner: guardProblem(guard) };
+    return {
+      after: "problem",
+      banner: { message: agent.state.scope_blocked_reason || "無法繼續", retry: "重新查詢" },
+    };
+  }
+  market.verification = verifyViews(itemName, market);
+  const blocked = [market.trading, market.recent_trades].filter((view) => view.status === "BLOCKED");
+  if (blocked.length) {
+    return { after: "problem", banner: guardProblem(blocked.map((view) => view.reason).filter(Boolean).join("；")) };
+  }
+  return { after: "done" };
+}
+
+/**
+ * Clears the last query and shows the running screen; `text` is what the summary line says the query is about.
+ * Resolves with the fresh market.
+ */
+function beginQuery(text) {
+  queryText = text;
+  stopRequested = false;
+  market = newMarket();
+  agent = null;
+  after = null;
+  banner = null;
+  statusText = "";
+  activeTab = "trading";
+  pages.trading = 1;
+  pages.recent_trades = 1;
+  $("trust-more").open = false;
+  document.querySelectorAll("[data-stamp]").forEach((el) => delete el.dataset.stamp);
+  running = true;
+  render();
+  return market;
+}
+
+const resultActions = createResultActions({
+  getMarket: () => market,
+  rowsOf: (key) => filteredRows(key).rows,
+  getItemName: () => itemName,
+  getActiveTab: () => activeTab,
+});
+
+/**
+ * The shared frame of both searches: `work(session)` reads and resolves with how the query ended ({ after, banner? });
+ * a failure is described, Stop is not a failure, and the query window is always closed.
+ */
+async function runSession(session, work) {
+  current = session;
+  try {
+    ({ after, banner = null } = await work(session));
+  } catch (error) {
+    if (stopRequested) {
+      after = "stopped"; // Stop closed the query window under a running command: that is the stop, not a problem
+      banner = null;
+    } else {
+      after = "problem";
+      banner = describeError(error, session);
+    }
+  } finally {
+    current = null;
+    if (session.tab) await timed(session, "close_tab", () => session.tab.close().catch(() => {}));
+    publishRun(session);
+    running = false;
+    render();
+  }
+}
+
+/** Measurement only: the last query's timings, for the Chrome checks (scripts/extension_e2e.py). No UI reads it. */
+function publishRun(session) {
+  const state = session.agent?.state ?? null;
+  globalThis.__jevLastRun = {
+    timeline: session.timeline?.entries ?? [],
+    history: state?.history ?? [],
+    decisions: (state?.decisions ?? []).map(({ request, ...decision }) => decision),
+    rule_events: state?.rule_events ?? [],
+    stale_events: state?.stale_events ?? {},
+    visibility: session.tab?.openTiming?.settle?.visibility ?? null,
+  };
 }
 
 async function start() {
   if (running) return;
-  const invite = $("invite").value.trim();
+  if (!queryMode) return;
+  if (queryMode === "stats") return runStatsQuery();
+  const invite = currentInvite();
   const rawItem = $("item").value;
-  const loadMore = Number($("load-more").value);
-  setRunning(true);
-  stopRequested = false;
-  market = newMarket();
-  agent = null;
-  loggedSteps = 0;
-  $("log").replaceChildren();
-  $("quota").textContent = "";
-  pages.trading = 1;
-  pages.recent_trades = 1;
-  document.querySelectorAll("table").forEach((t) => delete t.dataset.stamp);
-  render();
-  const session = { tab: null, agent: null, run: null, itemName: "" };
-  try {
+  beginQuery(rawItem.trim());
+  const callBudget = newCallBudget(); // Jev calls of the whole query: every Agent it builds counts against it
+  const session = { tab: null, agent: null, run: null, itemName: "", outcome: null, timeline: newTimeline() };
+  await runSession(session, async (session) => {
     setStatus("正在準備…");
     const scripts = await loadPageScripts();
-    const outcome = await findAndRead({
+    session.outcome = await findAndRead({
       rawItem,
       tables: await loadTables(),
+      tableStats,
       loadMore,
       startRun: async (args) => {
         const run = await startRun(API_BASE, { invite, ...args });
-        $("quota").textContent = `今日已用 ${run.used}/${run.limit} 次`;
+        quota = { used: run.used, limit: run.limit };
+        await rememberInvite(invite);
         return run;
       },
       pickBase: (args) => pickBase(API_BASE, args),
       openTab: (url) => Tab.open(url, scripts),
       makeAgent: async (tab, run) => {
-        loggedSteps = 0;
         agent = await Agent.create({
+          callBudget,
           tab,
           phases: ["trading", "recent_trades"],
           text: run.item_name,
@@ -210,111 +456,285 @@ async function start() {
       shouldStop: () => stopRequested,
       onStatus: (text) => {
         setStatus(text);
-        renderLookup();
+        render();
       },
       onUpdate: () => {
-        setStatus(`查詢中：${agent.state.phase ?? ""}`);
+        setStatus(`進行中，已操作 ${agent.state.history.length} 步`);
         render();
       },
     });
     itemName = session.itemName;
-    if (stopRequested) {
-      setStatus("已停止");
-    } else if (outcome === "guard") {
-      setStatus(`受阻：防護頁/驗證碼。${GUARD_HINT}`, "error");
-    } else if (outcome === "not_found") {
-      setStatus("找不到這個裝備：查表、站內搜尋、底材清單都沒有符合的商品", "error");
-    } else if (agent.state.status === "blocked") {
-      const guard = await detectGuard(agent.state.page, session.tab).catch(() => null);
-      setStatus(`受阻：${guard ? `${guard}。${GUARD_HINT}` : agent.state.scope_blocked_reason || "無法繼續"}`, "error");
-    } else {
-      market.verification = verifyViews(itemName, market);
-      const v = market.verification;
-      const blocked = [market.trading, market.recent_trades].some((view) => view.status === "BLOCKED");
-      if (v.passed) setStatus("查詢完成，兩段資料都通過檢查", "ok");
-      else setStatus(`查詢完成，但檢查未通過：${v.failed_checks.join("、")}${blocked ? `。${GUARD_HINT}` : ""}`, "error");
+    return judge(session);
+  });
+}
+
+/** The second search: yellow, blue and white items by their affixes (stats-query.js). */
+async function runStatsQuery() {
+  await runSession({ tab: null, outcome: null, timeline: newTimeline() }, async (session) => {
+    const hooks = { begin: beginQuery, setStatus, render, shouldStop: () => stopRequested };
+    itemName = await runStatsFlow(statsForm.get(), session, hooks);
+    return judgeStats(session, { market, statsForm, stopped: stopRequested, guardProblem });
+  });
+}
+
+function showSettings(open) {
+  settingsOpen = open;
+  editingInvite = false;
+  render();
+}
+
+/** Switches between the name search and the affix search. Never persisted: the panel asks every time. */
+function setMode(mode) {
+  queryMode = mode;
+  render();
+}
+
+/** Where typing starts on the current screen. */
+function focusEntry() {
+  $(!queryMode ? "choose-name" : queryMode === "stats" ? "stats-base" : queryMode === "scan" ? "scan-start" : "item").focus();
+}
+
+/** The player picks (or changes back to the question with null); a later picture no longer switches the mode. */
+function chooseMode(mode) {
+  modeFromPicture = false;
+  setMode(mode);
+  focusEntry();
+}
+
+/** The scan list's 精準搜尋: fills the name form in, it never starts a query. */
+function onSearchName(record) {
+  if (!record.name) return; // the button is disabled without a name
+  modeFromPicture = false;
+  setMode("name");
+  $("item").value = record.name;
+  focusEntry();
+}
+
+/** The scan list's 模糊搜尋: ticks the affixes the OCR text shows; the base is prefilled only for a base result. */
+function onSearchStats(record) {
+  modeFromPicture = false;
+  setMode("stats");
+  if (record.kind === "base") statsForm.setBaseFromScreenshot(record.name);
+  statsForm.fillFromText(record.text); // like onText: the values stay for the player to type
+  focusEntry();
+}
+
+/** The start button of the affix search needs something to search by (stats-form-state.js `startBlocker`). */
+function updateStart() {
+  const why = queryMode === "stats" && statsForm ? statsForm.startBlocker() : "";
+  $("start").disabled = Boolean(why);
+  $("start-why").textContent = why;
+  $("start-why").hidden = !why || running;
+}
+
+/** One labelled select per filter field, first option 「不限」; they are built from the same list the filter uses. */
+function buildFilterFields() {
+  const box = $("filter-fields");
+  for (const field of FILTER_FIELDS) {
+    const id = `filter-${field.key}`;
+    const label = Object.assign(document.createElement("label"), { htmlFor: id, textContent: field.label });
+    const select = Object.assign(document.createElement("select"), { id });
+    select.append(new Option("不限", ""));
+    for (const value of field.options) select.append(new Option(FILTER_OPTION_LABELS[value] ?? value, value));
+    select.addEventListener("change", () => setFilters({ ...filters, [field.key]: select.value }));
+    box.append(label, select);
+  }
+}
+
+/** Showing a start-up problem in the banner: a dead panel with no explanation is worse than a half-working one. */
+function showInitProblem(what, error) {
+  banner = { message: what, hint: error?.message || String(error), retry: "知道了" };
+  render();
+}
+
+/** True when this is the only open side panel, so a window left in session storage cannot belong to a live run. */
+async function isOnlyPanel() {
+  const panels = await chrome.runtime.getContexts({ contextTypes: ["SIDE_PANEL"] });
+  return panels.length <= 1;
+}
+
+function registerListeners() {
+  const on = (id, handler) => $(id).addEventListener("click", handler);
+
+  // The code is only held in memory here; it is stored once the backend accepts it (see rememberInvite).
+  function wireInvite() {
+    $("part-welcome").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const code = $("welcome-invite").value.trim();
+      if (!code) {
+        $("welcome-invite").focus();
+        return;
+      }
+      pendingInvite = code;
+      banner = null;
+      $("welcome-invite").value = "";
+      render();
+      focusEntry();
+    });
+    $("invite-edit").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const code = $("invite-new").value.trim();
+      if (code) pendingInvite = code;
+      $("invite-new").value = "";
+      editingInvite = false;
+      render();
+    });
+    on("invite-change", () => {
+      editingInvite = true;
+      render();
+      $("invite-new").focus();
+    });
+  }
+
+  /** The settings screen: the invite area, the row filters and the "Load More" count. */
+  function wireSettings() {
+    on("settings-open", () => showSettings(!settingsOpen));
+    on("settings-back", () => showSettings(false));
+    buildFilterFields();
+    on("filter-preset", () => setFilters(COMMON_PRESET));
+    on("filter-clear", () => setFilters(EMPTY_FILTERS));
+    on("filter-edit", () => showSettings(true));
+    for (const { prefix } of Object.values(marketViews)) on(`${prefix}-clear`, () => setFilters(EMPTY_FILTERS));
+    on("more-minus", () => {
+      loadMore = Math.max(0, loadMore - 1);
+      render();
+    });
+    on("more-plus", () => {
+      loadMore = Math.min(MAX_LOAD_MORE, loadMore + 1);
+      render();
+    });
+  }
+
+  /** Starting and stopping, switching search kind, and the buttons of the problem banner. */
+  function wireRun() {
+    on("start", start);
+    on("choose-name", () => chooseMode("name"));
+    on("choose-stats", () => chooseMode("stats"));
+    on("choose-scan", () => chooseMode("scan"));
+    on("mode-change", () => chooseMode(queryMode === "name" ? "stats" : "name"));
+    on("scan-change", () => chooseMode(null));
+    on("stop", () => {
+      stopRequested = true;
+      setStatus("正在停止…");
+      current?.tab?.abort().catch(() => {}); // a command Chrome is slow to answer must not hold Stop back
+    });
+    on("part-requery", backToForm);
+    on("banner-retry", backToForm);
+    on("banner-open-site", () => chrome.tabs.create({ url: TRADERIE_D2R_URL }));
+    on("banner-settings", () => showSettings(true));
+  }
+
+  /** The results screen: its tabs (keyboard and click), paging, and copy / CSV / open-site. */
+  function wireResults() {
+    $("results-tabs").addEventListener("keydown", (event) => {
+      const next = nextTab(tabKeysFor(market), activeTab, event.key);
+      if (!next) return;
+      event.preventDefault();
+      selectTab(next, true);
+    });
+    on("result-csv", () => resultActions.download(activeTab));
+    on("result-copy", () => resultActions.copy(activeTab));
+    on("result-open", () => resultActions.openSite(activeTab));
+    for (const [key, config] of Object.entries(marketViews)) {
+      on(`${config.prefix}-tab`, () => selectTab(key));
+      // Paging only changes what the list shows; copy and CSV always take every row.
+      on(`${config.prefix}-prev`, () => {
+        pages[key] -= 1;
+        renderMarket(key);
+      });
+      on(`${config.prefix}-next`, () => {
+        pages[key] += 1;
+        renderMarket(key);
+      });
     }
-  } catch (error) {
-    const tab = session.tab;
-    if (error instanceof ApiError) setStatus(error.message, "error");
-    else if (tab?.detached && !stopRequested) {
-      setStatus(`查詢視窗被關閉或偵錯被取消（原因 ${tab.detachReason || "未知"}；${error?.message || ""}），查詢已停止`, "error");
-    } else setStatus(error?.message || String(error), "error");
-  } finally {
-    render();
-    if (session.tab) await session.tab.close().catch(() => {});
-    setRunning(false);
   }
-}
 
-function download(key) {
-  const config = marketViews[key];
-  const rows = market[key].rows;
-  if (!rows.length) return;
-  // The same cells as the on-screen table, so the file cannot drift from what the user sees.
-  const blob = new Blob([toCsv(config.head, rows.map(config.cells))], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = csvFileName(itemName, config.label);
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-async function copy(key) {
-  const config = marketViews[key];
-  const rows = market[key].rows;
-  if (!rows.length) return;
-  const button = $(`${config.prefix}-copy`);
-  try {
-    // The same cells as the on-screen table; tab separated so a spreadsheet pastes it into columns.
-    await navigator.clipboard.writeText(toTsv(config.head, rows.map(config.cells)));
-    button.textContent = `已複製 ${rows.length} 筆`;
-  } catch {
-    button.textContent = "複製失敗";
+  function wireClose() {
+    // Best effort: the panel is going away, so the query window must not stay open with the debugger attached.
+    window.addEventListener("pagehide", () => {
+      stopRequested = true;
+      current?.tab?.abort().catch(() => {});
+    });
   }
-  setTimeout(() => {
-    button.textContent = "複製";
-  }, 1500);
+
+  function wireSubPanels() {
+    statsForm = initStatsForm({
+      getProperties: async () => (await cachedProperties())?.properties ?? null,
+      onChange: updateStart,
+    });
+    initNameSuggest({ input: $("item"), list: $("item-suggest"), getTables: () => tables });
+  }
+
+  wireInvite();
+  wireSettings();
+  wireRun();
+  wireResults();
+  wireClose();
+  wireSubPanels();
 }
 
 async function init() {
-  const saved = await chrome.storage.local.get("invite");
-  if (saved.invite) $("invite").value = saved.invite;
-  $("save-invite").addEventListener("click", async () => {
-    await chrome.storage.local.set({ invite: $("invite").value.trim() });
-    setStatus("邀請碼已儲存", "ok");
-  });
-  $("load-more").value = "0"; // the browser may restore an old form value; always start at the default
-  $("start").addEventListener("click", start);
-  initOcrPanel({
-    tables: await loadTables(),
-    isBusy: () => running,
-    onPick: (name) => {
-      if (running) return false; // never change the name under a query that is already running
-      $("item").value = name; // the player reads it, then decides to press 開始查詢
-      return true;
-    },
-  });
-  $("stop").addEventListener("click", () => {
-    stopRequested = true;
-    setStatus("正在停止…");
-  });
-  for (const [key, config] of Object.entries(marketViews)) {
-    $(`${config.prefix}-csv`).addEventListener("click", () => download(key));
-    $(`${config.prefix}-copy`).addEventListener("click", () => copy(key));
-    $(`${config.prefix}-open`).addEventListener("click", () => openSite(key));
-    // Paging only changes what the table shows; copy and CSV always take every row.
-    $(`${config.prefix}-prev`).addEventListener("click", () => {
-      pages[key] -= 1;
-      renderMarket(key);
-    });
-    $(`${config.prefix}-next`).addEventListener("click", () => {
-      pages[key] += 1;
-      renderMarket(key);
-    });
+  loadMore = 0; // the browser may restore an old form value; always start at the default
+  // Every button works from here on, whatever fails below.
+  try {
+    registerListeners();
+  } catch (error) {
+    showInitProblem("側邊面板啟動時出了問題，部分按鈕可能沒有作用", error);
+    return;
+  }
+  try {
+    const saved = await chrome.storage.local.get(["invite", "filters"]);
+    savedInvite = saved.invite || "";
+    filters = normalizeFilters(saved.filters); // stale or damaged storage falls back to "no filter"
+  } catch (error) {
+    banner = { message: "讀不到已儲存的設定，請重新輸入邀請碼", hint: error?.message || String(error), retry: "知道了" };
   }
   render();
+  // A window left over from a panel that died mid-run (best effort; never while another panel might own one).
+  isOnlyPanel()
+    .then((only) => only && closeStaleWindows())
+    .catch(() => {});
+  // The screenshot reader loads last: its table download must not hold the rest of the panel back.
+  try {
+    ocr = initOcrPanel({
+      tables: await loadTables(),
+      isBusy: () => running,
+      onPick: (name, kind) => {
+        if (running) return false; // never change the name under a query that is already running
+        // A unique or set item has its own name search, so a picture of one leaves the affix form for it.
+        if (queryMode === "stats" && kind === "item") setMode("name");
+        if (modeFromPicture && kind === "base") setMode("stats");
+        backToForm();
+        if (queryMode === "stats") statsForm.setBaseFromScreenshot(name);
+        else $("item").value = name; // the player reads it, then decides to press 開始查詢
+        return true;
+      },
+      onText: (text) => {
+        if (running) return;
+        // The reader ticks the attributes it recognised and leaves every value box empty; the player types the numbers.
+        if (queryMode === "stats") statsForm.fillFromText(text);
+        else statsForm.rememberScreenshot(text);
+      },
+      onImage: () => {
+        statsForm.forgetScreenshot();
+        if (!running && !queryMode) {
+          modeFromPicture = true;
+          setMode("name");
+        }
+        if (!running) backToForm();
+      },
+    });
+  } catch (error) {
+    showInitProblem("截圖辨識無法啟動，其他功能不受影響", error);
+  }
+  // The scan screen works through that reader's models, engine and matcher: without it there is nothing to scan with.
+  if (ocr) {
+    try {
+      initScanPanel({ ocr, tables: await loadTables(), onSearchName, onSearchStats });
+    } catch (error) {
+      showInitProblem("裝備掃描無法啟動，其他功能不受影響", error);
+    }
+  }
 }
 
 init();

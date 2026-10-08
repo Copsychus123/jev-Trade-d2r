@@ -38,4 +38,4 @@ def verify(secret: str, token, now_ts) -> dict:
             raise ValueError("expired")
         return payload
     except (ValueError, KeyError, TypeError, AttributeError) as exc:
-        raise InviteError(401, INVALID) from exc
+        raise InviteError(401, INVALID, "token_invalid") from exc

@@ -1,0 +1,13 @@
+{
+  "onnxruntime-web": "1.30.0",
+  "tarball": {
+    "url": "https://registry.npmjs.org/onnxruntime-web/-/onnxruntime-web-1.30.0.tgz",
+    "bytes": 33106585,
+    "sha256": "d2228df7e4616bc3348bf504ee888f3bec43789a273f0a63f3e68d203ce3bf71"
+  },
+  "files": {
+    "ort.min.mjs": { "bytes": 367950, "sha256": "0ca19c223d563f244908feb26712f40333980b07576328c8b4a04d132bbf34ad" },
+    "ort-wasm-simd-threaded.jsep.mjs": { "bytes": 46851, "sha256": "709853412fd1ffc34247af1e73569227b5b79629c5ca3f59cc39cf7e500e4947" },
+    "ort-wasm-simd-threaded.jsep.wasm": { "bytes": 28312028, "sha256": "3ad23231b5bd6d9dda55a7f84606315e0bf35b6750c28ee993c987c54cacab0f" }
+  }
+}

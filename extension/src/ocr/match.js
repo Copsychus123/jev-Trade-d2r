@@ -1,7 +1,8 @@
 // Turns OCR text into candidate item names. Pure functions: no chrome.*, no I/O.
 //
-// Two passes, as agreed: first the text is matched against full item names (English and Traditional Chinese),
-// and only when nothing matches against plain item types ("base"), with a wider tolerance.
+// Two passes: the text is matched against full item names (English and Traditional Chinese), and against plain item
+// types ("base") with a wider tolerance -- base candidates are appended after the item ones even when items matched,
+// unless the items already fill the three slots.
 import { normalizeName, stripSeparators } from "../traderie/lookup.js";
 
 const CJK_RUN = /[\u3400-\u9fff][\u3400-\u9fff\-·‧・.]*/gu;
@@ -18,6 +19,27 @@ const MAX_CANDIDATES = 3;
 const WEAK_ITEM_MAX = 3;
 const MIN_BEFORE_STAT = 4;
 const TYPE_CONTEXT = 6; // how many extra characters a type word may be glued to and still count
+const ITEM_INCLUDE_CONTEXT = 3; // items get less gluing slack than bases: short (2-char) item names collide with stat words (力量) and with substrings of longer names (榮耀 in 格里斯育德的榮耀)
+
+/**
+ * Targeted glyph repair for frequent D2R Chinese OCR segmentation and font errors:
+ * - "戒" in D2R font split into "長虹" (e.g. "長虹指走", "長虹指", "長虹")
+ * - "寶" misread as "康賣" (e.g. "康賣她" for "寶冠")
+ * - "冠" misread as "她" when following 寶/康賣 or in headgear/coronets
+ * - "盔" misread as "炙" or "葷" when following 頭/發/輕鋼 or in helmet names
+ * - "霧" misread as "宁" (e.g. "煙宁" for "煙霧")
+ */
+function repairCjkGlyphs(text) {
+  return text
+    .replace(/長虹(?:指走|指)?/gu, (match) => (match.includes("指") ? "戒指" : "戒"))
+    .replace(/康賣/gu, "寶")
+    .replace(/(?:[寶康賣]|三重|日冕之|皇|權)她/gu, (m) => m.slice(0, -1) + "冠")
+    .replace(/(?:[頭盔發]|發頭)炙/gu, (m) => m.slice(0, -1) + "盔")
+    .replace(/(?:[頭盔發]|發頭|輕?鋼)葷/gu, (m) => m.slice(0, -1) + "盔")
+    .replace(/煙宁/gu, "煙霧")
+    .replace(/珠喜/gu, "珠寶")
+    .replace(/(?:夜視之盔|和卻視之有禹只|卻視之有禹)/gu, "暗視之盔");
+}
 
 export function levenshtein(a, b, limit = Infinity) {
   if (Math.abs(a.length - b.length) > limit) return limit + 1;
@@ -69,26 +91,36 @@ export function buildMatchIndex(tables) {
 function textPieces(text) {
   const cjk = [];
   const latin = [];
-  for (const rawLine of String(text ?? "").split(/\r?\n/u)) {
+  // Every piece keeps the line it came from: it breaks ties between equally good candidates (see rank).
+  for (const [at, rawLine] of String(text ?? "").split(/\r?\n/u).entries()) {
     // A stat line ("+9 力量(STR)", "需要等級:46") is never a name, but OCR sometimes glues the type line onto the
     // front of one ("芭戒指天要等級:48"): keep what comes before the first stat mark when that is long enough to be
     // more than a stat word such as 力量.
     const untagged = rawLine.replace(TAG_START, "");
     const mark = untagged.search(STAT_LINE);
-    const line = mark === -1 ? untagged : untagged.slice(0, mark);
-    if (mark !== -1 && line.replace(/\s+/gu, "").length < MIN_BEFORE_STAT) continue;
-    const compact = line.replace(/\s+/gu, "");
-    for (const run of compact.match(CJK_RUN) ?? []) cjk.push(stripSeparators(run));
-    // Stray marks inside an English name ("KALEID@SCQPE~") are dropped so the letters around them join up again.
+    // A stat line has a value after its mark; a name line that merely ends in a stray "+"/"%" does not, so require a
+    // digit after the first mark before cutting the line down to its prefix.
+    const statPrefix = mark !== -1 && /\d/u.test(untagged.slice(mark));
+    const line = statPrefix ? untagged.slice(0, mark) : untagged;
+    if (statPrefix && line.replace(/\s+/gu, "").length < MIN_BEFORE_STAT) continue;
+    const compact = repairCjkGlyphs(line.replace(/\s+/gu, ""));
+    for (const run of compact.match(CJK_RUN) ?? []) cjk.push({ text: stripSeparators(run), statPrefix, at });
     const letters = line.replace(/[^A-Za-z'’\- ]+/gu, "");
-    for (const run of letters.match(LATIN_RUN) ?? []) latin.push(normalizeName(run));
+    for (const run of letters.match(LATIN_RUN) ?? []) latin.push({ text: normalizeName(run), statPrefix: false, at });
   }
-  return { cjk: cjk.filter((s) => s.length >= 2), latin: latin.filter((s) => s.length >= MIN_LATIN_NAME) };
+  return {
+    cjk: cjk.filter((p) => p.text.length >= 2),
+    latin: latin.filter((p) => p.text.length >= MIN_LATIN_NAME),
+  };
 }
 
-function closest(pieces, entries, { cjk, wide, suffix = false }) {
+function closest(pieces, entries, { cjk, wide, suffix = false, allowStatPrefix = false }) {
   const found = new Map();
-  for (const piece of pieces) {
+  for (const raw of pieces) {
+    const piece = typeof raw === "string" ? raw : raw.text;
+    const at = typeof raw === "string" ? 0 : raw.at;
+    // Text cut from the front of a stat line is only evidence for a glued type word (base pass), never for an item.
+    if (typeof raw !== "string" && raw.statPrefix && !allowStatPrefix) continue;
     for (const entry of entries) {
       if (entry.cjk !== cjk) continue;
       const size = entry.key.length;
@@ -106,13 +138,14 @@ function closest(pieces, entries, { cjk, wide, suffix = false }) {
       if (cjk && suffix && size < WINDOW_MIN_NAME && piece.length > size) {
         distance = Math.min(distance, levenshtein(piece.slice(-size), entry.key, limit));
       }
-      // OCR often glues neighbouring words onto a type line ("芭戒指天要等級"): the type word, spelled exactly, counts.
-      if (cjk && suffix && piece.length <= size + TYPE_CONTEXT && piece.includes(entry.key)) distance = 0;
+      // OCR often glues neighbouring words onto a line: the word, spelled exactly, counts if noise is small.
+      // Items get less gluing slack than bases (stat words such as 力量/生命 collide with item names).
+      if (cjk && piece.length <= size + (suffix ? TYPE_CONTEXT : ITEM_INCLUDE_CONTEXT) && piece.includes(entry.key)) distance = 0;
       if (distance > limit) continue;
       const score = distance * 100 - Math.min(size, 40);
       const previous = found.get(entry.name);
       if (!previous || score < previous.score) {
-        found.set(entry.name, { name: entry.name, distance, score, matched: piece, size });
+        found.set(entry.name, { name: entry.name, distance, score, matched: piece, size, at });
       }
     }
   }
@@ -121,14 +154,17 @@ function closest(pieces, entries, { cjk, wide, suffix = false }) {
 
 const rank = (list) => {
   const unique = new Map();
-  for (const c of list.sort((a, b) => a.score - b.score)) if (!unique.has(c.name)) unique.set(c.name, c);
+  // Equal scores are broken by where the evidence sits in the text: the earliest matching line wins. Map insertion
+  // order cannot be used for this: a name that first matched some other line fuzzily keeps that place even after an
+  // exact match on its own line (image-1: Honor lost to Legacy/Valor/Redemption although all four are exact).
+  for (const c of list.sort((a, b) => a.score - b.score || a.at - b.at)) if (!unique.has(c.name)) unique.set(c.name, c);
   return [...unique.values()].slice(0, MAX_CANDIDATES);
 };
 
 /**
  * Candidates for a pasted screenshot's OCR text, best first, at most three.
- * Each is { kind: "item" | "base", name, distance, matched }. Items come first; plain item types only when no item
- * matches.
+ * Each is { kind: "item" | "base", name, distance, matched }. Two passes: item candidates come first and the plain
+ * item types ("base") found by the second pass are appended after them, the combined list capped at three.
  */
 export function matchOcrText(text, index) {
   const { cjk, latin } = textPieces(text);
@@ -136,16 +172,38 @@ export function matchOcrText(text, index) {
     ...closest(cjk, index.items, { cjk: true, wide: false }),
     ...closest(latin, index.items, { cjk: false, wide: false }),
   ];
-  // A one-to-three character Chinese hit is weak evidence: rare items have random names, and a random name such as
-  // 投索 can equal a real item's name. It only counts when no type line explains the picture.
+  // Strong items: Chinese names longer than WEAK_ITEM_MAX or English names (length >= MIN_LATIN_NAME).
   const strong = rank(asItems.filter((c) => c.size > WEAK_ITEM_MAX));
-  if (strong.length) return strong.map((c) => ({ kind: "item", ...pick(c) }));
-  const asBases = rank([
-    ...closest(cjk, index.bases, { cjk: true, wide: true, suffix: true }),
-    ...closest(latin, index.bases, { cjk: false, wide: true }),
-  ]);
-  if (asBases.length) return asBases.map((c) => ({ kind: "base", ...pick(c) }));
-  return rank(asItems).map((c) => ({ kind: "item", ...pick(c) }));
+  // The plain-type pass runs even when items matched: a rare or magic item's random name can be spelled exactly like
+  // a catalogue name (「防禦者的火焰」→ Defender's Fire, 「蛋白石脈」→ Opalvein), and the type line under it is then
+  // still the better answer. Skipped when the items already fill the three candidates, where a base could not show.
+  // This guard is a performance skip, not behaviour: rank() already caps `strong` at three and the combined list is
+  // sliced, so removing it cannot change a result.
+  const asBases = strong.length >= MAX_CANDIDATES
+    ? []
+    : rank([
+        ...closest(cjk, index.bases, { cjk: true, wide: true, suffix: true, allowStatPrefix: true }),
+        ...closest(latin, index.bases, { cjk: false, wide: true }),
+      ]);
+  if (strong.length) {
+    return [
+      ...strong.map((c) => ({ kind: "item", ...c })),
+      ...asBases.map((c) => ({ kind: "base", ...c })),
+    ].slice(0, MAX_CANDIDATES);
+  }
+  if (asBases.length) {
+    // A short Chinese name (≤3 chars) that matches a product exactly could be a real unique/set item OR a
+    // rare/magic item whose random name happens to collide. Default to the exact-match item, but also offer
+    // the base as an alternative candidate button for the player to pick instead.
+    const exactWeak = rank(asItems.filter((c) => c.size <= WEAK_ITEM_MAX && c.distance === 0));
+    if (exactWeak.length) {
+      return [
+        ...exactWeak.map((c) => ({ kind: "item", ...c })),
+        ...asBases.map((c) => ({ kind: "base", ...c })),
+      ];
+    }
+    return asBases.map((c) => ({ kind: "base", ...c }));
+  }
+  return rank(asItems).map((c) => ({ kind: "item", ...c }));
 }
 
-const pick = ({ name, distance, matched }) => ({ name, distance, matched });

@@ -1,5 +1,5 @@
 // Item-name helpers for the three-layer lookup (table jump, search, base list). Pure functions: no chrome.*, no I/O.
-import { TRADERIE_D2R_URL } from "./site.js";
+import { productUrl as productUrlForSlug } from "./site.js";
 
 const CJK = /[\u3400-\u9fff]/u;
 // Characters a Traderie item name can contain; anything else is dropped before searching.
@@ -18,10 +18,10 @@ export function normalizeName(name) {
   return text.startsWith("the ") ? text.slice(4) : text;
 }
 
-export const hasChinese = (text) => CJK.test(text);
+const hasChinese = (text) => CJK.test(text);
 
 /** Full-width to half-width, one space between words, no outer spaces. */
-export function cleanName(raw) {
+function cleanName(raw) {
   return String(raw ?? "").normalize("NFKC").replace(/\s+/gu, " ").trim();
 }
 
@@ -30,8 +30,11 @@ export function cleanName(raw) {
 const SEPARATORS = /[-·‧・.]/gu;
 export const stripSeparators = (text) => text.replace(SEPARATORS, "");
 
+/** The key a Chinese name is looked up by, for an already cleaned name: separators and the spaces around them gone. */
+const chineseKey = (cleaned) => stripSeparators(cleaned.replace(/\s+/gu, ""));
+
 /** Text that is safe to type into the search box. Chinese letters are not allowed here (they are translated first). */
-export function searchText(name) {
+function searchText(name) {
   return cleanName(name).replace(ALLOWED_QUERY, " ").replace(/\s+/gu, " ").trim();
 }
 
@@ -42,19 +45,68 @@ export function isWellFormed(query) {
 
 export function indexTables(data) {
   const byKey = new Map();
-  for (const product of data.products) byKey.set(normalizeName(product.name), product);
+  const ambiguous = new Set(); // names that belong to more than one product: the table cannot pick one
+  for (const product of data.products) {
+    const key = normalizeName(product.name);
+    if (byKey.has(key)) ambiguous.add(key);
+    byKey.set(key, product);
+  }
   const zh = new Map();
+  const zhNames = [];
+  const zhByKey = new Map(); // English name -> Chinese name, for the "English（中文）" label of the screenshot reader
   for (const [chinese, english] of Object.entries(data.zh)) {
-    zh.set(stripSeparators(cleanName(chinese).replace(/\s+/gu, "")), english);
+    const key = chineseKey(cleanName(chinese));
+    zh.set(key, english);
+    zhNames.push({ name: chinese, key, english });
+    // Several Chinese names can map to one English name; the smallest one wins so the label does not depend on the
+    // order of the JSON keys.
+    const englishKey = normalizeName(english);
+    const previous = zhByKey.get(englishKey);
+    if (previous === undefined || chinese < previous) zhByKey.set(englishKey, chinese);
   }
   return {
     byKey,
+    ambiguous,
     zh,
+    zhNames,
+    zhByKey,
     bases: data.bases,
     baseByKey: new Map(data.bases.map((name) => [normalizeName(name), name])),
     gameOnly: new Set(data.game_only.map(normalizeName)),
     generatedAt: data.generated_at,
   };
+}
+
+/**
+ * Up to `limit` names from the item tables for what is typed so far, best first; never the typed name itself.
+ * Chinese: table names (separators ignored) that start with it, then those containing it; { label, hint: English }.
+ * English (at least 2 letters after normalizeName): product names that start with it, then those with a word that
+ * starts with it; { label: product.name, hint: "" }. Shorter names first within each group.
+ */
+export function suggestNames(raw, tables, limit = 5) {
+  const typed = cleanName(raw);
+  if (!typed) return [];
+  if (hasChinese(typed)) {
+    const k = chineseKey(typed);
+    const matched = tables.zhNames
+      .map((entry) => ({ entry, rank: entry.key.startsWith(k) ? 0 : entry.key.includes(k) ? 1 : -1 }))
+      .filter((m) => m.rank >= 0 && m.entry.key !== k);
+    matched.sort((a, b) => a.rank - b.rank || a.entry.name.length - b.entry.name.length);
+    return matched.slice(0, limit).map((m) => ({ label: m.entry.name, hint: m.entry.english }));
+  }
+  const k = normalizeName(typed);
+  if (k.length < 2) return [];
+  const matched = [];
+  for (const [key, product] of tables.byKey) {
+    if (key === k) continue; // never suggest what was typed
+    let rank;
+    if (key.startsWith(k)) rank = 0;
+    else if (` ${key}`.includes(` ${k}`)) rank = 1;
+    else continue;
+    matched.push({ label: product.name, hint: "", rank, len: product.name.length });
+  }
+  matched.sort((a, b) => a.rank - b.rank || a.len - b.len);
+  return matched.slice(0, limit).map(({ label, hint }) => ({ label, hint }));
 }
 
 /**
@@ -65,7 +117,7 @@ export function resolveInput(raw, tables) {
   const typed = cleanName(raw);
   if (!typed) throw new Error("請輸入裝備名稱");
   if (hasChinese(typed)) {
-    const english = tables.zh.get(stripSeparators(typed.replace(/\s+/gu, "")));
+    const english = tables.zh.get(chineseKey(typed));
     if (!english) {
       throw new Error(`對照表裡沒有「${typed}」的英文名稱，請改輸入英文名稱（也可能是新物品，表還沒更新）`);
     }
@@ -78,11 +130,66 @@ export function resolveInput(raw, tables) {
   return { typed, query: product ? product.name : query, translated: false };
 }
 
-export function findProduct(query, tables) {
-  return tables.byKey.get(normalizeName(query)) ?? null;
+/**
+ * Resolves a raw base name (Chinese or English, possibly empty) to standard English base name.
+ */
+export function resolveBase(raw, tables) {
+  if (raw === null || raw === undefined) return "";
+  const cleaned = cleanName(raw);
+  if (!cleaned) return "";
+  if (hasChinese(cleaned)) {
+    const key = chineseKey(cleaned);
+    const english = tables?.zh?.get?.(key);
+    if (english) {
+      const canonical = tables?.baseByKey?.get?.(normalizeName(english));
+      return canonical || english;
+    }
+    throw new Error(`對照表裡沒有底材「${cleaned}」的英文名稱，請改輸入英文底材（如 Ring、Circlet）`);
+  }
+  const canonical = tables?.baseByKey?.get?.(normalizeName(cleaned));
+  if (canonical) return canonical;
+  return cleaned;
 }
 
-export const productUrl = (product) => `${TRADERIE_D2R_URL}/product/${product.slug}`;
+/**
+ * The Chinese name the screenshot reader's label shows in its full-width brackets, or "" when the label is plain.
+ * `matched` is the OCR piece the candidate matched (matchOcrText). One English name can have several Chinese names
+ * (Circlet is 頭環 or 頭飾), and the reverse map can only pick one; when the picture itself spells a Chinese name that
+ * is an exact table key for this same name, that is what the player sees and what the label shows. Anything else — an
+ * English match, or a noisy glued run like 芭戒指天要等級 that is not a key — falls back to the reverse map.
+ *
+ * One source of truth: `labelWithChinese` builds "English（中文）" from this, and the gear scanner's CSV takes its
+ * 中文名稱 column straight from here, so the two can never drift apart.
+ */
+export function chineseName(name, tables, matched = "") {
+  const fromPicture = hasChinese(matched)
+    ? tables?.zh?.get?.(chineseKey(cleanName(matched)))
+    : undefined;
+  const picked =
+    fromPicture && normalizeName(fromPicture) === normalizeName(name)
+      ? cleanName(matched)
+      : tables?.zhByKey?.get?.(normalizeName(name));
+  return picked && picked !== name ? picked : "";
+}
+
+/**
+ * The label of a name in the screenshot reader: the English name with its Traditional Chinese name in full-width
+ * brackets, e.g. "Diadem（權冠）". A name with no Chinese (see chineseName) is shown plain, so no empty brackets appear.
+ * Used for base types and for items alike.
+ */
+export function labelWithChinese(name, tables, matched = "") {
+  const chinese = chineseName(name, tables, matched);
+  return chinese ? `${name}（${chinese}）` : name;
+}
+
+/** The product for a name, or null when the name is unknown or shared by several products (search then decides). */
+export function findProduct(query, tables) {
+  const key = normalizeName(query);
+  return tables.ambiguous.has(key) ? null : (tables.byKey.get(key) ?? null);
+}
+
+/** The product page of a table entry: the one call site of the URL template for a lookup result. */
+export const productUrlFor = (product) => productUrlForSlug(product.slug);
 
 /** "traderie": in Traderie's catalog; "game_only": a real game item Traderie lacks or spells differently; "unknown". */
 export function nameStatus(query, tables) {
@@ -120,4 +227,22 @@ export function stripToBase(query, tables) {
     if (base) return base;
   }
   return null;
+}
+
+const TABLE_STALE_DAYS = 90;
+
+/**
+ * How old the item tables are, for the settings screen and for the note when a table jump misses. `generatedAt` is the
+ * ISO time in items.json. A table older than TABLE_STALE_DAYS is stale: new items are missing from it, so their names
+ * fall back to search (or cannot be translated).
+ * Returns { days, date, stale, text }; days and date are null when the table carries no usable date.
+ */
+export function tableAge(generatedAt, now = Date.now()) {
+  const then = Date.parse(generatedAt ?? "");
+  if (Number.isNaN(then)) return { days: null, date: null, stale: false, text: "名稱表日期不明" };
+  const days = Math.max(0, Math.floor((now - then) / 86_400_000));
+  const date = new Date(then).toISOString().slice(0, 10);
+  const stale = days > TABLE_STALE_DAYS;
+  const warning = stale ? `，已超過 ${TABLE_STALE_DAYS} 天，新物品可能查不到，請更新擴充功能` : "";
+  return { days, date, stale, text: `名稱表更新於 ${date}（${days} 天前）${warning}` };
 }

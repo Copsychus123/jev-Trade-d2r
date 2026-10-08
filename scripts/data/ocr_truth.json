@@ -64,9 +64,9 @@
  },
  {
   "file": "image-10.png",
-  "kind": "base",
-  "expect": "Ring",
-  "visible_zh": "戒指",
+  "kind": "item",
+  "expect": "Sling",
+  "visible_zh": "投索",
   "phone_photo": false
  },
  {
@@ -128,7 +128,7 @@
  {
   "file": "image-19.png",
   "kind": "item",
-  "expect": "Nightwing's Veil",
+  "expect": "Darksight Helm",
   "visible_zh": "夜視之盔",
   "phone_photo": false
  },

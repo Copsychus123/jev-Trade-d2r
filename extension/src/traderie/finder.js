@@ -9,13 +9,18 @@ import {
   findProduct,
   isWellFormed,
   nameStatus,
-  productUrl,
+  productUrlFor,
   resolveInput,
   searchFoundNothing,
   stripToBase,
+  tableAge,
   titleIsItem,
 } from "./lookup.js";
 import { TRADERIE_D2R_URL, detectGuard, productRootUrl } from "./site.js";
+import { timed } from "../timeline.js";
+
+/** What Tab.open measured (navigate, settle, visibility), for the timeline entry of an open. */
+const openDetails = (tab) => tab?.openTiming ?? {};
 
 export const LAYER_LABELS = { table: "查表直接開啟", search: "站內搜尋", base: "底材清單" };
 
@@ -25,7 +30,7 @@ const NAME_NOTES = {
 };
 
 /** After the table jump: is the page open the product the table promised? */
-export async function checkLanding(tab, product) {
+async function checkLanding(tab, product) {
   let page;
   try {
     page = await tab.readSettledPage(500, 8000);
@@ -39,15 +44,67 @@ export async function checkLanding(tab, product) {
   return { ok: true };
 }
 
-async function backToSearch(tab) {
-  await tab.navigate(TRADERIE_D2R_URL);
-  await tab.settle();
+async function backToSearch(tab, session) {
+  await timed(session, "navigate", () => tab.navigate(TRADERIE_D2R_URL), (r) => r ?? {});
+  await timed(session, "settle", () => tab.settle(), (r) => r ?? {});
+}
+
+/**
+ * Layer 1: open `/product/<slug>` from the item table and check the page really is that item.
+ * Returns "guard" when the site challenged; otherwise null, and `lookup.layer` says whether the jump landed.
+ */
+async function tableJump({ product, tables, openTab, session, lookup, tableStats, onStatus }) {
+  tableStats.jumps += 1;
+  onStatus("查表：直接開啟商品頁…");
+  session.tab = await timed(session, "open_tab", () => openTab(productUrlFor(product)), openDetails);
+  const landing = await timed(session, "check_landing", () => checkLanding(session.tab, product), (r) => ({ ok: r.ok }));
+  if (landing.guard) return "guard";
+  if (landing.ok) {
+    lookup.layer = "table";
+    return null;
+  }
+  tableStats.misses += 1;
+  const missed = `${tableStats.misses}/${tableStats.jumps}`;
+  lookup.notes.push(
+    `查表開啟的頁面不對（${landing.reason}），改用搜尋（查表落空 ${missed} 次；${tableAge(tables.generatedAt).text}）`,
+  );
+  await backToSearch(session.tab, session);
+  return null;
+}
+
+/**
+ * Layer 3, only for a well-formed name that the search really did not find. The program drops leading words until
+ * what is left is a base (free and steady); Jev picks from the fixed list only when that finds none, and no pick
+ * means "not found". Resolves with "ran" or "not_found".
+ */
+async function baseFallback({ resolved, tables, session, lookup, run, foundNothing, shouldStop, pickBase, onStatus }) {
+  const notFound = () => {
+    const note = NAME_NOTES[nameStatus(resolved.query, tables)];
+    if (note) lookup.notes.push(note);
+    return "not_found";
+  };
+  if (!isWellFormed(resolved.query)) return notFound();
+  onStatus("搜尋找不到，改從底材清單挑…");
+  const matched = stripToBase(resolved.query, tables);
+  const picked = await timed(session, "pick_base", () =>
+    pickBase({ runToken: session.run.run_token, options: tables.bases, base: matched }),
+  );
+  if (!picked.base) return notFound();
+  session.run = { ...session.run, run_token: picked.run_token, item_name: picked.base };
+  session.itemName = picked.base;
+  Object.assign(lookup, { layer: "base", used: picked.base });
+  lookup.notes.push(`你查的是 ${resolved.query}，顯示的是底材 ${picked.base}，沒有依品質篩選`);
+  await backToSearch(session.tab, session);
+  await run();
+  return !shouldStop() && foundNothing() ? notFound() : "ran";
 }
 
 /**
  * Finds the product and reads both views. `session` receives tab, agent, run and itemName as they are created.
  * Resolves with "ran" (the agent finished or stopped; the caller judges the result), "guard" (site challenge)
  * or "not_found" (all layers tried).
+ * `tableStats` counts table jumps and the ones that opened the wrong page ("misses"); a caller that keeps the object
+ * between runs gets running totals in the note of each miss (a growing share of misses means the table is out of date).
  */
 export async function findAndRead({
   rawItem,
@@ -62,37 +119,31 @@ export async function findAndRead({
   shouldStop = () => false,
   onUpdate = () => {},
   onStatus = () => {},
+  tableStats = { jumps: 0, misses: 0 },
 }) {
   const resolved = resolveInput(rawItem, tables);
   const lookup = { typed: resolved.typed, requested: resolved.query, used: resolved.query, layer: null, notes: [] };
   market.lookup = lookup;
   if (resolved.translated) lookup.notes.push(`「${resolved.typed}」對照為 ${resolved.query}`);
 
-  session.run = await startRun({ itemName: resolved.query, loadMore });
+  session.run = await timed(session, "start_run", () => startRun({ itemName: resolved.query, loadMore }));
   session.itemName = session.run.item_name;
 
   const product = findProduct(resolved.query, tables);
   if (product) {
-    onStatus("查表：直接開啟商品頁…");
-    session.tab = await openTab(productUrl(product));
-    const landing = await checkLanding(session.tab, product);
-    if (landing.guard) return "guard";
-    if (landing.ok) {
-      lookup.layer = "table";
-    } else {
-      lookup.notes.push(`查表開啟的頁面不對（${landing.reason}），改用搜尋`);
-      await backToSearch(session.tab);
-    }
+    const jumped = await tableJump({ product, tables, openTab, session, lookup, tableStats, onStatus });
+    if (jumped === "guard") return "guard";
   }
   if (!lookup.layer) {
+    // Layer 2: Jev types the name the program supplies and picks the result.
     onStatus("站內搜尋…");
-    session.tab ??= await openTab(TRADERIE_D2R_URL);
+    session.tab ??= await timed(session, "open_tab", () => openTab(TRADERIE_D2R_URL), openDetails);
     lookup.layer = "search";
   }
 
   const run = async () => {
-    session.agent = await makeAgent(session.tab, session.run);
-    await runAgent(session.agent, session.itemName, market, { shouldStop, onUpdate });
+    session.agent = await timed(session, "make_agent", () => makeAgent(session.tab, session.run));
+    await timed(session, "run_agent", () => runAgent(session.agent, session.itemName, market, { shouldStop, onUpdate, session }));
   };
   const foundNothing = () => session.agent.state.status === "blocked" && searchFoundNothing(session.agent.state.page);
 
@@ -100,23 +151,5 @@ export async function findAndRead({
   if (shouldStop() || lookup.layer === "table" || !foundNothing()) return "ran";
   if (market.trading.status !== "NOT_RUN") return "ran";
 
-  // Layer 3: only for a well-formed name that search really did not find.
-  const notFound = () => {
-    const note = NAME_NOTES[nameStatus(resolved.query, tables)];
-    if (note) lookup.notes.push(note);
-    return "not_found";
-  };
-  if (!isWellFormed(resolved.query)) return notFound();
-  onStatus("搜尋找不到，改從底材清單挑…");
-  // The program tries first (drop leading words until the rest is a base: free and steady); Jev only when that finds none.
-  const matched = stripToBase(resolved.query, tables);
-  const picked = await pickBase({ runToken: session.run.run_token, options: tables.bases, base: matched });
-  if (!picked.base) return notFound();
-  session.run = { ...session.run, run_token: picked.run_token, item_name: picked.base };
-  session.itemName = picked.base;
-  Object.assign(lookup, { layer: "base", used: picked.base });
-  lookup.notes.push(`你查的是 ${resolved.query}，顯示的是底材 ${picked.base}，沒有依品質篩選`);
-  await backToSearch(session.tab);
-  await run();
-  return !shouldStop() && foundNothing() ? notFound() : "ran";
+  return await baseFallback({ resolved, tables, session, lookup, run, foundNothing, shouldStop, pickBase, onStatus });
 }

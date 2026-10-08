@@ -1,0 +1,2 @@
+# Vendored files are hashed in VERSIONS.json: never let git change their line endings.
+extension/src/vendor/** -text

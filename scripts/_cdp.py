@@ -1,0 +1,111 @@
+"""Minimal Chrome DevTools Protocol client shared by the Chrome scripts (extension_e2e, extension_batch, ocr_e2e,
+scan_e2e, build_item_tables, probe_stats). One websocket, one command at a time. Needs `websockets`
+(uv run --group e2e ...)."""
+
+import asyncio
+import json
+import time
+from contextlib import asynccontextmanager
+
+import httpx
+import websockets
+
+
+class Environment(Exception):
+    """Something outside the extension is wrong (exit code 2)."""
+
+
+class Panel:
+    """One page (or the extension's side-panel page) driven over its debugger websocket."""
+
+    STATE_JS = ""  # a JS expression answering this page's state; only the panels that use state() set it
+    READY_JS = ""  # a JS expression that is true once this page is loaded; only the panels that wait for it set it
+
+    def __init__(self, ws, *, raise_errors: bool = True, collect_events: bool = False):
+        self.ws = ws
+        self.counter = 0
+        self.raise_errors = raise_errors  # False: a protocol error answers {} like a command with no result
+        self.collect_events = collect_events  # keep events that arrive while a command is waited for
+        self.events: list[dict] = []
+
+    async def send(self, method: str, params: dict | None = None) -> dict:
+        self.counter += 1
+        mine = self.counter
+        await self.ws.send(json.dumps({"id": mine, "method": method, "params": params or {}}))
+        while True:
+            message = json.loads(await self.ws.recv())
+            if message.get("id") == mine:
+                if "error" in message and self.raise_errors:
+                    raise RuntimeError(message["error"])
+                return message.get("result", {})
+            if self.collect_events:
+                self.events.append(message)
+
+    async def evaluate(self, expression: str):
+        result = await self.send(
+            "Runtime.evaluate", {"expression": expression, "returnByValue": True, "awaitPromise": True}
+        )
+        return result.get("result", {}).get("value")
+
+    async def goto(self, url: str) -> None:
+        await self.send("Page.navigate", {"url": url})
+
+    async def state(self):
+        """This page's state as an object (see STATE_JS)."""
+        return json.loads(await self.evaluate(self.STATE_JS))
+
+    async def wait(self, predicate, seconds=120, step=0.5):
+        """The first state matching `predicate`, checked every `step` seconds; Environment after `seconds`."""
+        end = time.time() + seconds
+        while time.time() < end:
+            state = await self.state()
+            if predicate(state):
+                return state
+            await asyncio.sleep(step)
+        raise Environment(f"等不到預期的畫面狀態（{seconds} 秒）：{await self.state()}")
+
+    async def wait_ready(self, message, tries=40):
+        """Wait up to `tries` half-seconds for READY_JS; raise Environment(`message`) when it never turns true."""
+        for _ in range(tries):
+            if await self.evaluate(self.READY_JS):
+                return
+            await asyncio.sleep(0.5)
+        raise Environment(message)
+
+    async def reload(self, message="側邊欄沒有重新載入"):
+        """Reload the page and wait for READY_JS; raise Environment(`message`) when it never comes back."""
+        await self.evaluate("location.reload()")
+        await asyncio.sleep(1)
+        for _ in range(60):
+            try:
+                if await self.evaluate(self.READY_JS):
+                    return
+            except Exception:
+                pass
+            await asyncio.sleep(0.5)
+        raise Environment(message)
+
+    async def hide_headless_label(self):
+        """Headless Chrome names itself in the user agent, which some sites reject: report a plain Chrome instead.
+        Same rule as Browser._prepare: only the browser's own "HeadlessChrome" label is dropped."""
+        agent = await self.evaluate("navigator.userAgent")
+        if isinstance(agent, str) and "HeadlessChrome" in agent:
+            await self.send("Emulation.setUserAgentOverride", {"userAgent": agent.replace("HeadlessChrome", "Chrome")})
+
+
+@asynccontextmanager
+async def attach(ws_url: str, panel_class=Panel, **options):
+    """A Panel (or `panel_class`) on an existing page's debugger websocket."""
+    async with websockets.connect(ws_url, max_size=None) as ws:
+        yield panel_class(ws, **options)
+
+
+@asynccontextmanager
+async def open_tab(port: int, panel_class=Panel, **options):
+    """A new blank tab in the Chrome listening on `port`; the tab is closed on exit."""
+    target = httpx.put(f"http://127.0.0.1:{port}/json/new?about:blank", timeout=10).json()
+    try:
+        async with websockets.connect(target["webSocketDebuggerUrl"], max_size=None) as ws:
+            yield panel_class(ws, **options)
+    finally:
+        httpx.get(f"http://127.0.0.1:{port}/json/close/{target['id']}", timeout=10)

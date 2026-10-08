@@ -1,26 +1,74 @@
-// Port of core/jev_ultrafast/browser.py (Browser + browser_operation) onto chrome.debugger.
+// Port of src/jev_ultrafast/browser.py (Browser + browser_operation) onto chrome.debugger.
 // chrome.* is only touched inside functions, never at import time.
 
-import { StalePage, TimeoutError } from "./errors.js";
+import { AbortedError, StalePage, TimeoutError } from "./errors.js";
 
 const VIEWPORT_WIDTH = 1120;
 const VIEWPORT_HEIGHT = 780;
+const COMMAND_TIMEOUT_MS = 30000;
+const NAVIGATE_TIMEOUT_MS = 60000;
+const DIALOG_TIMEOUT_MS = 5000;
+// How long `readyState` may sit at "interactive" before `navigate` stops waiting for "complete". Measured 2026-10 on
+// the real side panel with an interleaved A/B (500 vs 1500, 3 runs each): the grace bound in 1 of 3 runs, while a
+// product page always reached complete (~0.6-0.9 s). It only saves time when "complete" is slow: a bound navigate
+// returned after ~1.08 s at 500 ms vs ~1.85 s at 1500 ms, i.e. roughly 1 s; when the page completes first the value
+// changes nothing and the query total was within noise. The settle() that follows every navigate is the real content
+// gate, so the grace only needs to be long enough to tell "still loading a document" from "loaded".
+const NAVIGATE_INTERACTIVE_GRACE_MS = 500;
+const WINDOWS_KEY = "jevWindows"; // chrome.storage.session: query windows that are open right now
+// What Chrome reports when a navigation or process swap destroys the page a script was running in.
+const NAVIGATION_FAILURE = /Execution context was destroyed|Cannot find context|Inspected target navigated/i;
+
+/** How long Chrome may take to answer a command before the run gives up on it. */
+export const commandTimeoutMs = (method) => (method === "Page.navigate" ? NAVIGATE_TIMEOUT_MS : COMMAND_TIMEOUT_MS);
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Runs a chrome.* call that may fail because the thing is already gone; never throws. */
+const quiet = async (call) => {
+  try {
+    await call();
+  } catch {
+    // already gone
+  }
+};
+
+async function readWindows() {
+  const stored = await chrome.storage.session.get(WINDOWS_KEY);
+  return Array.isArray(stored[WINDOWS_KEY]) ? stored[WINDOWS_KEY].filter(Number.isInteger) : [];
+}
+
+const rememberWindow = (id) =>
+  quiet(async () => chrome.storage.session.set({ [WINDOWS_KEY]: [...(await readWindows()), id] }));
+
+const forgetWindow = (id) =>
+  quiet(async () => chrome.storage.session.set({ [WINDOWS_KEY]: (await readWindows()).filter((w) => w !== id) }));
+
+/**
+ * Closes query windows left behind when the side panel died mid-run (session storage lives as long as the browser, so
+ * ids from before a browser restart are never read back). The caller makes sure no other panel owns a window.
+ */
+export async function closeStaleWindows() {
+  const ids = await readWindows();
+  await Promise.all(ids.map((id) => quiet(() => chrome.windows.remove(id))));
+  await chrome.storage.session.set({ [WINDOWS_KEY]: [] });
+}
 
 export async function loadPageScripts() {
   const read = async (name) => {
     const response = await fetch(chrome.runtime.getURL(`page/${name}`));
     return (await response.text()).trim();
   };
-  const [snapshot, afterInput, resolveTarget, settle, settledPage] = await Promise.all([
+  const [snapshot, afterInput, resolveTarget, coveredOverlay, settle, settledPage, fetchJson] = await Promise.all([
     read("snapshot.js"),
     read("after_input.js"),
     read("resolve_target.js"),
+    read("covered_overlay.js"),
     read("settle.js"),
     read("settled_page.js"),
+    read("fetch_json.js"),
   ]);
-  return { snapshot, afterInput, resolveTarget, settle, settledPage };
+  return { snapshot, afterInput, resolveTarget, coveredOverlay, settle, settledPage, fetchJson };
 }
 
 function stableStringify(value) {
@@ -32,7 +80,7 @@ function stableStringify(value) {
   return JSON.stringify(value) ?? "null";
 }
 
-export async function fingerprint(state) {
+async function fingerprint(state) {
   const { url, text, actions, scroll } = state;
   const bytes = new TextEncoder().encode(stableStringify({ url, text, actions, scroll }));
   const digest = await crypto.subtle.digest("SHA-256", bytes);
@@ -44,29 +92,50 @@ export class Tab {
     this.tabId = tabId;
     this.scripts = scripts;
     this.detached = false;
+    this.aborted = false;
     this.afterInput = null;
     this.marker = `(() => { const state=${scripts.snapshot}; return state?.marker ?? null; })()`;
     this.reattaches = 0;
     this.detachReason = "";
+    this._pending = new Set(); // reject functions of the commands in flight: Stop fails them at once
     this._onDetach = (source, reason) => {
       if (source.tabId === this.tabId) {
         this.detached = true;
         this.detachReason = reason ?? "";
       }
     };
+    // An open alert/confirm/prompt/beforeunload dialog blocks the page's JavaScript, so every command would hang.
+    this._onEvent = (source, method, params) => {
+      if (source.tabId !== this.tabId || method !== "Page.javascriptDialogOpening") return;
+      // beforeunload is the page asking to stay while a navigation the run (or the page) started is under way: leave.
+      // Everything else is dismissed, never confirmed.
+      this._command("Page.handleJavaScriptDialog", { accept: params?.type === "beforeunload" }, DIALOG_TIMEOUT_MS).catch(
+        () => {},
+      );
+    };
     chrome.debugger.onDetach.addListener(this._onDetach);
+    chrome.debugger.onEvent.addListener(this._onEvent);
   }
 
   /** Opens the page in its own minimized window: nothing covers or steals focus from what the user is doing. */
   static async open(url, scripts) {
     // Straight to the target URL: another extension may take over an about:blank window (new-tab pages etc.).
     const created = await chrome.windows.create({ url, state: "minimized" });
-    const tab = new Tab(created.tabs[0].id, scripts);
+    const first = created.tabs?.[0];
+    if (!first) {
+      await quiet(() => chrome.windows.remove(created.id));
+      throw new Error("Chrome 沒有開出查詢視窗，查詢已停止");
+    }
+    await rememberWindow(created.id);
+    const tab = new Tab(first.id, scripts);
     tab.windowId = created.id;
     try {
       await tab._attach();
-      await tab.navigate(url);
-      await tab.settle();
+      const navigate = await tab.navigate(url);
+      // Measurement only (read-only): a minimized window may count as hidden, which slows page timers. visibility is
+      // carried by settle.js, which already ran on the page, so no extra round trip is spent on it.
+      const settle = await tab.settle();
+      tab.openTiming = { navigate, settle };
     } catch (error) {
       await tab.close().catch(() => {});
       throw error;
@@ -86,13 +155,14 @@ export class Tab {
     }
     this.detached = false;
     this.detachReason = "";
-    await this.send("Emulation.setDeviceMetricsOverride", {
-      width: VIEWPORT_WIDTH,
-      height: VIEWPORT_HEIGHT,
-      deviceScaleFactor: 1,
-      mobile: false,
-    });
-    await this.send("Emulation.setFocusEmulationEnabled", { enabled: true });
+    // Viewport and event setup change nothing on the page: safe to repeat if the target is swapped again.
+    await this.send(
+      "Emulation.setDeviceMetricsOverride",
+      { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT, deviceScaleFactor: 1, mobile: false },
+      { retryable: true },
+    );
+    await this.send("Emulation.setFocusEmulationEnabled", { enabled: true }, { retryable: true });
+    await this.send("Page.enable", {}, { retryable: true });
   }
 
   /**
@@ -100,7 +170,7 @@ export class Tab {
    * Re-attach once per swap, at most 6 times a query. A user cancel or a closed tab is never recovered.
    */
   async _recover() {
-    if (this.detachReason !== "target_closed" || this.reattaches >= 6) return false;
+    if (this.aborted || this.detachReason !== "target_closed" || this.reattaches >= 6) return false;
     const alive = await chrome.tabs.get(this.tabId).then(() => true, () => false);
     if (!alive) return false;
     this.reattaches += 1;
@@ -113,52 +183,108 @@ export class Tab {
     return new Error(`偵錯連線已關閉（執行 ${method} 時${reason}），查詢已停止`);
   }
 
-  async send(method, params = {}) {
+  /** One command with a response deadline. Stop (`abort`) rejects it at once instead of waiting for Chrome. */
+  async _command(method, params, timeoutMs) {
+    let timer;
+    let cancel;
+    const guard = new Promise((_, reject) => {
+      cancel = reject;
+      this._pending.add(cancel);
+      timer = setTimeout(
+        () => reject(new TimeoutError(`Chrome 在 ${Math.round(timeoutMs / 1000)} 秒內沒有回應（${method}），查詢已停止`)),
+        timeoutMs,
+      );
+    });
+    try {
+      return await Promise.race([chrome.debugger.sendCommand({ tabId: this.tabId }, method, params), guard]);
+    } finally {
+      clearTimeout(timer);
+      this._pending.delete(cancel);
+    }
+  }
+
+  /**
+   * `retryable` is set only by callers whose command changes nothing on the page (reads, viewport). When the target is
+   * swapped under such a command it is repeated once on the re-attached tab; every other command fails instead,
+   * because it may already have run (never retry a browser mutation).
+   */
+  async send(method, params = {}, { retryable = false, timeoutMs = commandTimeoutMs(method) } = {}) {
+    if (this.aborted) throw new AbortedError();
     // Detached between two commands: nothing of this command was sent yet, so re-attaching first is safe.
     if (this.detached && !(await this._recover())) throw this._detachedError(method);
     try {
-      return await chrome.debugger.sendCommand({ tabId: this.tabId }, method, params);
+      return await this._command(method, params, timeoutMs);
     } catch (error) {
+      if (this.aborted || error instanceof TimeoutError) throw error;
       // Chrome rejects the in-flight command before onDetach fires.
       if (/detached/i.test(error?.message ?? "")) {
         this.detached = true;
-        await new Promise((resolve) => setTimeout(resolve, 100)); // onDetach carries the reason and fires just after
+        await sleep(100); // onDetach carries the reason and fires just after
       }
       if (!this.detached) throw error;
-      // The command may have run: repeat only commands that change nothing (reads and viewport), never input.
-      if (/^(Runtime\.evaluate|Emulation\.)/.test(method) && (await this._recover())) return this.send(method, params);
+      if (retryable && (await this._recover())) return this.send(method, params, { retryable, timeoutMs });
       throw this._detachedError(method);
     }
   }
 
-  async evaluate(expression, { awaitPromise = false } = {}) {
-    const response = await this.send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise });
-    if (response?.exceptionDetails) throw new StalePage("Document changed during evaluation");
+  /**
+   * Runs a page expression. Only a failure caused by navigation (the document or its context went away) is a
+   * StalePage; any other exception is a real error that carries the page's own description of it.
+   */
+  async evaluate(expression, { awaitPromise = false, retryable = false } = {}) {
+    let response;
+    try {
+      response = await this.send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise }, { retryable });
+    } catch (error) {
+      if (NAVIGATION_FAILURE.test(error?.message ?? "")) throw new StalePage(error.message);
+      throw error;
+    }
+    const details = response?.exceptionDetails;
+    if (details) {
+      const description = details.exception?.description ?? details.text ?? "unknown exception";
+      if (NAVIGATION_FAILURE.test(description)) throw new StalePage(description);
+      throw new Error(`頁面腳本發生錯誤：${description}`);
+    }
     return response?.result?.value;
   }
 
+  /** Resolves { capped, ms } (settle.js): whether the cap ended the wait, and how long it took. */
   async settle(quietMs = 600, timeoutMs = 15000, minChars = 100) {
-    await this.evaluate(`${this.scripts.settle}(${quietMs}, ${timeoutMs}, ${minChars})`, { awaitPromise: true });
+    return this.evaluate(`${this.scripts.settle}(${quietMs}, ${timeoutMs}, ${minChars})`, {
+      awaitPromise: true,
+      retryable: true,
+    });
   }
 
   async readSettledPage(quietMs = 500, timeoutMs = 5000) {
     const page = await this.evaluate(`${this.scripts.settledPage}(${quietMs}, ${timeoutMs})`, {
       awaitPromise: true,
+      retryable: true,
     });
     if (!page || typeof page.url !== "string") throw new TimeoutError("頁面沒有穩定下來");
     return page;
   }
 
-  async navigate(url, timeoutMs = 30000, interactiveGraceMs = 1500) {
+  /** Resolves { how: "complete" | "interactive_grace", ms } for measurement; callers may ignore it. */
+  async navigate(url, timeoutMs = 30000, interactiveGraceMs = NAVIGATE_INTERACTIVE_GRACE_MS) {
+    const started = performance.now();
     await this.send("Page.navigate", { url });
     const deadline = Date.now() + timeoutMs;
     let interactiveSince = null;
     while (Date.now() < deadline) {
-      const state = await this.evaluate("document.readyState");
-      if (state === "complete") return;
+      let state;
+      try {
+        state = await this.evaluate("document.readyState", { retryable: true });
+      } catch (error) {
+        if (!(error instanceof StalePage)) throw error;
+        state = null; // the old document just went away: keep polling the new one
+      }
+      if (state === "complete") return { how: "complete", ms: Math.round(performance.now() - started) };
       if (state === "interactive") {
         if (interactiveSince === null) interactiveSince = Date.now();
-        if (Date.now() - interactiveSince >= interactiveGraceMs) return;
+        if (Date.now() - interactiveSince >= interactiveGraceMs) {
+          return { how: "interactive_grace", ms: Math.round(performance.now() - started) };
+        }
       }
       await sleep(20);
     }
@@ -169,7 +295,9 @@ export class Tab {
     const deadline = Date.now() + Math.max(timeoutMs, 0);
     for (;;) {
       try {
-        if (await this.evaluate("document.readyState === 'complete' && !!document.body")) return true;
+        if (await this.evaluate("document.readyState === 'complete' && !!document.body", { retryable: true })) {
+          return true;
+        }
       } catch (error) {
         if (!(error instanceof StalePage)) throw error;
       }
@@ -179,25 +307,35 @@ export class Tab {
   }
 
   async observe() {
+    const started = performance.now();
+    let afterInputMs = null;
     if (this.afterInput) {
       const action = this.afterInput;
       this.afterInput = null;
       // Read-only, after execution was logged; navigation may interrupt it.
       try {
-        await this.send("Runtime.evaluate", {
-          expression: `${this.scripts.afterInput}(${JSON.stringify(action)})`,
-          awaitPromise: true,
-          returnByValue: true,
-        });
+        await this.send(
+          "Runtime.evaluate",
+          {
+            expression: `${this.scripts.afterInput}(${JSON.stringify(action)})`,
+            awaitPromise: true,
+            returnByValue: true,
+          },
+          { retryable: true },
+        );
       } catch (error) {
         if (this.detached) throw error;
       }
+      afterInputMs = Math.round(performance.now() - started);
     }
+    const snapshotStarted = performance.now();
     for (let attempt = 0; attempt < 10; attempt++) {
       try {
-        const info = await this.evaluate(this.scripts.snapshot);
+        const info = await this.evaluate(this.scripts.snapshot, { retryable: true });
         if (info === null || info === undefined) throw new StalePage("Document is navigating");
         info.fingerprint = await fingerprint(info);
+        // Measurement only: the fingerprint above and the request to Jev (api.js) never read it.
+        info.timing = { after_input_ms: afterInputMs, snapshot_ms: Math.round(performance.now() - snapshotStarted) };
         return info;
       } catch (error) {
         if (!(error instanceof StalePage) || attempt === 9) throw error;
@@ -214,11 +352,12 @@ export class Tab {
       const current = await this.evaluate(
         "(() => { const c=window.__jevFast; " +
           `return c ? [c.pageKey(),c.guard(c.nodes.get(${node}))] : null; })()`,
+        { retryable: true },
       );
       return JSON.stringify(current) === JSON.stringify([page.page_key, page.guards[String(node)]]);
     }
     // The marker is an array: compare by value, never by identity.
-    return JSON.stringify(await this.evaluate(this.marker)) === JSON.stringify(page.marker);
+    return JSON.stringify(await this.evaluate(this.marker, { retryable: true })) === JSON.stringify(page.marker);
   }
 
   async act(action, page, text = null) {
@@ -244,6 +383,7 @@ export class Tab {
     if (kind === "wait") return;
     if (!Number.isInteger(action.node)) throw new Error("Invalid observed node");
     // Code-owned node ids refer to actual observed elements, never model-generated selectors.
+    // Not retryable: it decides where the click lands, so a swapped target must go back to observe.
     let target;
     try {
       target = await this.evaluate(`${this.scripts.resolveTarget}(${JSON.stringify(action)})`);
@@ -275,25 +415,43 @@ export class Tab {
     }
   }
 
-  /** Detach the debugger and close the minimized window this Tab opened. */
+  /**
+   * Whether a full-viewport fixed overlay (a pop-up) covers the action's target, measured once in the page. The stop
+   * message uses it to tell the player what to do; it clicks nothing and names no site element, and a page that
+   * cannot answer simply reports nothing.
+   */
+  async overlayCover(action) {
+    return await this.evaluate(`${this.scripts.coveredOverlay}(${JSON.stringify(action)})`);
+  }
+
+  /**
+   * Stop, or the panel going away: commands in flight fail at once (Chrome may take a long time to answer a hung
+   * page) and the query window is closed. Nothing is sent to the page afterwards.
+   */
+  abort() {
+    this.aborted = true;
+    for (const cancel of [...this._pending]) cancel(new AbortedError());
+    return this.close();
+  }
+
+  /**
+   * Detach the debugger and close the minimized window this Tab opened. Both calls start at once (this also runs
+   * from a `pagehide` handler, where nothing after the first await is certain to happen).
+   */
   async close() {
     chrome.debugger.onDetach.removeListener(this._onDetach);
+    chrome.debugger.onEvent.removeListener(this._onEvent);
+    const work = [];
     if (!this.detached) {
       this.detached = true;
-      try {
-        await chrome.debugger.detach({ tabId: this.tabId });
-      } catch {
-        // already detached
-      }
+      work.push(quiet(() => chrome.debugger.detach({ tabId: this.tabId })));
     }
-    if (this.windowId !== null && this.windowId !== undefined) {
-      const windowId = this.windowId;
+    const windowId = this.windowId;
+    if (windowId !== null && windowId !== undefined) {
       this.windowId = null;
-      try {
-        await chrome.windows.remove(windowId);
-      } catch {
-        // the user already closed it
-      }
+      work.push(quiet(() => chrome.windows.remove(windowId)));
+      work.push(forgetWindow(windowId));
     }
+    await Promise.all(work);
   }
 }

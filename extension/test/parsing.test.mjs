@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { readFileSync } from "node:fs";
+
 import { parseRecentTrades, parseTradingTxt } from "../src/traderie/parsing.js";
+
+const homeStats = readFileSync(new URL("../../tests/fixtures/home_stats.txt", import.meta.url), "utf8");
 
 const trade = (give, time) => `They Give\n1 X ${give}\nI Give\n1 X Pul Rune\nHigh Rune Value: 0\n${time}`;
 
@@ -21,6 +25,19 @@ test("recent trades keep old entries that show a date instead of 'N days ago'", 
   );
 });
 
+test("recent trades keep platform, mode, ladder and game version from the They Give side only", () => {
+  const text = [
+    "They Give", "1 X Shako", "Nintendo Switch • ", "Hardcore • ", "Non Ladder • ", "Lord Of Destruction",
+    "I Give", "1 X Pul Rune", "PC • ", "1 天前",
+    "They Give", "1 X Shako", "I Give", "1 X Pul Rune", "2 days ago",
+  ].join("\n");
+  const [a, b] = parseRecentTrades(text).trades;
+  assert.deepEqual([a.platform, a.mode, a.ladder, a.game_version],
+    ["Switch", "Hardcore", "Non Ladder", "Lord of Destruction"]);
+  assert.equal(a.buyer_or_seller, "1 X Shako");
+  assert.deepEqual([b.platform, b.mode, b.ladder, b.game_version], [null, null, null, null]);
+});
+
 test("listings keep old entries that show a date, and a date inside a line does not end a listing", () => {
   const card = (seller, time) =>
     [seller, "1 X Axe", "PC •", "Softcore •", "Trading For", "1 X Pul Rune", time].join("\n");
@@ -29,4 +46,67 @@ test("listings keep old entries that show a date, and a date inside a line does 
   const rows = parseTradingTxt(text, { itemName: "Axe" });
   assert.deepEqual(rows.map((r) => [r.seller, r.posted_time]),
     [["alpha", "21 小時前"], ["beta", "2026年9月27日"], ["gamma", "2026年4月6日"]]);
+});
+
+// Real card lines from a Traderie listing of the original game: the tag reads "Classic (Base Game)".
+const CLASSIC_CARD = [
+  "koreaPOP", " (84)", "1 X Harlequin Crest", "Classic (Base Game) \u2022", "Softcore \u2022", "PC \u2022", "Ladder",
+  "+139 Defense", "Trading For", "1 X Ist Rune", "OR", "2 X Mal Rune", "High Rune Value: 0.16 or 0.2", "1 \u5c0f\u6642\u524d",
+];
+
+test("a listing of the original game reads its version tag", () => {
+  const [row] = parseTradingTxt(CLASSIC_CARD.join("\n"), { itemName: "Harlequin Crest" });
+  assert.equal(row.seller, "koreaPOP");
+  assert.deepEqual([row.platform, row.mode, row.ladder, row.game_version], ["PC", "Softcore", "Ladder", "Classic (Base Game)"]);
+});
+
+test("a recent trade of the original game reads its version tag and keeps it out of the item name", () => {
+  const text = ["They Give", "1 X Shako", "Classic (Base Game) \u2022 ", "PC \u2022 ", "I Give", "1 X Pul Rune", "1 \u5929\u524d"].join("\n");
+  const [trade] = parseRecentTrades(text).trades;
+  assert.equal(trade.game_version, "Classic (Base Game)");
+  assert.equal(trade.buyer_or_seller, "1 X Shako");
+});
+
+test("home page listings: the item, seller and ask of a card are found without a known item name", () => {
+  const text = [
+    "Marketplace", "Community", "Add Listing", "Stats", "Apply FiltersClear Filters",
+    "Bsg2026", " (261)", "English", "1 X Caster Amulet", "Reign Of The Warlock • ", "Softcore • ", "PC • ", "Non Ladder",
+    "+8% Faster Cast Rate", "+18 To Mana", "", "Trading For", "", "1 X Vex Rune", "High Rune Value: 0.5", "1 秒前",
+    "Pro", "z_Diablo", " (12)", "1 X Ring", "PC •", "+10% Faster Cast Rate", "Make an Offer", "2 秒前",
+    "Is trading items safe on Traderie?", "HELP", "Contact Us",
+  ].join("\n");
+  const [a, b, ...rest] = parseTradingTxt(text, { itemName: null });
+  assert.equal(rest.length, 0);
+  assert.deepEqual([a.seller, a.rating, a.item_name, a.ask, a.posted_time], ["Bsg2026", "(261)", "Caster Amulet", "1 X Vex Rune", "1 秒前"]);
+  assert.deepEqual([a.platform, a.mode, a.ladder], ["PC", "Softcore", "Non Ladder"]);
+  assert.deepEqual([b.seller, b.rating, b.item_name, b.ask], ["z_Diablo", "(12)", "Ring", "Make an Offer"]);
+  assert.deepEqual(a.affixes, ["+8% Faster Cast Rate", "+18 To Mana"]);
+  assert.deepEqual(b.affixes, ["+10% Faster Cast Rate"]);
+});
+
+test("home page listings: affixes keep every affix line and drop the environment tags and variant words", () => {
+  const text = [
+    "Apply this search for all",
+    "Kenz11757", " (288)", "1 X Caster Amulet", "Reign Of The Warlock • ", "Softcore • ", "PC • ", "Non Ladder • ",
+    "Rare • ", "Classic • ", "Penta",
+    "+2 To Warlock Skills", "+8% Faster Cast Rate", "+116 Defense", "Ethereal", "Make an Offer", "0 秒前",
+  ].join("\n");
+  const [card] = parseTradingTxt(text, { itemName: null });
+  assert.deepEqual(card.affixes, ["+2 To Warlock Skills", "+8% Faster Cast Rate", "+116 Defense", "Ethereal"]);
+});
+
+test("home page listings: a saved real page gives one row per listing marker, each with its own seller and item", () => {
+  const rows = parseTradingTxt(homeStats, { itemName: null });
+  const markers = homeStats.split("\n").filter((l) => ["Trading For", "Make an Offer"].includes(l.trim())).length;
+  assert.ok(markers > 0);
+  assert.equal(rows.length, markers);
+  for (const row of rows) {
+    assert.ok(row.item_name && !/^\d+\s*X\s/iu.test(row.item_name), row.item_name);
+    assert.ok(row.seller && !["Marketplace", "Community", "Add Listing"].includes(row.seller), row.seller);
+    assert.match(row.rating, /^\(\d[\d,]*\)$/u);
+  }
+});
+
+test("home page text with no listing cards gives no rows", () => {
+  assert.deepEqual(parseTradingTxt("Marketplace\nCommunity\nThere are no listings", { itemName: null }), []);
 });

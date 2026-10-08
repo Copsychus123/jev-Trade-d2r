@@ -1,58 +1,36 @@
 // Recognition models: fixed download URLs, SHA-256 check, kept in IndexedDB. Nothing here retries by itself.
 
-const RAW = "https://raw.githubusercontent.com";
-
-/**
- * Pinned to one commit of each model repository, so the bytes can never change under us. Files are stored exactly as
- * downloaded (the integer-best files are .gz; Tesseract unpacks them itself), and the check is on those bytes.
- *
- * `best` is the integer-quantised version of tessdata_best. The plain tessdata_best files (15 MB / 13 MB) cannot be
- * used: Tesseract.js's core aborts with "missing function DotProductSSE" on float models.
- */
-const BEST = `${RAW}/naptha/tessdata/806cd9adc8c6e8abc11c782db1818c990576bebc/4.0.0_best_int`;
-const pack = (code, bytes, sha256) => ({ url: `${BEST}/${code}.traineddata.gz`, bytes, sha256 });
-
-export const MODEL_SETS = {
-  best: {
-    chi_tra: pack("chi_tra", 1656239, "11fe2610dab05d8a880d02f193ce70203f4c4bbe061b987d5529a2c038a22743"),
-    eng: pack("eng", 2952873, "45b4cb346724ac1774f1c36f42f182b887bcdb28ebe63e6fff90ac41f3fcff91"),
-    chi_sim: pack("chi_sim", 1718768, "b8a23f10c7de500891eb458a8adc9cc58ab7f242f08b7d149f5e9aea4ad5db7c"),
-    jpn: pack("jpn", 2030256, "2b63ebfbf1484de4a08ce53b29ef98a1c17658a93cbd38acb665d7d316d0be88"),
-    kor: pack("kor", 1572336, "78c21276ab14c9bb734d83be1055d9fe5469a4e7e977c51ad385be5737e61126"),
-    deu: pack("deu", 1333102, "306c4280d0cbed46fbff727486bd43b92730181bae80f56941a091f363bdf28b"),
-    fra: pack("fra", 707406, "d611139672b3752c7097e671e4a1d9209dfd37f2aeb081ef6487fba3351e9255"),
-    spa: pack("spa", 2100190, "40be52f97b5d4eb7460073dc1f94cd546b27150333c0bf854ed7e7132db6bceb"),
-  },
+// Pinned to one revision of RapidAI/RapidOCR, so the bytes can never change under us. The three ONNX models and the
+// character list are downloaded the first time a panel needs them and are stored exactly as downloaded.
+const MS = "https://www.modelscope.cn/models/RapidAI/RapidOCR/resolve/v3.9.2";
+export const PPOCR = {
+  det:  { url: `${MS}/onnx/PP-OCRv6/det/PP-OCRv6_det_small.onnx`, bytes: 9929594,
+          sha256: "090f04abcd9d9a7498bc4ebf677e4cb9bdce1fe4197ddb7e529f1ef44e1ff94f" },
+  rec:  { url: `${MS}/onnx/PP-OCRv6/rec/PP-OCRv6_rec_small.onnx`, bytes: 21234383,
+          sha256: "6f327246b50388f3c176ae304bd95767ea6dc0c9ae92153ef8cbe210b3c14884" },
+  cls:  { url: `${MS}/onnx/PP-OCRv4/cls/ch_ppocr_mobile_v2.0_cls_mobile.onnx`, bytes: 585532,
+          sha256: "e47acedf663230f8863ff1ab0e64dd2d82b838fceb5957146dab185a89d6215c" },
+  dict: { url: `${MS}/paddle/PP-OCRv6/rec/PP-OCRv6_rec_small/ppocrv6_dict.txt`, bytes: 74947,
+          sha256: "b5f2bfe2bdd9448429e3e82b51c789775d9b42f2403d082b00662eb77e401c5d" },
 };
+export const PPOCR_FILES = ["det", "rec", "cls", "dict"]; // 下載順序
+export const PPOCR_BYTES = 31824456;
 
-export const ACTIVE_SET = "best";
+/** A number of model bytes as MB with one decimal, for the "download once" messages of both panels. */
+export const formatMB = (bytes) => (bytes / 1e6).toFixed(1);
 
-/** Languages the player can pick (one at a time: reading two together measured worse than one). Each is downloaded
- * only when first chosen and then stays in the browser, so it works offline. */
-export const LANGUAGE_OPTIONS = [
-  { code: "chi_tra", label: "繁體中文" },
-  { code: "eng", label: "English 英文" },
-  { code: "chi_sim", label: "简体中文 簡中" },
-  { code: "jpn", label: "日本語 日文" },
-  { code: "kor", label: "한국어 韓文" },
-  { code: "deu", label: "Deutsch 德文" },
-  { code: "fra", label: "Français 法文" },
-  { code: "spa", label: "Español 西文" },
-];
-export const DEFAULT_LANGUAGE = "chi_tra";
-
-// Tesseract.js reads language data from this IndexedDB location (idb-keyval's default database, key
-// "<cachePath>/<code>.traineddata"). We put the verified bytes there ourselves and run it read-only, so it never
-// downloads anything. (Handing it the bytes directly through createWorker does not work in 7.0.0: its initialize step
-// reads the language name from the data field.)
-export const CACHE_PATH = "jev";
+// The IndexedDB location the model bytes live in (idb-keyval's default database). We put the verified bytes there
+// ourselves and read them back to hand to onnxruntime, so nothing ever downloads at run time.
+const CACHE_PATH = "jev";
 const DB_NAME = "keyval-store";
 const STORE_NAME = "keyval";
+const bytesKey = (name) => `${CACHE_PATH}/ppocr/${name}`;
+const hashKey = (name) => `${CACHE_PATH}/ppocr/${name}.sha256`;
 
 export class ModelError extends Error {
   constructor(kind, message) {
     super(message);
-    this.kind = kind; // "network" | "size" | "checksum"
+    this.kind = kind; // "network" | "size" | "checksum" | "cancelled" | "init"
   }
 }
 
@@ -80,82 +58,157 @@ export function idbStore() {
   };
   return {
     get: (key) => run("readonly", (s) => s.get(key)),
+    // getKey reads the key only, never the stored bytes (a model is a few MB)
+    has: async (key) => (await run("readonly", (s) => s.getKey(key))) !== undefined,
     put: (key, value) => run("readwrite", (s) => s.put(value, key)),
+    delete: (key) => run("readwrite", (s) => s.delete(key)),
   };
 }
 
+/** A download that receives nothing for this long is given up (the user can then try again). */
+const STALL_MS = 30_000;
+
 export function createModelManager({
-  models = MODEL_SETS[ACTIVE_SET],
+  files = PPOCR,
+  order = PPOCR_FILES,
   store,
   fetchFn = globalThis.fetch.bind(globalThis),
   subtle,
+  stallMs = STALL_MS,
 } = {}) {
-  const bytesKey = (code) => `${CACHE_PATH}/${code}.traineddata`;
-  const hashKey = (code) => `${CACHE_PATH}/${code}.sha256`;
-
-  async function verify(code, bytes) {
-    const { bytes: expected, sha256 } = models[code];
-    if (bytes.length !== expected) throw new ModelError("size", `${code} 模型大小不對（${bytes.length}，應為 ${expected}）`);
-    if ((await sha256Hex(bytes, subtle)) !== sha256) throw new ModelError("checksum", `${code} 模型檢查碼不符，檔案已丟棄`);
+  async function verify(name, bytes) {
+    const { bytes: expected, sha256 } = files[name];
+    if (bytes.length !== expected) throw new ModelError("size", `模型大小不對（${bytes.length}，應為 ${expected}）`);
+    if ((await sha256Hex(bytes, subtle)) !== sha256) throw new ModelError("checksum", "模型檢查碼不符，檔案已丟棄");
   }
 
-  async function keep(code, bytes) {
-    await verify(code, bytes);
-    await store.put(bytesKey(code), bytes);
-    await store.put(hashKey(code), models[code].sha256);
+  async function keep(name, bytes) {
+    await verify(name, bytes);
+    await store.put(bytesKey(name), bytes);
+    await store.put(hashKey(name), files[name].sha256);
+  }
+
+  async function forget(name) {
+    await store.delete(hashKey(name));
+    await store.delete(bytesKey(name));
+  }
+
+  /**
+   * Reads one response into a single array, chunk by chunk. Stops at once (ModelError "size", after `abort()`) when
+   * more than `expected` bytes arrive; `onProgress(received, expected)` runs after every chunk and `watch()` restarts
+   * the stall timer.
+   */
+  async function streamResponse(name, response, expected, { onProgress, watch, abort }) {
+    const chunks = [];
+    let received = 0;
+    const tooBig = () => {
+      abort(); // stop the transfer; nothing more is read
+      return new ModelError("size", `${name} 模型大小不對（超過應有的 ${expected} 位元組，已停止下載）`);
+    };
+    const reader = response.body?.getReader();
+    if (reader) {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.length;
+        if (received > expected) throw tooBig();
+        onProgress(received, expected);
+        watch();
+      }
+    } else {
+      const whole = new Uint8Array(await response.arrayBuffer());
+      chunks.push(whole);
+      received = whole.length;
+      if (received > expected) throw tooBig();
+      onProgress(received, expected);
+    }
+    const bytes = new Uint8Array(received);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.length;
+    }
+    return bytes;
   }
 
   return {
-    /** What still has to be downloaded for these languages (a stored model of another version counts as missing). */
-    async missing(codes) {
-      const need = [];
-      for (const code of codes) {
-        const stored = await store.get(hashKey(code));
-        if (stored !== models[code].sha256 || !(await store.get(bytesKey(code)))) need.push(code);
+    /** What still has to be downloaded (a stored file of another version counts as missing). Looks at the small
+     * version record and the key of the bytes; the bytes themselves are not read. */
+    async missing() {
+      const names = [];
+      for (const name of order) {
+        const stored = await store.get(hashKey(name));
+        if (stored !== files[name].sha256 || !(await store.has(bytesKey(name)))) names.push(name);
       }
-      return { codes: need, bytes: need.reduce((sum, code) => sum + models[code].bytes, 0) };
+      return { names, bytes: names.reduce((sum, name) => sum + files[name].bytes, 0) };
     },
 
-    /** Downloads one model from its fixed URL, checks it, stores it. One attempt: a failure is reported, not retried. */
-    async download(code, { onProgress = () => {}, signal } = {}) {
-      let response;
-      try {
-        response = await fetchFn(models[code].url, { signal });
-      } catch (error) {
-        throw new ModelError("network", `連不到模型下載來源：${error?.message || error}`);
+    /** The four stored byte arrays for the engine, or null when one is gone or the wrong length. */
+    async load() {
+      const out = {};
+      for (const name of order) {
+        const bytes = await store.get(bytesKey(name));
+        if (!(bytes instanceof Uint8Array) || bytes.length !== files[name].bytes) return null;
+        out[name] = bytes;
       }
-      if (!response.ok) throw new ModelError("network", `模型下載失敗（HTTP ${response.status}）`);
-      const chunks = [];
-      let received = 0;
+      return out;
+    },
+
+    /** Drops what is stored for a file, so it counts as missing and is offered for download again. */
+    forget,
+
+    /** Drops every stored file (the engine could not start, so the next read offers the download again). */
+    async forgetAll() {
+      for (const name of order) await forget(name);
+    },
+
+    /**
+     * Downloads one file from its fixed URL, checks it, stores it. One attempt: a failure is reported, not retried.
+     * `signal` cancels it (ModelError "cancelled"); no data for `stallMs` gives up (ModelError "network"); more bytes
+     * than the file has stops it at once (ModelError "size").
+     */
+    async download(name, { onProgress = () => {}, signal } = {}) {
+      const { url, bytes: expected } = files[name];
+      if (signal?.aborted) throw new ModelError("cancelled", "已取消下載");
+      const controller = new AbortController();
+      const cancel = () => controller.abort();
+      signal?.addEventListener("abort", cancel, { once: true });
+      let stalled = false;
+      let timer;
+      const watch = () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          stalled = true;
+          controller.abort();
+        }, stallMs);
+      };
+      const failed = (what, error) => {
+        if (signal?.aborted) return new ModelError("cancelled", "已取消下載");
+        if (stalled) return new ModelError("network", `模型下載停住：超過 ${Math.round(stallMs / 1000)} 秒沒有收到資料`);
+        return new ModelError("network", `${what}：${error?.message || error}`);
+      };
+      let bytes;
       try {
-        const reader = response.body?.getReader();
-        if (reader) {
-          for (;;) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            chunks.push(value);
-            received += value.length;
-            onProgress(received, models[code].bytes);
-          }
-        } else {
-          const whole = new Uint8Array(await response.arrayBuffer());
-          chunks.push(whole);
-          received = whole.length;
-          onProgress(received, models[code].bytes);
+        watch();
+        let response;
+        try {
+          response = await fetchFn(url, { signal: controller.signal });
+        } catch (error) {
+          throw failed("連不到模型下載來源", error);
         }
-      } catch (error) {
-        throw new ModelError("network", `模型下載中斷：${error?.message || error}`);
+        if (!response.ok) throw new ModelError("network", `模型下載失敗（HTTP ${response.status}）`);
+        try {
+          bytes = await streamResponse(name, response, expected, { onProgress, watch, abort: () => controller.abort() });
+        } catch (error) {
+          throw error instanceof ModelError ? error : failed("模型下載中斷", error);
+        }
+      } finally {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", cancel);
       }
-      const bytes = new Uint8Array(received);
-      let offset = 0;
-      for (const chunk of chunks) {
-        bytes.set(chunk, offset);
-        offset += chunk.length;
-      }
-      await keep(code, bytes);
+      await keep(name, bytes);
     },
-
-    /** Manual route: the user picked a model file. Same checks as a download. */
-    importFile: keep,
   };
 }
+

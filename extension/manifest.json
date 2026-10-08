@@ -10,7 +10,7 @@
   ],
   "host_permissions": [
     "__API__/*",
-    "https://raw.githubusercontent.com/*"
+    "https://www.modelscope.cn/*"
   ],
   "background": {
     "service_worker": "background.js",

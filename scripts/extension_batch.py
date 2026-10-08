@@ -1,29 +1,34 @@
-"""Many queries through the real extension in one Chrome.
+"""Many queries through the real extension in one Chrome. Windows-only tool (see extension_e2e.py).
 
-Usage: uv run python scripts/extension_batch.py --api URL --invite CODE
+Usage: JEV_INVITE=<code> [JEV_TINY_INVITE=<code>] uv run --group e2e python scripts/extension_batch.py --api URL --yes
 
 Cases come from scripts/e2e_cases.json (input, expected outcome, expected product). One Chrome and one side panel are
 reused; each case reloads the panel, types the input and presses start. Results go to artifacts/e2e-100/
 (results.jsonl, one failure screenshot each). A site challenge stops the batch (exit 3); rerun with --resume.
-Exit 0 all expected, 1 some cases failed, 2 environment problem, 3 stopped by a site challenge.
+Every case is a real query against the deployed backend: it spends invite quota, up to JEV_CALL_LIMIT paid Jev calls
+and live Traderie page loads. The script prints that estimate and refuses to start without --yes. A failed case is
+run once only; --rerun-failed N repeats it up to N more times (each repeat costs the same again).
+The invite codes come from the environment, not the command line (command lines are visible to other programs).
+Exit 0 all expected, 1 some cases failed, 2 environment problem or no --yes, 3 stopped by a site challenge.
 """
 
 import argparse
 import asyncio
 import base64
 import json
+import os
 import re
 import subprocess
 import sys
 import time
 from pathlib import Path
 
-import websockets
-
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _cdp import Environment, Panel, attach  # noqa: E402
 from extension_e2e import (  # noqa: E402
     DONE,
-    Environment,
+    OPEN_URLS,
+    SNAPSHOT,
     build_extension,
     cleanup,
     free_profile,
@@ -37,46 +42,12 @@ ROOT = Path(__file__).resolve().parents[1]
 CASES = ROOT / "scripts" / "e2e_cases.json"
 OUT = ROOT / "artifacts" / "e2e-100"
 LAYER_LABELS = {"table": "查表直接開啟", "search": "站內搜尋", "base": "底材清單"}
-MAX_JEV_CALLS = {"table": 5, "search": 9, "base": 9}
 CASE_TIMEOUT = 240
 PAUSE_SECONDS = 4
-RERUN_FAILED = 1
-
-SNAPSHOT = """JSON.stringify({
-  status: document.getElementById('status').textContent,
-  quota: document.getElementById('quota').textContent,
-  lookup: document.getElementById('lookup').textContent,
-  usage: document.getElementById('usage').textContent,
-  verification: document.getElementById('verification').textContent,
-  pills: ['trading', 'recent-trades'].map((p) => document.getElementById(p + '-status').textContent),
-  meta: ['trading', 'recent-trades'].map((p) => document.getElementById(p + '-meta').textContent),
-  rows: ['trading', 'recent-trades'].map((p) =>
-    parseInt(document.getElementById(p + '-meta').textContent.replace(/^\\D+/, ''), 10) || 0),
-  log: [...document.querySelectorAll('#log li')].map((l) => l.textContent),
-  idle: !document.getElementById('start').disabled,
-  locked: document.getElementById('load-more').disabled
-})"""
+JEV_CALL_LIMIT = 30  # extension/src/agent.js JEV_CALL_LIMIT; services/jevsvc/app.py MAX_MODEL_CALLS
 
 
-class Panel:
-    def __init__(self, ws):
-        self.ws = ws
-        self.counter = 0
-
-    async def send(self, method, params=None):
-        self.counter += 1
-        await self.ws.send(json.dumps({"id": self.counter, "method": method, "params": params or {}}))
-        while True:
-            message = json.loads(await self.ws.recv())
-            if message.get("id") == self.counter:
-                return message.get("result", {})
-
-    async def evaluate(self, expression):
-        result = await self.send(
-            "Runtime.evaluate", {"expression": expression, "returnByValue": True, "awaitPromise": True}
-        )
-        return result.get("result", {}).get("value")
-
+class BatchPanel(Panel):
     async def reload(self):
         await self.evaluate("location.reload()")
         for _ in range(60):
@@ -99,16 +70,20 @@ class Panel:
             path.write_bytes(base64.b64decode(data))
 
 
-async def run_case(panel: Panel, case: dict, invites: dict) -> dict:
+async def run_case(panel: BatchPanel, case: dict, invites: dict) -> dict:
     await panel.reload()
     code = invites.get(case.get("invite", "main"), case.get("invite", ""))
+    # The code is held in memory until the backend accepts it; "empty" means no saved code at all.
     if case.get("invite") == "empty":
         code = ""
+        await panel.evaluate("chrome.storage.local.remove('invite')")
+        await panel.reload()
     await panel.evaluate(
-        f"(() => {{ document.getElementById('invite').value = {json.dumps(code)};"
-        " document.getElementById('save-invite').click();"
+        f"(() => {{ if ({json.dumps(code)}) {{ document.getElementById('welcome-invite').value = {json.dumps(code)};"
+        " document.getElementById('welcome-go').click(); }"
+        " document.getElementById('choose-name').click();"
         f" document.getElementById('item').value = {json.dumps(case['input'])};"
-        f" document.getElementById('load-more').value = '{case['load_more']}';"
+        f" for (let i = 0; i < {case['load_more']}; i++) document.getElementById('more-plus').click();"
         " })()"
     )
     started = time.time()
@@ -133,10 +108,7 @@ async def run_case(panel: Panel, case: dict, invites: dict) -> dict:
             raise Environment("讀不到側邊欄的狀態")
         result["timeout"] = True
     result["seconds"] = round(time.time() - started, 1)
-    match = re.search(r"Jev 呼叫 (\d+) 次", result["usage"])
-    result["jev_calls"] = int(match.group(1)) if match else 0
-    urls = [re.search(r"https?://\S+", m) for m in result["meta"]]
-    result["urls"] = [u.group(0) if u else None for u in urls]
+    result["urls"] = await panel.evaluate(OPEN_URLS)
     return result
 
 
@@ -176,8 +148,6 @@ def judge(case: dict, result: dict, last_used: int | None) -> tuple[str, str]:
     label = LAYER_LABELS.get(case.get("layer"))
     if label and f"查詢方式：{label}" not in result["lookup"]:
         problems.append(f"查詢方式不是 {label}：{result['lookup']!r}")
-    if case.get("layer") and result["jev_calls"] > MAX_JEV_CALLS[case["layer"]]:
-        problems.append(f"Jev 呼叫 {result['jev_calls']} 次，超過 {MAX_JEV_CALLS[case['layer']]}")
     if case["load_more"] and not result["rows"][0] > 50:
         problems.append(f"載入更多 {case['load_more']} 次，掛單只有 {result['rows'][0]} 筆")
     if case.get("double_click") and last_used is not None:
@@ -187,17 +157,16 @@ def judge(case: dict, result: dict, last_used: int | None) -> tuple[str, str]:
     return ("FAIL", "；".join(problems)) if problems else ("PASS", "")
 
 
-async def drive(ws_url: str, cases: list[dict], invites: dict, done: dict) -> int:
+async def drive(ws_url: str, cases: list[dict], invites: dict, done: dict, reruns: int) -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     blocked = False
     last_used = None
-    async with websockets.connect(ws_url, max_size=None) as ws:
-        panel = Panel(ws)
+    async with attach(ws_url, BatchPanel, raise_errors=False) as panel:
         for number, case in enumerate(cases, 1):
             if case["id"] in done:
                 continue
             attempts = []
-            for attempt in range(1 + RERUN_FAILED):
+            for attempt in range(1 + reruns):
                 result = await run_case(panel, case, invites)
                 verdict, reason = judge(case, result, last_used)
                 attempts.append({"verdict": verdict, "reason": reason, "result": result})
@@ -215,7 +184,7 @@ async def drive(ws_url: str, cases: list[dict], invites: dict, done: dict) -> in
                 "verdict": final["verdict"],
                 "reason": final["reason"],
                 "flaky": flaky,
-                "attempts": [{k: a[k] for k in ("verdict", "reason")} | {"result": a["result"]} for a in attempts],
+                "attempts": [dict(attempt) for attempt in attempts],
             }
             with (OUT / "results.jsonl").open("a", encoding="utf-8") as f:
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -241,8 +210,8 @@ def load_done() -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description="擴充功能批次端對端測試")
     parser.add_argument("--api", required=True)
-    parser.add_argument("--invite", required=True, help="額度夠大的邀請碼")
-    parser.add_argument("--tiny-invite", help="額度已被用完的邀請碼（J 類用）")
+    parser.add_argument("--yes", action="store_true", help="確認要花費真實額度與 Jev 呼叫（不給就只印預估後結束）")
+    parser.add_argument("--rerun-failed", type=int, default=0, metavar="N", help="失敗的案例最多再跑 N 次（預設 0）")
     parser.add_argument("--headed", action="store_true")
     parser.add_argument("--resume", action="store_true", help="跳過 results.jsonl 裡已完成的案例")
     parser.add_argument("--only", help="只跑這些案例（逗號分隔的 id 或類別字母，例如 A,D03）")
@@ -251,10 +220,23 @@ def main() -> int:
     if args.only:
         wanted = {w.strip() for w in args.only.split(",")}
         cases = [c for c in cases if c["id"] in wanted or c["group"] in wanted]
+    done = load_done() if args.resume else {}
+    pending = [c for c in cases if c["id"] not in done]
+    attempts = len(pending) * (1 + args.rerun_failed)
+    say(
+        f"將跑 {len(pending)} 組案例（失敗最多再跑 {args.rerun_failed} 次，最多 {attempts} 次查詢）：每次查詢最多花 "
+        f"{JEV_CALL_LIMIT} 次 Jev 呼叫，合計上限約 {attempts * JEV_CALL_LIMIT} 次，並消耗邀請碼額度與真實網站流量。"
+    )
+    if not args.yes:
+        say("沒有加 --yes，不執行。確認後加 --yes 再跑一次。")
+        return 2
+    main_invite = os.environ.get("JEV_INVITE", "").strip()
+    if not main_invite:
+        say("環境問題：請用環境變數 JEV_INVITE 提供額度夠大的邀請碼（J 類另需 JEV_TINY_INVITE：額度已用完的邀請碼）")
+        return 2
     if not args.resume and (OUT / "results.jsonl").exists():
         (OUT / "results.jsonl").rename(OUT / f"results-{int(time.time())}.jsonl")
-    done = load_done() if args.resume else {}
-    invites = {"main": args.invite, "tiny": args.tiny_invite or "", "wrong": "inv-wrong0000000000000000"}
+    invites = {"main": main_invite, "tiny": os.environ.get("JEV_TINY_INVITE", ""), "wrong": "inv-wrong0000000000000000"}
     chrome = None
     try:
         build_extension(args.api)
@@ -262,7 +244,7 @@ def main() -> int:
         chrome = launch_chrome(args.headed)
         ext_id = load_extension()
         say(f"擴充功能已載入（{ext_id}），共 {len(cases)} 組")
-        code = asyncio.run(drive(open_panel(ext_id), cases, invites, done))
+        code = asyncio.run(drive(open_panel(ext_id), cases, invites, done, args.rerun_failed))
     except Environment as error:
         say(f"環境問題：{error}")
         return 2

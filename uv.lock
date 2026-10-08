@@ -140,6 +140,10 @@ dev = [
     { name = "pytest" },
     { name = "ruff" },
 ]
+e2e = [
+    { name = "pillow" },
+    { name = "websockets" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -151,6 +155,10 @@ requires-dist = [
 dev = [
     { name = "pytest", specifier = ">=8.4,<9" },
     { name = "ruff", specifier = ">=0.14,<1" },
+]
+e2e = [
+    { name = "pillow", specifier = ">=11,<13" },
+    { name = "websockets", specifier = ">=15,<16" },
 ]
 
 [[package]]
