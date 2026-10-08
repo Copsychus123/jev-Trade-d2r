@@ -19,6 +19,10 @@ def _normalize_plan(goals):
 
 
 REOBSERVE_ATTEMPTS = 3
+# Consecutive StalePage failures on one target on one page end the run: `_execute` pops a refused action from
+# `history`, so the step budget alone can never fire on a covered element (measured on the extension side: 1379
+# retries in 177 s, each one a Jev call). Mirrors STALE_RETRY_LIMIT in extension/src/agent.js.
+STALE_RETRY_LIMIT = 3
 
 
 def scope_guard_for(url: str):
@@ -65,6 +69,9 @@ class Agent:
             scope_blocked_reason=None,
             decisions=[],
             rule_events=[],
+            last_attempt=None,  # {choice, fingerprint, label}: the target the last action attempt went for
+            stale_streak=None,  # {key, count}: consecutive StalePage failures on one target on one page
+            stale_events={},  # measurement only: StalePage stop count by reason
             elapsed_ms=0,
             started_at=None,
         )
@@ -112,6 +119,29 @@ class Agent:
         state["plan_index"] = len(state["plan"]) - 1
         state["awaiting_handoff"] = False
         state["elapsed_ms"] = self._elapsed_ms()
+
+    def _note_stale_failure(self, state) -> int:
+        """One more consecutive stale failure on the same target on the same page; a new page or target starts over."""
+        attempt = state.get("last_attempt")
+        if not attempt:
+            return 0  # a stale page that was not an action attempt (a navigation) does not count
+        key = f"{attempt['fingerprint']}|{attempt['choice']}"
+        streak = state.get("stale_streak")
+        count = streak["count"] + 1 if streak and streak["key"] == key else 1
+        state["stale_streak"] = {"key": key, "count": count}
+        return count
+
+    def _stop_after_stale(self, state, count) -> None:
+        """End a run whose target keeps failing on an unchanged page, with a reason the panel shows and logs."""
+        attempt = state.get("last_attempt") or {}
+        label = attempt.get("label") or attempt.get("choice") or ""
+        reason = f"連續 {count} 次都無法操作「{label}」（畫面沒有變化），查詢已停止"
+        self._block(state)
+        state["scope_blocked_reason"] = reason
+        state["rule_events"].append(
+            {"step": len(state["history"]), "phase": state["phase"], "label": label, "stale": True, "count": count}
+        )
+        state["stale_events"][reason] = state["stale_events"].get(reason, 0) + 1
 
     def _apply_scope_guard(self, state):
         if not callable(self.scope_guard):
@@ -250,6 +280,10 @@ class Agent:
                 self._act({"fingerprint": state["page"]["fingerprint"]})
         except StalePage:
             state["decision"] = None
+            count = self._note_stale_failure(state)
+            if count >= STALE_RETRY_LIMIT:
+                self._stop_after_stale(state, count)
+                return
             self._reobserve(state)
 
     def _predict(self, _body):
@@ -268,6 +302,9 @@ class Agent:
             raise ValueError("Reached the demo's model-call budget")
         if not state["browser"].fresh(state["page"]):
             state["page"] = state["browser"].observe(screenshot=self.screenshots)
+        # Only an action attempt (in `_act`) may extend a stale streak: a page that is still navigating is not a
+        # target that keeps failing, and it must not be reported as if the screen had not changed.
+        state["last_attempt"] = None
         state["decision"] = None
         if self._apply_scope_guard(state):
             state["elapsed_ms"] = self._elapsed_ms()
@@ -364,6 +401,7 @@ class Agent:
         action = next((a for a in page["actions"] if a["id"] == selected), None)
         if action is None:
             raise StalePage("Chosen element is no longer available. Choose again.")
+        state["last_attempt"] = {"choice": selected, "fingerprint": page["fingerprint"], "label": action["label"]}
         self._require_step_budget(state)
         blocked_by = self._off_scope_href(action)
         if blocked_by:

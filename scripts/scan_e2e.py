@@ -55,6 +55,8 @@ ITEM_FILE = "image-17.png"  # a non-base record (Alma Negra): 模糊搜尋 must 
 BASE_FILE = "image-14.png"  # the base-kind record (Grand Charm): 模糊搜尋 may pre-fill the base box
 # The sim tab is picked by its title; the canvas is exactly 1280x720. The backgrounding flags keep Chrome rendering the
 # (background) sim tab at full speed while it is being captured, instead of throttling it to about 1 fps.
+# Test-only, and the flag must never be copied into src/jev_ultrafast/chrome.py: it auto-accepts Chrome's own
+# share dialog, which the product keeps as a user-consent gate (scan/capture.js uses the real picker).
 EXTRA_ARGS = (
     "--window-size=1280,720",
     "--auto-select-tab-capture-source-by-title=D2R-SIM",

@@ -10,7 +10,7 @@ def extract_doc_paths():
     Returns set of relative paths that should exist.
     Skips glob patterns (containing *) and tokens with ellipsis (...).
     """
-    repo_root = Path(__file__).resolve().parent.parent.parent
+    repo_root = Path(__file__).resolve().parents[1]  # this file lives in tests/
     paths = set()
     
     # Pattern: backticked token that starts with scripts/, src/, core/, services/, or extension/
@@ -42,8 +42,12 @@ def extract_doc_paths():
 
 def test_all_doc_paths_exist():
     """Assert that every file path referenced in docs exists."""
-    repo_root = Path(__file__).resolve().parent.parent.parent
+    repo_root = Path(__file__).resolve().parents[1]  # this file lives in tests/
     doc_paths = extract_doc_paths()
+    # A wrong root (a moved test file) or a broken pattern would make this test pass without checking anything.
+    for doc_file in ("README.md", "AGENTS.md"):
+        assert (repo_root / doc_file).is_file(), f"{doc_file} was not found at {repo_root}"
+    assert doc_paths, "no backticked paths were extracted from README.md/AGENTS.md"
     
     # Allow-list for git-ignored but valid generated/build/cache paths
     # These are generated on demand; allow if they don't exist yet

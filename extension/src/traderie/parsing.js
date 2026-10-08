@@ -1,9 +1,5 @@
 // Port of src/jev_ultrafast/traderie/parsing.py. Output must equal the Python parser exactly.
-import { TRADERIE_D2R_URL } from "./site.js";
-
-// One of these ends the "what they want" part of a listing. The controller counts the markers to decide the page
-// shape, so it must be the same list the card split uses; the controller imports this one.
-export const TRADING_MARKERS = ["Trading For", "Make an Offer"];
+import { TRADERIE_D2R_URL, TRADING_MARKERS } from "./site.js";
 
 const SIGN_IN_PROMPT = "Please sign in to view offers";
 
@@ -81,10 +77,8 @@ function envLabels(low) {
  * reads a different rule (see `tradeBlock`), so the two do not share this helper.
  * @returns {string|null}
  */
-function cardPlatform(midLines, midLower) {
-  const isPc =
-    midLines.some((entry) => entry.toLowerCase().split("•").includes("pc") || pyStrip(entry).toLowerCase() === "pc") ||
-    midLower.includes("pc");
+function cardPlatform(midLower) {
+  const isPc = midLower.includes("pc"); // midLower is the joined middle lines, so a per-line token test adds nothing
   if (isPc) return "PC";
   if (midLower.includes("playstation")) return "Playstation";
   if (midLower.includes("xbox")) return "Xbox";
@@ -139,6 +133,9 @@ function homeSeller(cleanPrefix, itemIdx) {
   return { seller, rating };
 }
 
+// Card lines that are item stats, not environment tags (mirrors `STAT_TERMS` in parsing.py).
+const CARD_STAT_TERMS = ["better chance", "all skills", "to life", "to mana", "damage reduced", "required level"];
+
 /**
  * The stat lines of a card: its defense line when it has one, then the middle lines that are item stats.
  * @returns {string[]}
@@ -148,11 +145,7 @@ function cardStats(midLines, defense) {
   if (defense !== null) stats.push(`${defense} Defense`);
   for (const entry of midLines) {
     const low = entry.toLowerCase();
-    if (
-      ["better chance", "all skills", "to life", "to mana", "damage reduced", "required level"].some((term) =>
-        low.includes(term),
-      )
-    ) {
+    if (CARD_STAT_TERMS.some((term) => low.includes(term))) {
       stats.push(entry);
     }
   }
@@ -233,7 +226,7 @@ function cardData(card, itemName) {
   const midText = midLines.join(" ");
   const midLower = midText.toLowerCase();
 
-  const platform = cardPlatform(midLines, midLower);
+  const platform = cardPlatform(midLower);
   const { mode, ladder, gameVersion } = envLabels(midLower);
 
   const isEthereal = midLower.includes("ethereal");

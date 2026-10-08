@@ -290,3 +290,28 @@ test("a stale stop without an overlay, or with a failing measurement, keeps the 
     assert.equal(tab.overlayChecks, 1, note);
   }
 });
+
+test("a refused press is counted as an attempt even though it never reaches history", async () => {
+  // Two always-stale targets taken alternately, so the stale-streak rule can never trip (its key changes with the
+  // target) and every press is refused (so `history` stays empty). What stops this run is the Jev call budget: a
+  // model-driven attempt costs one call, which is why the action-budget clause for `attempts` is a backstop rather
+  // than the thing this test can reach — the counter itself is what a mutation here would erase.
+  const tab = new StaleTab([page("p1", [click("a1", "Load More"), click("a2", "Load More")])], ["a1", "a2"]);
+  const answers = [];
+  for (let i = 0; i < 40; i += 1) answers.push(decide(i % 2 ? "a2" : "a1"));
+  const agent = await Agent.create({ tab, choose: makeChoose(...answers) });
+  let error = null;
+  for (let ticks = 0; agent.state.status !== "blocked" && ticks < 40; ticks += 1) {
+    try {
+      await agent.command("tick");
+    } catch (thrown) {
+      error = thrown;
+    }
+  }
+  assert.match(String(error?.message ?? ""), /上限/, "the run must stop on a budget");
+  // The exact count follows the Jev call budget (a model-driven attempt costs one call); what this pins is that a
+  // refused press is counted at all, which is what erasing the counter would remove.
+  assert.ok(agent.state.attempts > 0, `refused presses must be counted, got ${agent.state.attempts}`);
+  assert.equal(agent.state.history.length, 0, "no refused press may reach history");
+  assert.equal(agent.state.stale_streak.count, 1, "alternating targets must keep the streak from tripping");
+});

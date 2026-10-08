@@ -1,9 +1,9 @@
 // Port of src/jev_ultrafast/traderie/site.py (URL scope, load-more rules, challenge guard).
-// parsing.js also imports from this file, so the two form a cycle: neither reads the other's bindings at module
-// evaluation time (the marker list is only used inside detectGuard), which ESM resolves.
-import { TRADING_MARKERS } from "./parsing.js";
-
 export const TRADERIE_D2R_URL = "https://www.traderie.com/diablo2resurrected";
+
+// One of these ends the "what they want" part of a listing. The card split in parsing.js and the controller's
+// line-counting cross-check both use this list, so it lives with the site vocabulary (as it does in site.py).
+export const TRADING_MARKERS = ["Trading For", "Make an Offer"];
 const TRADERIE_HOSTS = new Set(["traderie.com", "www.traderie.com"]);
 export const MAX_LOAD_MORE = 5;
 const LOAD_MORE_LABEL = "Load More";

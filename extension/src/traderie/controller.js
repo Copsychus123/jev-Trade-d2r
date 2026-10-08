@@ -2,10 +2,10 @@
 // for the same page; see the module docstring there for the codes.
 import { AbortedError, StalePage, TimeoutError } from "../errors.js";
 import { timed } from "../timeline.js";
-import { parseRecentTrades, parseTradingTxt, splitLines, TRADING_MARKERS } from "./parsing.js";
+import { parseRecentTrades, parseTradingTxt, splitLines } from "./parsing.js";
 import { normalizeName } from "./lookup.js";
 import { propertyLabel } from "./properties.js";
-import { detectGuard, productRootUrl, productSection } from "./site.js";
+import { detectGuard, productRootUrl, productSection, TRADING_MARKERS } from "./site.js";
 import { isHomeUrl, rowsMissingConditions, urlKeepsParams } from "./stats.js";
 
 export const TRADING_COLUMNS = ["賣家", "要價", "高符文價值", "刊登時間", "平台 / 模式 / 天梯", "防禦", "遊戲版本"];

@@ -10,7 +10,7 @@ from tests._harness_stub import install
 install()  # before the backend import below: nothing here may start the Chrome daemon
 
 from jevsvc import app, invites, tokens  # noqa: E402, I001
-from jevsvc.store import MemoryStore  # noqa: E402
+from jevsvc.store import MemoryStore, StoreError  # noqa: E402
 
 SECRET = "s" * 40
 TAIPEI = invites.TAIPEI
@@ -328,6 +328,13 @@ def test_one_record_per_user_and_nothing_else(store, code):
     assert set(store.data) == {key, "invite-names"}  # the record and the name index, nothing else
     invites.revoke(store, "amy")
     assert store.data[key]["disabled"] == "1"
+
+
+def test_a_name_missing_from_its_family_raises_instead_of_returning_none(store):
+    """The router's tuples and the family methods must agree; a drift used to come back as None silently."""
+    for family in (store._string, store._hash, store._keyspace):
+        with pytest.raises(StoreError, match="unsupported command NOPE"):
+            family("NOPE", [])
 
 
 def test_staged_backend_imports_without_browser_harness_in_environment(tmp_path):

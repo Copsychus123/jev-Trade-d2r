@@ -164,6 +164,9 @@ def runner():
         "awaiting_handoff": False,
         "phase_start": 0,
         "rule_events": [],
+        "last_attempt": None,
+        "stale_streak": None,
+        "stale_events": {},
         "scope_blocked_reason": None,
         "decisions": [],
         "status": "predicted",
@@ -588,6 +591,63 @@ def test_tick_recovers_from_a_stale_page_by_observing_once(runner, monkeypatch):
     runner.command("tick")
     assert runner.state["browser"].observe.call_count == 1
     assert runner.state["status"] == "ready" and runner.state["history"] == []
+
+
+def test_three_consecutive_stale_failures_on_one_target_stop_the_run(runner, monkeypatch):
+    """A refused action is popped from `history`, so the step budget cannot fire: the streak has to end the run."""
+    monkeypatch.setattr(loop, "choose", lambda *_a, **_k: _jev_answer("e3", "CLICK", {"CLICK": 1.0}))
+    runner.state["browser"].act.side_effect = StalePage("covered")
+    for _ in range(loop.STALE_RETRY_LIMIT):
+        runner.state["decision"] = None
+        runner.state["status"] = "ready"
+        runner.command("tick")
+    assert runner.state["status"] == "blocked"
+    assert "連續 3 次都無法操作「Go」" in runner.state["scope_blocked_reason"]
+    assert runner.state["stale_streak"]["count"] == loop.STALE_RETRY_LIMIT
+    event = runner.state["rule_events"][-1]
+    assert (event["label"], event["stale"], event["count"]) == ("Go", True, loop.STALE_RETRY_LIMIT)
+    assert runner.state["stale_events"].get(runner.state["scope_blocked_reason"]) == 1
+
+
+def test_a_stale_streak_starts_over_when_the_page_changes(runner, monkeypatch):
+    monkeypatch.setattr(loop, "choose", lambda *_a, **_k: _jev_answer("e3", "CLICK", {"CLICK": 1.0}))
+    runner.state["browser"].act.side_effect = StalePage("covered")
+    changed = {**page(), "text": "Search results"}
+    changed["fingerprint"] = fingerprint(changed)  # a real page change, not just a copied fingerprint
+    # The page changes while the first failure is being recovered, so the next attempt is made on the new page.
+    runner.state["browser"].observe.return_value = changed
+    runner.state["decision"] = None
+    runner.state["status"] = "ready"
+    runner.command("tick")
+    runner.state["decision"] = None
+    runner.state["status"] = "ready"
+    runner.command("tick")
+    assert runner.state["status"] == "ready"
+    assert runner.state["stale_streak"]["count"] == 1
+
+
+def test_a_stale_streak_starts_over_when_the_target_changes(runner, monkeypatch):
+    answers = iter([_jev_answer("e3", "CLICK", {"CLICK": 1.0}), _jev_answer("e2", "CLICK", {"CLICK": 1.0})])
+    monkeypatch.setattr(loop, "choose", lambda *_a, **_k: next(answers))
+    runner.state["browser"].act.side_effect = StalePage("covered")
+    for _ in range(2):
+        runner.state["decision"] = None
+        runner.state["status"] = "ready"
+        runner.command("tick")
+    assert runner.state["status"] == "ready"
+    assert runner.state["stale_streak"]["count"] == 1
+
+
+def test_a_navigation_during_prediction_never_counts_as_a_stale_target(runner, monkeypatch):
+    """A page that is still navigating is not a target that keeps failing: three of those must not stop the run."""
+    monkeypatch.setattr(loop, "choose", lambda *_a, **_k: pytest.fail("a navigating page must not reach a decision"))
+    runner.state["browser"].fresh.side_effect = StalePage("Document navigating")
+    for _ in range(loop.STALE_RETRY_LIMIT + 1):
+        runner.state["status"] = "ready"
+        runner.command("tick")
+    assert runner.state["status"] == "ready"
+    assert runner.state["stale_streak"] is None
+    assert runner.state["scope_blocked_reason"] is None
 
 
 @pytest.mark.parametrize("status", ["done", "blocked"])

@@ -132,6 +132,7 @@ class MemoryStore:
             value = int(data.get(args[0], 0)) + (step if name.startswith("INCR") else -step)
             data[args[0]] = str(value)
             return value
+        raise StoreError(f"unsupported command {name}")  # the router's tuple and this method must agree
 
     def _hash(self, name, args) -> Any:
         """The hash commands: HSET/HSETNX writes, HGET/HEXISTS reads, HINCRBY, HDEL and HGETALL."""
@@ -164,6 +165,7 @@ class MemoryStore:
             return removed
         if name == "HGETALL":
             return [item for pair in data.get(args[0], {}).items() for item in pair]
+        raise StoreError(f"unsupported command {name}")
 
     def _keyspace(self, name, args) -> Any:
         """DEL, EXPIRE and SCAN: whole keys, their lifetimes, and key listing."""
@@ -190,6 +192,7 @@ class MemoryStore:
         if name == "SCAN":
             pattern = args[args.index("MATCH") + 1] if "MATCH" in args else "*"
             return ["0", [k for k in data if fnmatch.fnmatchcase(k, pattern)]]
+        raise StoreError(f"unsupported command {name}")
 
 
 def hgetall(store, key) -> dict[str, str]:

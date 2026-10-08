@@ -1,8 +1,10 @@
-"""A `browser_harness` stand-in for the offline tests, installed before the package is imported.
+"""A `browser_harness` stand-in for the offline lane, installed before the package is imported.
 
-The real package starts the dedicated Chrome daemon (and talks to it over CDP) on first use; the offline lane
-must never do that. A test module that imports `jev_ultrafast`, or a script that does, calls `install()` first —
-which is why those imports carry `# noqa: E402`.
+The real package starts the dedicated Chrome daemon and talks to it over CDP on first use; the offline lane must
+never do that. The callers (`tests/test_traderie.py`, `tests/test_services.py`, `tests/test_extension_build.py`)
+run `install()` before importing the package or a script that does, which is why those imports carry
+`# noqa: E402`. All three names are replaced in `sys.modules` for the whole process, so a module that imported
+the real `browser_harness` earlier is covered as well.
 """
 
 import sys
