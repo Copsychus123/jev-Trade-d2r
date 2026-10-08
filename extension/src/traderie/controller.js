@@ -105,48 +105,69 @@ async function observePage(tab) {
 const markerCount = (lines) => lines.filter((line) => TRADING_MARKERS.includes(line)).length;
 
 /**
- * The rows of one view, with the line count the page shows for cross-checking, the sentence that means a
- * legitimately empty list, and the parsed recent-trades answer (which carries its own login verdict).
- * @returns {{rows: object[], markers: number, emptyText: string, emptyReason: string, parsed: object|null}}
+ * Per-view read rules, so `readView` (trading, recent_trades) and `readStatsOnce` (stats) share one reconcile.
+ * `parse` builds the rows and the parsed recent-trades answer (which carries its own login verdict); `markers`
+ * counts the page's own row anchors; `emptyText` is the sentence that means a legitimately empty list and
+ * `emptyReason` what such a list passes with; `noRows`/`noAnchor` build those failures' reasons from the read;
+ * `mismatch` returns the row-count failure's reason, or null when the rows and the page agree.
  */
-function viewRows(trading, lines, text, itemName) {
-  if (trading) {
-    return {
-      rows: parseTradingTxt(text, { itemName }),
-      markers: markerCount(lines),
-      emptyText: EMPTY_TRADING,
-      emptyReason: "目前沒有掛單",
-      parsed: null,
-    };
-  }
-  const parsed = parseRecentTrades(text);
-  return {
-    rows: parsed.trades,
-    markers: lines.filter((line) => line.toLowerCase() === "they give").length,
+const VIEW_READERS = {
+  trading: {
+    parse: (text, itemName) => ({ rows: parseTradingTxt(text, { itemName }), parsed: null }),
+    markers: (lines) => markerCount(lines),
+    emptyText: EMPTY_TRADING,
+    emptyReason: "目前沒有掛單",
+    noRows: () => "頁面上沒有讀到任何掛單",
+    noAnchor: (rows) => `讀到 ${rows.length} 筆，但頁面上找不到可以核對的筆數標記`,
+    mismatch: (rows, markers) => (rows.length < markers ? `表格 ${rows.length} 筆，少於網頁上的 ${markers} 筆` : null),
+  },
+  recent_trades: {
+    parse: (text) => {
+      const parsed = parseRecentTrades(text);
+      return { rows: parsed.trades, parsed };
+    },
+    markers: (lines) => lines.filter((line) => line.toLowerCase() === "they give").length,
     emptyText: EMPTY_RECENT,
     emptyReason: "目前沒有成交紀錄",
-    parsed,
-  };
+    noRows: (parsed) => parsed.reason,
+    noAnchor: (rows) => `讀到 ${rows.length} 筆，但頁面上找不到可以核對的筆數標記`,
+    mismatch: (rows, markers) => (rows.length !== markers ? `表格 ${rows.length} 筆，和網頁上的 ${markers} 筆不一致` : null),
+  },
+  stats: {
+    // "There are no listings" is the measured empty-search sentence; a sidebar followed by blank placeholder lines
+    // is a list that has not loaded, not an empty one. The list names its own items, so its markers sit on the home
+    // page and its no-anchor reason says so.
+    parse: (text) => ({ rows: parseTradingTxt(text, { itemName: null }), parsed: null }),
+    markers: (lines) => markerCount(lines),
+    emptyText: EMPTY_TRADING,
+    emptyReason: "沒有符合條件的掛單",
+    noRows: () => "頁面上沒有讀到任何掛單",
+    noAnchor: (rows) => `讀到 ${rows.length} 筆，但首頁上看不到可以核對的筆數標記`,
+    mismatch: (rows, markers) => (rows.length < markers ? `表格 ${rows.length} 筆，少於網頁上的 ${markers} 筆` : null),
+  },
+};
+
+/**
+ * The rows of one view from its page text, with the page's own row-marker count and the parsed recent-trades answer.
+ * @returns {{rows: object[], markers: number, parsed: object|null}}
+ */
+function viewRows(reader, lines, text, itemName) {
+  const { rows, parsed } = reader.parse(text, itemName);
+  return { rows, markers: reader.markers(lines), parsed };
 }
 
 /** The row-count check: the finished result when the read is inconclusive, or null when the rows and the page agree. */
-function reconcileRows(result, trading, rows, markers, lines, emptyText, emptyReason, parsed) {
+function reconcile(result, reader, { rows, markers, parsed }, lines) {
   if (!rows.length) {
     // "Nothing to list" is a real answer only when the page says so and has no row markers of its own.
-    if (markers === 0 && lines.some((line) => line.toLowerCase() === emptyText)) {
-      return Object.assign(result, { status: "PASSED", reason: emptyReason, reason_code: "empty", has_more: false });
+    if (markers === 0 && lines.some((line) => line.toLowerCase() === reader.emptyText)) {
+      return Object.assign(result, { status: "PASSED", reason: reader.emptyReason, reason_code: "empty", has_more: false });
     }
-    return fail(result, "no_rows", trading ? "頁面上沒有讀到任何掛單" : parsed.reason);
+    return fail(result, "no_rows", reader.noRows(parsed));
   }
-  if (markers === 0) {
-    return fail(result, "no_anchor", `讀到 ${rows.length} 筆，但頁面上找不到可以核對的筆數標記`);
-  }
-  if (trading && rows.length < markers) {
-    return fail(result, "row_mismatch", `表格 ${rows.length} 筆，少於網頁上的 ${markers} 筆`);
-  }
-  if (!trading && rows.length !== markers) {
-    return fail(result, "row_mismatch", `表格 ${rows.length} 筆，和網頁上的 ${markers} 筆不一致`);
-  }
+  if (markers === 0) return fail(result, "no_anchor", reader.noAnchor(rows));
+  const mismatch = reader.mismatch(rows, markers);
+  if (mismatch) return fail(result, "row_mismatch", mismatch);
   return null;
 }
 
@@ -164,14 +185,15 @@ export async function readView(tab, itemName, viewName) {
   }
   if (result.settled === false) return fail(result, "unsettled", "頁面在時限內沒有穩定下來，讀到的筆數不可信");
 
+  const reader = VIEW_READERS[viewName];
   const lines = splitLines(text).map((line) => line.trim());
-  const { rows, markers, emptyText, emptyReason, parsed } = viewRows(trading, lines, text, itemName);
-  if (parsed?.code === "login_required" || parsed?.code === "login_or_no_data") {
-    return fail(result, "login_required", parsed.reason, "BLOCKED");
+  const read = viewRows(reader, lines, text, itemName);
+  if (read.parsed?.code === "login_required" || read.parsed?.code === "login_or_no_data") {
+    return fail(result, "login_required", read.parsed.reason, "BLOCKED");
   }
-  const reconciled = reconcileRows(result, trading, rows, markers, lines, emptyText, emptyReason, parsed);
+  const reconciled = reconcile(result, reader, read, lines);
   if (reconciled) return reconciled;
-  return Object.assign(result, { status: "PASSED", rows, has_more: await hasMore(tab) });
+  return Object.assign(result, { status: "PASSED", rows: read.rows, has_more: await hasMore(tab) });
 }
 
 // The stats search reads the first page of the home page's listing list: every card names its own item, so there is
@@ -186,22 +208,12 @@ async function readStatsOnce(tab, expectedUrl) {
   result.url_kept = urlKeepsParams(page.url, expectedUrl);
   if (result.settled === false) return fail(result, "unsettled", "頁面在時限內沒有穩定下來，讀到的筆數不可信");
 
+  const reader = VIEW_READERS.stats;
   const lines = splitLines(text).map((line) => line.trim());
-  const markers = markerCount(lines);
-  const rows = parseTradingTxt(text, { itemName: null });
-  if (!rows.length) {
-    // Nothing listed is an answer only when the site says so ("There are no listings", measured on a real empty search).
-    // A sidebar followed by blank placeholder lines is a list that has not loaded, not an empty one.
-    if (markers === 0 && lines.some((line) => line.toLowerCase() === EMPTY_TRADING)) {
-      return Object.assign(result, { status: "PASSED", reason: "沒有符合條件的掛單", reason_code: "empty", has_more: false });
-    }
-    return fail(result, "no_rows", "頁面上沒有讀到任何掛單");
-  }
-  if (markers === 0) {
-    return fail(result, "no_anchor", `讀到 ${rows.length} 筆，但首頁上看不到可以核對的筆數標記`);
-  }
-  if (rows.length < markers) return fail(result, "row_mismatch", `表格 ${rows.length} 筆，少於網頁上的 ${markers} 筆`);
-  return Object.assign(result, { status: "PASSED", rows, has_more: await hasMore(tab) });
+  const read = viewRows(reader, lines, text, null);
+  const reconciled = reconcile(result, reader, read, lines);
+  if (reconciled) return reconciled;
+  return Object.assign(result, { status: "PASSED", rows: read.rows, has_more: await hasMore(tab) });
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));

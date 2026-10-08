@@ -1,5 +1,5 @@
 """Offline tests of the pure parts of the Chrome end-to-end scripts (`scripts/extension_e2e.py`, `scan_e2e.py`,
-`ocr_e2e.py`).
+`ocr_e2e.py`, `stub_backend.py`).
 
 The real drivers need Windows Chrome, the extension and (for OCR) a model download, so they only run under
 `uv run --group e2e python scripts/<name>.py`. Their `verdict` functions are pure: they turn an already-collected
@@ -20,7 +20,7 @@ import pytest
 from jev_ultrafast.traderie.site import build_goal, phase_plan
 from jevsvc import invites
 from jevsvc.store import MemoryStore
-from scripts import extension_e2e, ocr_e2e, scan_e2e
+from scripts import extension_e2e, ocr_e2e, scan_e2e, stub_backend
 
 # --- extension_e2e.parse_sample ---------------------------------------------------------------------------
 
@@ -59,24 +59,24 @@ def phase_goals(load_more=2):
     return phase_plan(build_goal("Harlequin Crest", load_more))[0]
 
 
-def stub_chooser(lines=None) -> extension_e2e.StubChooser:
+def stub_chooser(lines=None) -> stub_backend.StubChooser:
     """A StubChooser that appends its log lines to `lines` (the run prints them; here they are read back)."""
-    return extension_e2e.StubChooser(log=(lines if lines is not None else []).append)
+    return stub_backend.StubChooser(log=(lines if lines is not None else []).append)
 
 
 def test_stub_phase_reads_the_phase_out_of_the_goal_the_backend_builds():
-    assert [extension_e2e.stub_phase(goal) for goal in phase_goals()] == ["trading", "recent_trades"]
-    assert extension_e2e.stub_phase("no phase line") == "trading"  # the only safe guess; the log shows its page
+    assert [stub_backend.stub_phase(goal) for goal in phase_goals()] == ["trading", "recent_trades"]
+    assert stub_backend.stub_phase("no phase line") == "trading"  # the only safe guess; the log shows its page
 
 
 def test_goal_batches_reads_the_requested_presses_and_zero_when_none_are_asked_for():
-    assert [extension_e2e.goal_batches(goal) for goal in phase_goals(3)] == [3, 3]
-    assert [extension_e2e.goal_batches(goal) for goal in phase_goals(0)] == [0, 0]
+    assert [stub_backend.goal_batches(goal) for goal in phase_goals(3)] == [3, 3]
+    assert [stub_backend.goal_batches(goal) for goal in phase_goals(0)] == [0, 0]
 
 
 def test_stub_decision_has_the_shape_choose_step_passes_on():
     # The keys tests/test_services.py's stub chooser returns, plus latency_ms (agent.history records it).
-    answer = extension_e2e.stub_decision("DONE", "DONE", {"DONE": 1.0})
+    answer = stub_backend.stub_decision("DONE", "DONE", {"DONE": 1.0})
     assert set(answer) == {
         "choice",
         "operation",
@@ -128,7 +128,7 @@ def test_stub_chooser_ignores_a_recent_trades_label_that_is_not_a_click():
 
 def test_stub_chooser_logs_a_timestamped_line_per_request_naming_what_it_saw():
     lines = []
-    chooser = extension_e2e.StubChooser(log=lines.append)
+    chooser = stub_backend.StubChooser(log=lines.append)
     chooser(stub_page(actions=[click("e13", "Log in to Load More")]), phase_goals()[0], [])
     chooser(stub_page(), phase_goals()[1], [])
     assert (chooser.requests, len(lines)) == (2, 2)
@@ -143,7 +143,7 @@ def test_the_stub_route_answers_a_whole_query_through_the_backends_own_pipeline(
     monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
     log = []
     store = MemoryStore()
-    routes = extension_e2e.stub_routes(extension_e2e.StubChooser(log=log.append))
+    routes = stub_backend.stub_routes(stub_backend.StubChooser(log=log.append))
     status, started = routes["/api/run/start"](
         {"invite": invites.add(store, "stub"), "item_name": "Harlequin Crest", "load_more": 2},
         "1.1.1.1",
