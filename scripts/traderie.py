@@ -56,8 +56,8 @@ def main():
             agent.close()
             close_chrome()
     blocked = state.get("scope_blocked_reason") or ""
-    if "需要登入" in blocked:
-        print(blocked)
+    if blocked:
+        print(blocked)  # any stopped run owes the user its reason, not only the login one
     verification = market["verification"]
     print(json.dumps({k: v for k, v in verification.items() if k != "final_page"}, indent=2, ensure_ascii=False))
     usage = state["usage"]
