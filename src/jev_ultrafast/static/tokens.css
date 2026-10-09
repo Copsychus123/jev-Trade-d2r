@@ -1,0 +1,42 @@
+/* One vocabulary for the two surfaces, so a colour has a name instead of a literal at every site.
+ *
+ * These are the side panel's values: the panel is the shipped surface (the local demo is the inspector), so it owns
+ * the defaults. A surface with its own skin overrides the names in its own stylesheet - the demo's warm light
+ * palette is declared that way in `src/jev_ultrafast/static/style.css`. Naming a role here does not change how
+ * anything looks: the panel's stylesheet uses these names for exactly the values it had.
+ *
+ * extension/build.py copies this file into the built extension next to `sidepanel.css`, the same way it copies the
+ * page scripts; `tests/test_ui_tokens.py` keeps the three files in step.
+ */
+:root {
+  --accent: #2563eb;
+  /* Link and label text in the accent colour: the same blue on a light theme, a lighter one on a dark theme. */
+  --accent-ink: var(--accent);
+  /* Three strengths of an accent-tinted surface, from the quietest to the most prominent (a filter line, a
+   * drop area, the reading panel). */
+  --accent-wash: rgba(37, 99, 235, 0.1);
+  --accent-wash-strong: rgba(37, 99, 235, 0.12);
+  --accent-wash-heavy: rgba(37, 99, 235, 0.15);
+  --ok: #15803d;
+  --bad: #b91c1c;
+  --bad-wash: rgba(220, 38, 38, 0.1);
+  --bad-solid: #ef4444;
+  --warn: #d97706;
+  --warn-wash: rgba(217, 119, 6, 0.12);
+  --tag-surface: #fde68a;
+  --tag-ink: #92400e;
+  /* Text on a filled accent or dark surface, and the dark tooltip. */
+  --on-solid: #fff;
+  --toast: #333;
+  --toast-muted: #ccc;
+  --line: rgba(128, 128, 128, 0.35);
+  --muted: color-mix(in srgb, CanvasText 62%, Canvas);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ok: #4ade80;
+    --bad: #f87171;
+    --accent-ink: #93c5fd;
+  }
+}

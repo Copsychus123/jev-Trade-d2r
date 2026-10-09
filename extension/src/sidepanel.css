@@ -2,17 +2,7 @@
   color-scheme: light dark;
   font-family: system-ui, "Noto Sans TC", sans-serif;
   font-size: 14px;
-  --accent: #2563eb;
-  --ok: #15803d;
-  --bad: #b91c1c;
-  --line: rgba(128, 128, 128, 0.35);
-  --muted: color-mix(in srgb, CanvasText 62%, Canvas);
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --ok: #4ade80;
-    --bad: #f87171;
-  }
+  /* The palette is shared with the local demo and lives in tokens.css (src/jev_ultrafast/static/tokens.css). */
 }
 [hidden] {
   display: none !important;
@@ -63,7 +53,7 @@ button {
 }
 button.primary {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-solid);
   border: 0;
   border-radius: 4px;
 }
@@ -83,11 +73,6 @@ button.link {
   background: none;
   color: var(--accent);
   text-align: left;
-}
-@media (prefers-color-scheme: dark) {
-  button.link {
-    color: #93c5fd;
-  }
 }
 button:disabled {
   opacity: 0.5;
@@ -264,8 +249,8 @@ summary {
 }
 .keep-open {
   padding: 6px 8px;
-  border-left: 3px solid #d97706;
-  background: rgba(217, 119, 6, 0.12);
+  border-left: 3px solid var(--warn);
+  background: var(--warn-wash);
 }
 
 /* ---- trust line, notes, banner ---- */
@@ -293,15 +278,15 @@ summary {
 }
 .notes {
   padding: 6px 8px;
-  border-left: 3px solid #d97706;
-  background: rgba(217, 119, 6, 0.12);
+  border-left: 3px solid var(--warn);
+  background: var(--warn-wash);
 }
 .banner {
   margin-top: 10px;
   padding: 10px;
   border: 1px solid var(--bad);
   border-radius: 6px;
-  background: rgba(220, 38, 38, 0.1);
+  background: var(--bad-wash);
 }
 .banner-message {
   margin: 0;
@@ -392,7 +377,7 @@ summary {
   margin: 10px 0 6px;
   padding: 6px 8px;
   border-left: 3px solid var(--accent);
-  background: rgba(37, 99, 235, 0.1);
+  background: var(--accent-wash);
   font-size: 12px;
 }
 #filter-text {
@@ -462,7 +447,7 @@ summary {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #ef4444;
+  background: var(--bad-solid);
 }
 .tooltip {
   position: absolute;
@@ -472,22 +457,22 @@ summary {
   margin-top: 4px;
   padding: 5px 9px;
   border-radius: 4px;
-  background: #333;
-  color: #fff;
+  background: var(--toast);
+  color: var(--on-solid);
   font-size: 11px;
   line-height: 1.4;
   pointer-events: none;
 }
 .tooltip small {
-  color: #ccc;
+  color: var(--toast-muted);
 }
 .tag {
   display: inline-block;
   margin-top: 6px;
   padding: 1px 8px;
   border-radius: 9px;
-  background: #fde68a;
-  color: #92400e;
+  background: var(--tag-surface);
+  color: var(--tag-ink);
   font-size: 12px;
 }
 .dropzone {
@@ -495,7 +480,7 @@ summary {
   padding: 14px 8px;
   border: 2px dashed var(--accent);
   border-radius: 6px;
-  background: rgba(37, 99, 235, 0.12);
+  background: var(--accent-wash-strong);
   font-weight: 600;
   text-align: center;
   pointer-events: none;
@@ -527,7 +512,7 @@ summary {
 #ocr-box {
   position: absolute;
   border: 2px solid var(--accent);
-  background: rgba(37, 99, 235, 0.15);
+  background: var(--accent-wash-heavy);
   pointer-events: none;
 }
 #ocr-go {
@@ -684,7 +669,7 @@ summary {
    look, not as the player's own entry. */
 .affix-limits input.from-capture,
 #stats-base.from-capture {
-  border-color: var(--warn, #b8860b);
+  border-color: var(--warn);
   border-style: dashed;
 }
 .affix.unmapped {

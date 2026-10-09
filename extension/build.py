@@ -82,6 +82,7 @@ def build(api: str, out: Path | None = None) -> int:
     shutil.copyfile(PKG / "traderie" / "settled_page.js", page / "settled_page.js")
     shutil.copyfile(PKG / "traderie" / "fetch_json.js", page / "fetch_json.js")
     shutil.copyfile(PKG / "static" / "csv.js", DIST_DIR / "csv.js")
+    shutil.copyfile(PKG / "static" / "tokens.css", DIST_DIR / "tokens.css")
 
     files = sorted(p for p in DIST_DIR.rglob("*") if p.is_file())
     leaked = scan(files)
