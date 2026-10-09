@@ -3,10 +3,10 @@ import { Agent, newCallBudget } from "./agent.js";
 import { API_BASE } from "./config.js";
 import { Tab, closeStaleWindows, loadPageScripts } from "./cdp.js";
 import { ApiError } from "./errors.js";
-import { priceSummaryLine, statusLabel } from "./labels.js";
+import { priceSummaryLine, sourceLine, statusLabel } from "./labels.js";
 import { SECTION_NAMES, deriveView, visibleSections } from "./panel-state.js";
 import { PAGE_SIZE, clampPage, pageCount, pageRows } from "./paginate.js";
-import { drawProgress, drawTrust } from "./panel-dom.js";
+import { clock, drawProgress, drawTrust } from "./panel-dom.js";
 import {
   COMMON_PRESET,
   EMPTY_FILTERS,
@@ -56,6 +56,7 @@ let settingsOpen = false;
 let after = null; // how the last query ended: "done" | "problem" | "stopped" | null
 let banner = null; // { message, hint?, site?, settings?, retry? } shown for a problem
 let quota = null; // { used, limit } from the last accepted start
+let runSource = null; // { kind: "scan"|"picture", time?, affixes?, record? } the input of the coming query came from
 let savedInvite = ""; // in chrome.storage.local
 let pendingInvite = ""; // typed but not accepted by the backend yet: kept in memory only
 let editingInvite = false;
@@ -230,12 +231,15 @@ function renderChrome() {
   // The affix search's own conclusion: what the listings it read are asking, so the player does not have to work it
   // out from the table. It leads the notes line (the base translation note follows).
   const priceLine = market.mode === "stats" ? priceSummaryLine(priceSummary(market.trading?.rows ?? [])) : "";
-  const notes = [priceLine, ...(market.lookup?.notes ?? [])].filter(Boolean).join("。");
+  const notes = [priceLine, sourceLine(runSource), ...(market.lookup?.notes ?? [])].filter(Boolean).join("。");
   const shown = visibleSections(view, hasRows());
   for (const name of SECTION_NAMES) $(`part-${name}`).hidden = !shown.has(name);
   $("part-notes").textContent = notes;
   $("part-notes").hidden = !notes || !shown.has("notes");
   $("part-requery").hidden = !shown.has("requery") || Boolean(banner?.retry);
+  // When a query that came in from a scan record ends in a problem, the player still has that record's affixes: offer
+  // the affix search for the same item instead of leaving them with a failure and a name.
+  $("fuzzy-handoff").hidden = !shown.has("requery") || runSource?.kind !== "scan";
   renderResultsHeader(view);
   $("start").hidden = running;
   $("stop").hidden = !running;
@@ -282,6 +286,7 @@ function render() {
 function backToForm() {
   after = null;
   banner = null;
+  runSource = null; // the player is starting over; whatever the last query used no longer describes this one
   render();
 }
 
@@ -522,6 +527,7 @@ function onSearchName(record) {
   if (!record.name) return; // the button is disabled without a name
   modeFromPicture = false;
   setMode("name");
+  runSource = scanSource(record);
   $("item").value = record.name;
   focusEntry();
 }
@@ -531,10 +537,21 @@ function onSearchName(record) {
 function onSearchStats(record) {
   modeFromPicture = false;
   setMode("stats");
+  runSource = scanSource(record);
   const base = record.kind === "base" ? record.name : record.base;
   if (base) statsForm.setBaseFromScreenshot(base);
   statsForm.fillFromText(record.text, { carryValues: true }); // the numbers come from the capture, marked for confirmation
   focusEntry();
+}
+
+/** The scan record a query came from, as the results screen and the affix hand-off need it. */
+function scanSource(record) {
+  return {
+    kind: "scan",
+    time: clock(record.at instanceof Date ? record.at.toISOString() : null),
+    affixes: (record.conditions ?? []).map((condition) => condition.label).join("、"),
+    record,
+  };
 }
 
 /** The start button of the affix search needs something to search by (stats-form-state.js `startBlocker`). */
@@ -637,6 +654,9 @@ function registerListeners() {
       current?.tab?.abort().catch(() => {}); // a command Chrome is slow to answer must not hold Stop back
     });
     on("part-requery", backToForm);
+    on("fuzzy-handoff", () => {
+      if (runSource?.kind === "scan") onSearchStats(runSource.record);
+    });
     on("banner-retry", backToForm);
     on("banner-open-site", () => chrome.tabs.create({ url: TRADERIE_D2R_URL }));
     on("banner-settings", () => showSettings(true));
@@ -739,6 +759,7 @@ async function init() {
       },
       onText: (text) => {
         if (running) return;
+        runSource = { kind: "picture" };
         // The reader ticks what it recognised and fills in the numbers it read, marked for confirmation; the player
         // still presses start.
         if (queryMode === "stats") statsForm.fillFromText(text, { carryValues: true });

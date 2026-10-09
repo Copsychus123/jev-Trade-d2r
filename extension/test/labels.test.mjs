@@ -7,6 +7,7 @@ import {
   explainFailedChecks,
   priceSummaryLine,
   progressSteps,
+  sourceLine,
   statusLabel,
   verificationSummary,
 } from "../src/labels.js";
@@ -443,4 +444,15 @@ test("the price line says what to ask, and nothing when nothing is priced", () =
     priceSummaryLine({ count: 10, priced: 7, unpriced: 3, min: 0.06, median: 1, q1: 0.5, q3: 2 }),
     "價格（High Rune Value）：最低 0.06、中位數 1、四分位 0.5–2（共 10 筆，3 筆沒有標價）",
   );
+});
+
+test("the source line names where the input came from, and nothing for typing", () => {
+  assert.equal(sourceLine(null), "");
+  assert.equal(sourceLine({ kind: "typed" }), "");
+  assert.equal(sourceLine({ kind: "picture" }), "來源：截圖");
+  assert.equal(
+    sourceLine({ kind: "scan", time: "12:34", affixes: "防禦、打擊恢復" }),
+    "來源：掃描紀錄 12:34 · 防禦、打擊恢復",
+  );
+  assert.equal(sourceLine({ kind: "scan", time: "", affixes: "" }), "來源：掃描紀錄");
 });

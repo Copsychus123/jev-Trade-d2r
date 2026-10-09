@@ -44,6 +44,19 @@ export function priceSummaryLine(summary) {
   return `${parts.join("、")}（${counts}${left}）`;
 }
 
+const SOURCE_LABELS = { scan: "掃描紀錄", picture: "截圖" };
+
+/**
+ * Where this query's input came from, for the results screen: 「來源：掃描紀錄 12:34 · 防禦、打擊恢復」. "" when the
+ * player typed everything by hand (`source` null or of an unknown kind). The caller passes the time already formatted,
+ * because formatting a clock needs the DOM module and that one imports this one.
+ */
+export function sourceLine(source) {
+  if (!source || !SOURCE_LABELS[source.kind]) return "";
+  const head = `來源：${[SOURCE_LABELS[source.kind], source.time].filter(Boolean).join(" ")}`;
+  return source.affixes ? `${head} · ${source.affixes}` : head;
+}
+
 export function explainFailedChecks(ids) {
   const sentences = [];
   const seen = new Set();
