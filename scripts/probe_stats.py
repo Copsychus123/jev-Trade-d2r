@@ -10,6 +10,12 @@ extension/test/fixtures/properties.json (the property list, reduced to id/name/t
 
 The last lines of the output are the decisions the stats search is built on (see docs/design.md):
 MAX_CONDITIONS, BASE_PARAM, FILTERS_SHOWN_CHECK and the quality properties.
+
+It also answers one open question read-only: can the same filter address also be read as Recent Trades (成交)? It opens
+the filtered home page, lists every link on it (so the tab's real address comes from the page, not a guess), then opens
+"the same filter + that tab" and records the URL and the first 200 chars of each, plus the page's own words for a
+completed trade ("They Give") versus an asking-price listing ("Make an Offer"). Result: report["recent_tab"] and
+artifacts/probe/recent_tab.json.
 """
 
 import argparse
@@ -19,7 +25,7 @@ import re
 import sys
 import time
 from pathlib import Path
-from urllib.parse import parse_qsl, urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -40,6 +46,14 @@ LOGGED_OUT_JS = (
 QUALITY_NAME = re.compile(r"^(rare|magic|normal|quality)", re.I)
 ITEM_LINE = re.compile(r"^\d+\s*X\s+(.+)$", re.I)
 ABSURD_MIN = 99999
+LINKS_JS = (
+    "JSON.stringify([...document.querySelectorAll('a[href]')].map(a => "
+    "({href: a.href, text: (a.innerText || '').trim()})))"
+)
+RECENT_LINK = re.compile(r"recent|成交|sold|trade history", re.I)
+TRADE_MARKERS = ("They Give", "Sold For", "Traded For", "Closed For")
+LISTING_MARKERS = ("Trading For", "Make an Offer")
+SIGN_IN_PROMPT = "Please sign in to view offers"
 
 
 class Tab(Panel):
@@ -90,6 +104,44 @@ def keeps(final_url: str, expected: dict[str, str]) -> bool:
     return all(got.get(key) == value for key, value in expected.items())
 
 
+def merge_query(target: str, params: dict[str, str]) -> str:
+    """`target` with `params` merged into its query string (the tab's own parameters are kept)."""
+    parts = urlparse(target)
+    query = dict(parse_qsl(parts.query))
+    query.update(params)
+    return urlunparse(parts._replace(query=urlencode(query)))
+
+
+def trade_signs(text: str) -> dict:
+    """Which of the page's own words are on it: completed-trade markers vs. asking-price listing markers."""
+    lowered = text.lower()
+    return {
+        "trade_markers": [word for word in TRADE_MARKERS if word.lower() in lowered],
+        "listing_markers": [word for word in LISTING_MARKERS if word.lower() in lowered],
+        "sign_in_prompt": SIGN_IN_PROMPT.lower() in lowered,
+    }
+
+
+async def page_now(tab: Tab) -> tuple[str, str]:
+    """(url, visible text) right now, without the settle/length gate (for pages too short to settle)."""
+    state = json.loads(
+        await tab.evaluate("JSON.stringify({u: location.href, t: document.body ? document.body.innerText : ''})")
+    )
+    return state["u"], state["t"]
+
+
+async def settled_or_now(tab: Tab, name: str) -> tuple[str, str, bool]:
+    """The settled page, or the current snapshot when it never settles; writes the text under `name`."""
+    try:
+        url, text = await tab.settled_text()
+        settled = True
+    except TimeoutError:
+        url, text = await page_now(tab)
+        settled = False
+    (OUT / f"{name}.txt").write_text(text, encoding="utf-8")
+    return url, text, settled
+
+
 def pick_properties(props: list[dict]) -> tuple[dict, dict]:
     numbers = [p for p in props if p.get("type") == "number"]
     first = next((p for p in numbers if "faster cast" in p["name"].lower()), None)
@@ -105,6 +157,99 @@ async def visit(tab: Tab, name: str, query: str, expected: dict[str, str]) -> di
     url, text = await tab.settled_text()
     (OUT / f"page_{name}.txt").write_text(text, encoding="utf-8")
     return {"url": url, "text": text, "count": listing_count(text), "kept": keeps(url, expected)}
+
+
+async def probe_recent_tab(tab: Tab, query: str, expected: dict[str, str]) -> dict:
+    """Can the filtered home page also be read as Recent Trades? The tab's address is read off the page, never guessed.
+
+    Opens the known-good filter address and records its URL and first 200 chars; lists every link on that page so the
+    Recent Trades tab's real address shows up if the page has one; then opens "the same filter + that tab" and records
+    the URL, the first 200 chars and which of the page's own words (trade records vs. asking-price listings) are there.
+    """
+    await tab.goto(f"{HOME}{query}")
+    url, text, settled = await settled_or_now(tab, "recent_filter")
+    links = json.loads(await tab.evaluate(LINKS_JS))
+    candidates = [link for link in links if RECENT_LINK.search(f"{link['href']} {link['text']}")]
+    result = {
+        "filter_query": query,
+        "filter_url": url,
+        "filter_kept": keeps(url, expected),
+        "filter_settled": settled,
+        "filter_text_head": text[:200],
+        "filter_listings": listing_count(text),
+        "links_on_page": len(links),
+        "recent_link_candidates": candidates[:20],
+    }
+    if not candidates:
+        # No home-page tab exists. As labelled controls, first open the section suffix the site itself uses on product
+        # pages (/recent) on the same filter address, then a real product's Recent Trades page — the second shows what
+        # a trade record's own text looks like and that the marker words above recognise it.
+        control = f"{HOME}/recent{query}"
+        result["section_form_control_url"] = control
+        await tab.goto(control)
+        c_url, c_text, c_settled = await settled_or_now(tab, "recent_tab_section")
+        signs = trade_signs(c_text)
+        result.update(
+            section_form_settled=c_settled,
+            section_form_final_url=c_url,
+            section_form_kept_filter=keeps(c_url, expected),
+            section_form_listings=listing_count(c_text),
+            section_form_text_head=c_text[:200],
+            section_form_trade_markers=signs["trade_markers"],
+            section_form_listing_markers=signs["listing_markers"],
+            section_form_sign_in_prompt=signs["sign_in_prompt"],
+        )
+        product_control = f"{HOME}/product/harlequin-crest/recent"
+        result["product_recent_control_url"] = product_control
+        await tab.goto(product_control)
+        p_url, p_text, p_settled = await settled_or_now(tab, "recent_tab_product")
+        p_signs = trade_signs(p_text)
+        result.update(
+            product_recent_settled=p_settled,
+            product_recent_final_url=p_url,
+            product_recent_listings=listing_count(p_text),
+            product_recent_text_head=p_text[:200],
+            product_recent_trade_markers=p_signs["trade_markers"],
+            product_recent_listing_markers=p_signs["listing_markers"],
+            product_recent_sign_in_prompt=p_signs["sign_in_prompt"],
+        )
+        if signs["trade_markers"] and not signs["listing_markers"]:
+            verdict = "可用（與首頁 UI 無關）：/recent 寫法讀得到成交紀錄"
+        else:
+            verdict = (
+                "不可用：帶 filter 的首頁沒有任何近期成交分頁的連結，其 /recent 寫法也讀不到東西；"
+                "成交紀錄只在商品頁（見 product_recent_*，該頁字串才是成交紀錄）"
+            )
+        result["conclusion"] = verdict
+        return result
+    home_path = urlparse(HOME).path
+    tab_link = next(
+        (link for link in candidates if urlparse(link["href"]).path.rstrip("/") in (home_path, "")),
+        candidates[0],
+    )
+    combined = merge_query(tab_link["href"], dict(parse_qsl(urlparse(query).query)))
+    result.update(tab_text=tab_link["text"], tab_href=tab_link["href"], combined_url_requested=combined)
+    await tab.goto(combined)
+    tab_url, tab_text, tab_settled = await settled_or_now(tab, "recent_tab")
+    signs = trade_signs(tab_text)
+    if signs["sign_in_prompt"]:
+        verdict = "不可用：讀得到，但要登入才看得到成交紀錄"
+    elif signs["trade_markers"] and not signs["listing_markers"]:
+        verdict = "可用：同一組 filter 的近期成交分頁讀得到，且頁面是要成交紀錄"
+    elif signs["trade_markers"]:
+        verdict = "需人工確認：頁面同時有成交與掛單字串"
+    else:
+        verdict = "不可用：同一組 filter 的這頁仍是要價掛單，沒有成交紀錄字串"
+    result.update(
+        tab_url=tab_url,
+        tab_settled=tab_settled,
+        tab_kept_filter=keeps(tab_url, expected),
+        tab_listings=listing_count(tab_text),
+        tab_text_head=tab_text[:200],
+        conclusion=verdict,
+        **signs,
+    )
+    return result
 
 
 async def probe(redact: str | None) -> int:
@@ -176,6 +321,7 @@ async def probe(redact: str | None) -> int:
                     tab, "T_ring_rare", "?tags[]=Ring&prop_Rarity=rare", {"tags[]": "Ring", "prop_Rarity": "rare"}
                 )
             names = {key: item_names(page["text"]) for key, page in pages.items()}
+            recent_tab = await probe_recent_tab(tab, f"?{k1}=1", {k1: "1"})
 
             def narrows(key: str, word: str) -> bool:
                 return bool(names[key]) and all(word in n.lower() for n in names[key])
@@ -189,6 +335,7 @@ async def probe(redact: str | None) -> int:
                 tags_narrow=narrows("T_ring", "ring"),
                 rarity_property=None if not rarity else {"id": rarity["id"], "options": rarity.get("options")},
                 quality_props=quality_props,
+                recent_tab=recent_tab,
             )
 
             # An absurd Min on the second property: "and" gives nothing, "or" still lists the first property's cards.
@@ -214,7 +361,32 @@ async def probe(redact: str | None) -> int:
             TEXT_FIXTURE.parent.mkdir(parents=True, exist_ok=True)
             TEXT_FIXTURE.write_text(sample, encoding="utf-8")
             (OUT / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
+            (OUT / "recent_tab.json").write_text(json.dumps(recent_tab, ensure_ascii=False, indent=1), encoding="utf-8")
             print(json.dumps(report, ensure_ascii=False, indent=1))
+            print(f"\n近期成交分頁（帶 filter）：{recent_tab['conclusion']}")
+            print(f"  filter URL: {recent_tab['filter_url']}")
+            print(f"  filter 前 200 字: {recent_tab['filter_text_head']!r}")
+            if recent_tab.get("tab_url"):
+                print(f"  分頁 URL: {recent_tab['tab_url']}")
+                print(f"  分頁前 200 字: {recent_tab['tab_text_head']!r}")
+            if recent_tab.get("section_form_final_url"):
+                print(f"  /recent 控制 URL: {recent_tab['section_form_final_url']}")
+                print(f"  /recent 控制前 200 字: {recent_tab['section_form_text_head']!r}")
+                print(
+                    "  /recent 控制字串: "
+                    f"成交={recent_tab['section_form_trade_markers']} "
+                    f"掛單={recent_tab['section_form_listing_markers']} "
+                    f"要登入={recent_tab['section_form_sign_in_prompt']}"
+                )
+            if recent_tab.get("product_recent_final_url"):
+                print(f"  商品頁成交控制 URL: {recent_tab['product_recent_final_url']}")
+                print(f"  商品頁成交控制前 200 字: {recent_tab['product_recent_text_head']!r}")
+                print(
+                    "  商品頁成交控制字串: "
+                    f"成交={recent_tab['product_recent_trade_markers']} "
+                    f"掛單={recent_tab['product_recent_listing_markers']} "
+                    f"要登入={recent_tab['product_recent_sign_in_prompt']}"
+                )
             return 0
     finally:
         close_chrome()  # stops only a Chrome this run started; a Chrome that was already running is left alone
