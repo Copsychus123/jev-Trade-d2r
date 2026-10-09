@@ -20,7 +20,7 @@ import pytest
 from jev_ultrafast.traderie.site import build_goal, phase_plan
 from jevsvc import invites
 from jevsvc.store import MemoryStore
-from scripts import extension_e2e, ocr_e2e, scan_e2e, stub_backend
+from scripts import extension_batch, extension_e2e, ocr_e2e, scan_e2e, stub_backend
 
 # --- extension_e2e.parse_sample ---------------------------------------------------------------------------
 
@@ -486,3 +486,114 @@ def test_scan_and_ocr_verdicts_are_pure():
     scan_e2e.verdict(report)
     ocr_e2e.verdict(ocr, ACCURACY_FLOORS, HOLDOUT_FLOORS)
     assert report == scan_report() and ocr == ocr_report()
+
+
+# --- extension_batch.judge (the classifier of the runs that cost real quota) ---------------------------------
+
+BATCH_PRODUCT = "https://www.traderie.com/diablo2resurrected/product/harlequin-crest"
+
+
+def batch_case(**over):
+    """One case as `scripts/data/e2e_cases.json` declares it, with the keys judge reads."""
+    case = {"expect": "pass", "input": "Shako", "load_more": 0, "slug": "harlequin-crest", "layer": "table"}
+    case.update(over)
+    return case
+
+
+def batch_result(**over):
+    """One recorded result in the shape `run_case` leaves behind: the panel snapshot plus `urls`/`seconds`."""
+    result = {
+        "status": extension_batch.DONE,
+        "pills": ["PASSED", "PASSED"],
+        "rows": [3, 2],
+        "urls": [BATCH_PRODUCT, f"{BATCH_PRODUCT}/recent"],
+        "verification": "兩段資料都通過檢查",
+        "meta": "trading 3 · recent 2",
+        "lookup": "查詢方式：查表直接開啟",
+        "quota": "已用 3/100",
+        "locked": False,
+        "idle": True,
+        "seconds": 12.0,
+    }
+    result.update(over)
+    return result
+
+
+def test_batch_judge_passes_a_clean_paid_run():
+    assert extension_batch.judge(batch_case(), batch_result(), None) == ("PASS", "")
+
+
+def test_batch_judge_fails_a_timeout_before_anything_else():
+    verdict, reason = extension_batch.judge(batch_case(), batch_result(timeout=True, status="卡住"), None)
+    assert verdict == "FAIL" and "逾時" in reason
+
+
+def test_batch_judge_calls_a_site_challenge_blocked():
+    verdict, reason = extension_batch.judge(batch_case(), batch_result(status="網站阻擋：防護頁"), None)
+    assert verdict == "BLOCKED" and reason == "網站阻擋：防護頁"
+
+
+@pytest.mark.parametrize("expect,contains", [("error", "邀請碼無效"), ("not_found", "找不到這個裝備")])
+def test_batch_judge_checks_the_expected_message_and_that_nothing_was_read(expect, contains):
+    case = batch_case(expect=expect, contains=contains)
+    assert extension_batch.judge(case, batch_result(status=contains, rows=[0, 0]), None)[0] == "PASS"
+    assert extension_batch.judge(case, batch_result(status=contains, rows=[1, 0]), None)[0] == "FAIL"
+    assert extension_batch.judge(case, batch_result(status="別的訊息", rows=[0, 0]), None)[0] == "FAIL"
+
+
+def test_batch_judge_wants_a_stopped_run_that_let_go_of_the_sidebar():
+    case = batch_case(expect="stop")
+    assert extension_batch.judge(case, batch_result(status="已停止"), None)[0] == "PASS"
+    assert extension_batch.judge(case, batch_result(status="已停止", locked=True), None)[0] == "FAIL"
+    assert extension_batch.judge(case, batch_result(status=extension_batch.DONE), None)[0] == "FAIL"
+
+
+def test_batch_judge_accepts_either_the_expected_slug_or_a_clean_not_found():
+    case = batch_case(expect="not_found_or_slug")
+    assert extension_batch.judge(case, batch_result(), None) == ("PASS", "配到預期商品")
+    wrong = batch_result(urls=[f"{BATCH_PRODUCT}/../windforce", ""])
+    assert extension_batch.judge(case, wrong, None)[0] == "FAIL"
+    empty = batch_result(status="找不到這個裝備", rows=[0, 0], pills=["NOT_RUN", "NOT_RUN"])
+    assert extension_batch.judge(case, empty, None) == ("PASS", "找不到（可接受）")
+
+
+def test_batch_judge_never_turns_a_known_gap_into_a_failure():
+    case = batch_case(expect="known_gap")
+    assert extension_batch.judge(case, batch_result(), None) == ("GAP", "全部通過")
+    verdict, reason = extension_batch.judge(case, batch_result(pills=["FAILED", "PASSED"]), None)
+    assert verdict == "GAP" and reason
+
+
+@pytest.mark.parametrize(
+    "broken,needle",
+    [
+        ({"pills": ["FAILED", "PASSED"]}, "狀態"),
+        ({"rows": [0, 2]}, "狀態"),
+        ({"status": "已停止"}, "狀態"),
+        ({"urls": ["https://www.traderie.com/diablo2resurrected/product/windforce", ""]}, "商品網址"),
+        ({"lookup": "查詢方式：站內搜尋"}, "查詢方式"),
+    ],
+)
+def test_batch_judge_fails_the_pass_case_when_one_fact_is_wrong(broken, needle):
+    verdict, reason = extension_batch.judge(batch_case(), batch_result(**broken), None)
+    assert verdict == "FAIL" and needle in reason
+
+
+def test_batch_judge_requires_load_more_to_have_loaded_more_listings():
+    case = batch_case(load_more=5)
+    assert extension_batch.judge(case, batch_result(rows=[60, 2]), None)[0] == "PASS"
+    verdict, reason = extension_batch.judge(case, batch_result(rows=[30, 2]), None)
+    assert verdict == "FAIL" and "載入更多" in reason
+
+
+def test_batch_judge_allows_an_empty_market_only_when_the_case_says_so():
+    assert extension_batch.judge(batch_case(), batch_result(rows=[0, 0]), None)[0] == "FAIL"
+    assert extension_batch.judge(batch_case(allow_empty=True), batch_result(rows=[0, 0]), None)[0] == "PASS"
+
+
+def test_batch_judge_checks_that_a_double_click_spent_only_one_query():
+    case = batch_case(double_click=True)
+    assert extension_batch.judge(case, batch_result(quota="已用 4/100"), 3)[0] == "PASS"
+    verdict, reason = extension_batch.judge(case, batch_result(quota="已用 5/100"), 3)
+    assert verdict == "FAIL" and "額度" in reason
+    assert extension_batch.judge(case, batch_result(quota="—"), 3)[0] == "FAIL"
