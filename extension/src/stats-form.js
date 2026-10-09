@@ -111,6 +111,12 @@ export function initStatsForm({ getProperties, onChange }) {
       radio.disabled = busy;
     }
     if ($("stats-base").value !== form.base) $("stats-base").value = form.base;
+    // A base that came from a picture or a scan record is marked the same way a captured number is: the player can see
+    // it was not their own typing, and editing it clears the mark.
+    const baseFromCapture = $("stats-base").dataset.from === "ocr";
+    $("stats-base").classList.toggle("from-capture", baseFromCapture);
+    if (baseFromCapture) $("stats-base").title = "從擷取讀到，請確認";
+    else $("stats-base").removeAttribute("title");
     $("stats-base").disabled = busy;
   }
 

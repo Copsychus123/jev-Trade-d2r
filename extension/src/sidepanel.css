@@ -680,8 +680,10 @@ summary {
   width: 64px;
   min-width: 0;
 }
-/* A number the reader filled in from the capture: shown as needing a look, not as the player's own entry. */
-.affix-limits input.from-capture {
+/* A number the reader filled in from the capture, and the base field when it was filled that way: shown as needing a
+   look, not as the player's own entry. */
+.affix-limits input.from-capture,
+#stats-base.from-capture {
   border-color: var(--warn, #b8860b);
   border-style: dashed;
 }

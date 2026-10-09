@@ -80,6 +80,7 @@ STATE = """(() => {
     item: $('item')?.value || '',
     statsBase: $('stats-base')?.value || '',
     statsBaseFrom: $('stats-base')?.dataset.from || '',
+    statsBaseMarked: $('stats-base')?.classList.contains('from-capture') || false,
     affixRows: document.querySelectorAll('#affix-list li').length,
     baseOptions: document.querySelectorAll('#stats-base-options option').length,
     ticks: [...document.querySelectorAll('#affix-list .affix-on')].filter((b) => b.checked).length,
@@ -233,7 +234,7 @@ async def _collect_record_clicks(
     report["fuzzy_item"] = {
         "outcome": outcome, "mode": after["mode"], "view": after["view"],
         "ticks": after["ticks"], "statsBase": after["statsBase"], "statsBaseFrom": after["statsBaseFrom"],
-        "baseOptions": after["baseOptions"],
+        "statsBaseMarked": after["statsBaseMarked"], "baseOptions": after["baseOptions"],
     }
     say(
         f"  模糊搜尋 {item_name!r} -> {outcome}，mode={after['mode']} 勾選={after['ticks']}"
@@ -326,6 +327,8 @@ def verdict(report: dict) -> list[str]:
             failures.append(f"暗金紀錄應預填同一輪讀到的底材候選，實際 {fuzzy['statsBase']!r}")
         elif fuzzy.get("statsBaseFrom") != "ocr":
             failures.append(f"預填的底材要標記為來自擷取，實際 from={fuzzy.get('statsBaseFrom')!r}")
+        elif not fuzzy.get("statsBaseMarked"):
+            failures.append(f"預填的底材看不出是擷取來的：marked={fuzzy.get('statsBaseMarked')!r}")
         # The base is still required, but the form offers the shipped item types (a unique's tooltip never names its
         # base): the datalist must be filled from the table, not from a list written in code.
         if (fuzzy.get("baseOptions") or 0) < 50:
