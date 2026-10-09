@@ -222,6 +222,47 @@ def test_browser_injects_traderie_auth_only_when_env_present(monkeypatch, env, e
         assert cookie_indices == []
 
 
+def test_cookie_pairs_skip_the_attributes_a_set_cookie_string_carries():
+    """A pasted line may be a `Set-Cookie` value, which carries attributes (`path`, `domain`, `secure`, ...); only
+    name=value pairs are cookies. A value may itself contain `=` (a base64 session), so the split stops at the first."""
+    from jev_ultrafast.traderie.auth import parse_cookie_pairs
+
+    assert parse_cookie_pairs("session=abc; path=/; domain=.traderie.com; secure; SameSite=Lax") == [("session", "abc")]
+    assert parse_cookie_pairs("token=a=b; HttpOnly") == [("token", "a=b")]
+    assert parse_cookie_pairs("   ") == []
+    with pytest.raises(ValueError, match="name=value"):
+        parse_cookie_pairs("path=/; secure")
+
+
+def test_settled_page_read_refuses_an_answer_that_is_not_a_page():
+    """`read_settled_page` is the evidence that a view was read: an answer without a url has to fail here and now,
+    not travel on as a settled page with nothing in it."""
+    from jev_ultrafast.traderie import verification
+
+    class SettleBrowser:
+        def __init__(self, answer):
+            self.answer = answer
+            self.calls = []
+
+        def evaluate(self, expression, *, await_promise=False):
+            self.calls.append((expression, await_promise))
+            return self.answer
+
+    page = {"url": "u", "title": "t", "text": "x"}
+    answered = SettleBrowser(page)
+    assert verification.read_settled_page(answered) == page
+    expression, awaited = answered.calls[0]
+    assert awaited is True and "(500, 5000)" in expression
+
+    for answer in (None, "text", {"title": "t"}):
+        with pytest.raises(TimeoutError, match="url/title/text"):
+            verification.read_settled_page(SettleBrowser(answer))
+
+    custom = SettleBrowser(page)
+    verification.read_settled_page(custom, quiet_ms=50, timeout_ms=80)
+    assert "(50, 80)" in custom.calls[0][0]
+
+
 def test_browser_replaces_headless_label_in_user_agent(monkeypatch):
     calls = []
     base = _fake_browser_cdp(calls)
