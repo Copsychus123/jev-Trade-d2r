@@ -16,7 +16,8 @@ from .store import StoreError, shared_store
 MAX_BODY = 262144
 ALLOWED_METHODS = "POST, OPTIONS"
 PREFLIGHT_MAX_AGE = "86400"
-# The two refusals this transport itself can produce (the same message and code the routes use for them).
+# The two refusals this transport itself can produce, and the single home of their message and code: the routes import
+# them (app.py) so the same failure cannot come back with two different texts.
 BAD_REQUEST = {"error": "請求格式錯誤", "code": "bad_request"}
 NOT_CONFIGURED = {"error": "伺服器設定不完整", "code": "not_configured"}
 HEADERS = {

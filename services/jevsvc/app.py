@@ -20,6 +20,7 @@ from jev_ultrafast.traderie.site import (
 )
 
 from . import bases, invites, tokens
+from .http import BAD_REQUEST, NOT_CONFIGURED
 from .store import StoreError
 
 MAX_ITEM_CHARS = 200
@@ -36,8 +37,6 @@ MAX_HISTORY_TEXT = 200
 MAX_FIELD = 40  # ids, kinds, node ids, roles and state strings are short by nature: longer means not ours
 MAX_HISTORY = 60  # the extension stops a run after 60 actions
 BAD_PAGE = "頁面資料格式錯誤"
-BAD_REQUEST = "請求格式錯誤"
-NOT_CONFIGURED = "伺服器設定不完整"
 REQUEST_ID = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
 
 # Vercel stops a function after `maxDuration` (60 s, services/vercel.json). All Jev requests of one step share a budget
@@ -48,8 +47,8 @@ REQUEST_BUDGET = 45.0
 BASES = bases.load()
 
 
-def _error(status, message, code):
-    return status, {"error": message, "code": code}
+def _error(status, error, code):
+    return status, {"error": error, "code": code}
 
 
 def _brief(exc) -> str:
@@ -101,7 +100,7 @@ def run_start(body, ip, store, secret, now):
         return _error(400, str(exc), "bad_load_more")
     request_id = body.get("request_id")
     if request_id is not None and not (isinstance(request_id, str) and REQUEST_ID.match(request_id)):
-        return _error(400, BAD_REQUEST, "bad_request")
+        return _error(400, **BAD_REQUEST)
     invite = body.get("invite")
     invite = invite if isinstance(invite, str) else ""
     # A client that repeats a start it never got an answer for (same request_id) gets the same answer, uncounted.
@@ -265,7 +264,7 @@ def _after_failure(store, claims, run_key):
 
 def _request_prelude(body):
     if not isinstance(body, dict):
-        return _error(400, BAD_REQUEST, "bad_request")
+        return _error(400, **BAD_REQUEST)
     return None
 
 
@@ -289,7 +288,7 @@ def _log_usage(stage, claims, usage, extra=""):
 def _require_model_key(override=None):
     if override is None and not _model_configured():
         print("missing env: TYPESAFE_API_KEY", flush=True)
-        return _error(500, NOT_CONFIGURED, "not_configured")
+        return _error(500, **NOT_CONFIGURED)
     return None
 
 
