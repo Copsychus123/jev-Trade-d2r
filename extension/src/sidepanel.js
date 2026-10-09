@@ -4,6 +4,7 @@ import { API_BASE } from "./config.js";
 import { Tab, closeStaleWindows, loadPageScripts } from "./cdp.js";
 import { ApiError } from "./errors.js";
 import { priceSummaryLine, sourceLine, statusLabel } from "./labels.js";
+import { describeRunError, guardProblem, judgeNameRun } from "./run-outcome.js";
 import { SECTION_NAMES, affixHandoff, deriveView, visibleSections } from "./panel-state.js";
 import { PAGE_SIZE, clampPage, pageCount, pageRows } from "./paginate.js";
 import { clock, drawProgress, drawTrust } from "./panel-dom.js";
@@ -312,47 +313,23 @@ async function rememberInvite(invite) {
   pendingInvite = "";
 }
 
-const GUARD_MESSAGE = "Traderie 要求驗證或登入。請在這個 Chrome 開啟 Traderie 處理完，再回來重新查詢。";
-
-function describeError(error, session) {
-  const tab = session.tab;
-  if (error instanceof ApiError && !session.run && (error.status === 401 || error.status === 429)) {
-    pendingInvite = ""; // refused: never stored
-    return { message: error.message, settings: Boolean(savedInvite) };
-  }
-  if (error instanceof ApiError) return { message: error.message, retry: "重新查詢" };
-  if (tab?.detached) {
-    return {
-      message: "查詢視窗被關閉，或「偵錯」被取消，查詢已停止。",
-      hint: `原因：${tab.detachReason || "未知"}；${error?.message || ""}`,
-      retry: "重新查詢",
-    };
-  }
-  return { message: error?.message || String(error), retry: "重新查詢" };
-}
-
-const guardProblem = (hint) => ({ message: GUARD_MESSAGE, hint, site: true, retry: "我處理好了，重新查詢" });
-
+/** The name flow's outcome: the decision tree lives in `run-outcome.js` (pure, tested); the panel supplies the facts and
+ * stores the verification it hands back. */
 async function judge(session) {
-  if (stopRequested) return { after: "stopped" };
-  if (session.outcome === "guard") return { after: "problem", banner: guardProblem() };
-  if (session.outcome === "not_found") {
-    return { after: "problem", banner: { message: "找不到這個裝備", hint: "試試英文全名，或用截圖" } };
-  }
-  if (agent.state.status === "blocked") {
-    const guard = await detectGuard(agent.state.page, session.tab).catch(() => null);
-    if (guard) return { after: "problem", banner: guardProblem(guard) };
-    return {
-      after: "problem",
-      banner: { message: agent.state.scope_blocked_reason || "無法繼續", retry: "重新查詢" },
-    };
-  }
-  market.verification = verifyViews(itemName, market);
-  const blocked = [market.trading, market.recent_trades].filter((view) => view.status === "BLOCKED");
-  if (blocked.length) {
-    return { after: "problem", banner: guardProblem(blocked.map((view) => view.reason).filter(Boolean).join("；")) };
-  }
-  return { after: "done" };
+  const { after: ended, banner: problem, verification } = await judgeNameRun({
+    stopped: stopRequested,
+    outcome: session.outcome,
+    status: agent.state.status,
+    scopeBlockedReason: agent.state.scope_blocked_reason,
+    page: agent.state.page,
+    tab: session.tab,
+    market,
+    itemName,
+    detectGuard,
+    verify: verifyViews,
+  });
+  if (verification) market.verification = verification;
+  return { after: ended, banner: problem };
 }
 
 /**
@@ -397,8 +374,15 @@ async function runSession(session, work) {
       after = "stopped"; // Stop closed the query window under a running command: that is the stop, not a problem
       banner = null;
     } else {
+      const described = describeRunError(error, {
+        hasRun: Boolean(session.run),
+        hasStoredInvite: Boolean(savedInvite),
+        detached: session.tab?.detached,
+        detachReason: session.tab?.detachReason,
+      });
+      if (described.clearPendingInvite) pendingInvite = ""; // the backend refused it: never stored
       after = "problem";
-      banner = describeError(error, session);
+      banner = described.banner;
     }
   } finally {
     current = null;
