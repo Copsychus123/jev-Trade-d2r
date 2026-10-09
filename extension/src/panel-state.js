@@ -37,3 +37,13 @@ export function visibleSections(view, hasRows) {
   if (!hasRows) shown.delete("results");
   return shown;
 }
+
+/**
+ * Whether to offer the affix search for the item a query came from: only when that query started from a scan record
+ * (its affixes are still in `source.record`), the screen shows the "start over" affordances, and the run did not finish
+ * with its answer already (`ended` is how it ended). It is the way out of a failed name search for an item the player
+ * has just hovered; a finished search has nothing to hand over.
+ */
+export function affixHandoff(shown, source, ended) {
+  return shown.has("requery") && ended !== "done" && source?.kind === "scan" && Boolean(source.record);
+}

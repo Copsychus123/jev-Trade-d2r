@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { VIEWS, deriveView, visibleSections } from "../src/panel-state.js";
+import { VIEWS, affixHandoff, deriveView, visibleSections } from "../src/panel-state.js";
 
 const base = { settingsOpen: false, hasInvite: true, running: false, after: null, mode: "name" };
 
@@ -62,4 +62,18 @@ test("the trust line belongs to the finished screen only", () => {
     VIEWS.filter((view) => visibleSections(view, false).has("trust")),
     ["done"],
   );
+});
+
+test("the affix hand-off is offered only for a scan-sourced query that did not finish with an answer", () => {
+  const scan = { kind: "scan", record: { name: "Alma Negra" } };
+  assert.equal(affixHandoff(visibleSections("problem", true), scan, "problem"), true);
+  assert.equal(affixHandoff(visibleSections("stopped", true), scan, "stopped"), true);
+  // A finished search already gave its answer, and the form screen has no query behind it.
+  assert.equal(affixHandoff(visibleSections("done", true), scan, "done"), false);
+  assert.equal(affixHandoff(visibleSections("ready", true), scan, null), false);
+  // Nothing to hand over when the player typed the name or read a picture.
+  assert.equal(affixHandoff(visibleSections("problem", true), { kind: "picture" }, "problem"), false);
+  assert.equal(affixHandoff(visibleSections("problem", true), null, "problem"), false);
+  // A scan source without the record itself cannot be re-entered.
+  assert.equal(affixHandoff(visibleSections("problem", true), { kind: "scan" }, "problem"), false);
 });

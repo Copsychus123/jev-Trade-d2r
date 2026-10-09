@@ -4,7 +4,7 @@ import { API_BASE } from "./config.js";
 import { Tab, closeStaleWindows, loadPageScripts } from "./cdp.js";
 import { ApiError } from "./errors.js";
 import { priceSummaryLine, sourceLine, statusLabel } from "./labels.js";
-import { SECTION_NAMES, deriveView, visibleSections } from "./panel-state.js";
+import { SECTION_NAMES, affixHandoff, deriveView, visibleSections } from "./panel-state.js";
 import { PAGE_SIZE, clampPage, pageCount, pageRows } from "./paginate.js";
 import { clock, drawProgress, drawTrust } from "./panel-dom.js";
 import {
@@ -239,7 +239,7 @@ function renderChrome() {
   $("part-requery").hidden = !shown.has("requery") || Boolean(banner?.retry);
   // When a query that came in from a scan record ends in a problem, the player still has that record's affixes: offer
   // the affix search for the same item instead of leaving them with a failure and a name.
-  $("fuzzy-handoff").hidden = !shown.has("requery") || runSource?.kind !== "scan";
+  $("fuzzy-handoff").hidden = !affixHandoff(shown, runSource, after);
   renderResultsHeader(view);
   $("start").hidden = running;
   $("stop").hidden = !running;
