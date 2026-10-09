@@ -42,7 +42,11 @@
 ### 核心（與入口無關，先做）
 
 #### 功能 1：無法對應的詞綴先剔除並列出（S）— **已完成，範圍縮小後實作**（`1f75022`）
-> 查證後發現「剔除並列出」大部分已存在（`setOn` 對 `unavailable` 的 key 一律拒絕；`judgeStats` 會列出並請玩家再查一次）。真正的缺口只有「第一次查詢前不知道屬性清單」。實作改成 `properties.ensureProperties`：**新鮮快取不開分頁**、舊副本才讀一次（開一個分頁、`finally` 關閉）、失敗丟錯（**不用舊副本**）；面板的 getter 是 best-effort（catch 後回 null，填表照舊）。3 個新測試；**開分頁那條路徑要實機才驗得到**。
+> 查證後發現「剔除並列出」大部分已存在（`setOn` 對 `unavailable` 的 key 一律拒絕；`judgeStats` 會列出並請玩家再查一次）。真正的缺口只有「第一次查詢前不知道屬性清單」。實作改成 `properties.ensureProperties`：**新鮮快取不開分頁**、舊副本才讀一次（開一個分頁、`finally` 關閉）、失敗丟錯（**不用舊副本**）；面板的 getter 是 best-effort（catch 後回 null，填表照舊）。3 個新測試。
+>
+> **實機發現（重要）**：填表是 **async** 的，而 e2e 每次都清 profile → 第一次填表要真的去讀 742 項屬性，固定 0.3 秒的快照會看到**空表單**（`ticks: 0`）。兩處修正：①把暖機提前到**玩家切到模糊搜尋模式時**（`b35e313`，fire-and-forget，把延遲藏在玩家動作後）；②e2e 改成**等「詞綴清單出現列」**（上限 25 秒）而不是等固定時間（`75fa08a`）。
+> **實機證據**：`scan_e2e` exit=0（`fuzzy_item {ticks 1, statsBase 'Sacred Rondache', statsBaseFrom 'ocr'}`、`fuzzy_base {ticks 1, statsBase 'Grand Charm'}`）；`ocr_e2e` exit=0（詞綴組 `values_filled/values_marked true`、`marked: 1`、閘門 開→清空關（理由正確）→填值開；準確度 22/21/22、30/22/29 未變；下載組 13 項全 true）。
+> **排除的假設**（離線實驗）：`unmappedKeys(normalizeProperties(fixture))` 是 **[]**，四個紀錄的詞綴鍵都對應得到 → 不是「被拒絕勾選」造成的。
 **檔案**：`extension/src/stats-form-state.js`（`fillFromScreenshot` 回傳／記錄被略過的標籤）、`extension/src/stats-form.js`、`extension/src/sidepanel.js`＋`sidepanel.css`（表單旁一行「已略過 N 條：…」）。
 **驗收**：任何入口帶進來的詞綴，若 Traderie 沒有對應屬性，就不被勾選、且被列在表單旁；按開始不會再被 `judgeStats` 的 unmapped 分支中止（前提：剩下的條件有值）。
 **驗證**：`node --test extension/test/stats-form-state.test.mjs extension/test/panel-state.test.mjs`；`uv run pytest`；實機 `scripts/ocr_e2e.py`（截圖入口）與 `scripts/scan_e2e.py`（掃描入口）。
@@ -56,6 +60,7 @@
 
 #### 功能 3：模糊搜尋結果的價格摘要（S）— **已完成**（`7282391`）
 `traderie/price-summary.js`（純）：High Rune Value 的最低／中位數／四分位（nearest-rank；`priced < 4` 不給四分位）＋未標價計數，不改動 rows；`labels.priceSummaryLine` 產出單句，`renderChrome` 把它放在結果註記行最前面（模式為 stats 時）。**注意**：parser 寫的是 `high_rune_value`（snake_case），模組兩種都讀。
+**驗證**：離線 8＋4 個案例綠；**實機未斷言**——這條路徑只在真的查詢後才出現，要驗得跑 `scripts/extension_e2e.py`（會花真實 Jev 額度），留到下一次額度驗證時一起看。
 **檔案**：新純函式（`extension/src/traderie/stats.js` 或 `price-summary.js`）、`extension/src/panel-dom.js`、測試。
 **驗收**：對已讀 rows 給最低／中位數／四分位（略過無法解析者並計數）；空清單顯示「沒有可比較的價格」；**排序鍵用 High Rune Value**（你的決定）；無模型、無額度。
 **驗證**：純函式單測（`Unknown`／複合價格／空清單／單筆）＋ `node --test` ＋ `pytest`。
@@ -100,6 +105,8 @@
 - **A（核心 1–3 後）**：`node --test "extension/test/*.test.mjs"`、`uv run pytest`、`uv run ruff check .` 全綠；實機 `ocr_e2e.py` 與 `scan_e2e.py` 各一次（序列化）；人工看「截圖入口按模糊搜尋 → 能直接開始」。
 - **B（功能 4–7 後）**：同上，另加「唯一物品不靠遊戲知識能開始模糊搜尋」「精準失敗→轉模糊」「結果指回同一來源」。
 - **C（8a 後）**：看事實再決定 8b／8c。
+
+> **驗證方式更正（重要）**：`python script.py | tee log` 的退出碼是 **tee 的**，不是腳本的。先前幾次回報的「exit 0」因此不可靠（當時的判定是靠 report 內容，結論仍成立）。之後一律寫成 `python script.py > log 2>&1; echo "exit=$?"`。
 
 ## 五、需要你本人做的事
 
