@@ -12,10 +12,11 @@ import {
   readStatsView,
   readView,
   statsCells,
+  step,
   verifyStats,
   verifyViews,
 } from "../src/traderie/controller.js";
-import { StalePage } from "../src/errors.js";
+import { AbortedError, StalePage, TimeoutError } from "../src/errors.js";
 import { parseTradingTxt } from "../src/traderie/parsing.js";
 import { TRADERIE_D2R_URL } from "../src/traderie/site.js";
 
@@ -318,4 +319,61 @@ test("a blocked run gets its verification written, but an already-verified marke
   kept.verification = seen;
   await advance(again, "Harlequin Crest", kept);
   assert.equal(kept.verification, seen);
+});
+
+test("a page that never settles is an unsettled FAILED read; any other read error is rethrown", async () => {
+  const timedOut = new FakeTab(TRADING_URL, "Harlequin Crest");
+  timedOut.readSettledPage = async () => {
+    throw new TimeoutError("never settled");
+  };
+  const result = await readView(timedOut, "Harlequin Crest", "trading");
+  assert.deepEqual([result.status, result.reason_code, result.settled], ["FAILED", "unsettled", false]);
+  assert.match(result.reason, /頁面一直沒有載入完成/u);
+
+  const stale = new FakeTab(TRADING_URL, "Harlequin Crest");
+  stale.readSettledPage = async () => {
+    throw new StalePage();
+  };
+  const staleResult = await readView(stale, "Harlequin Crest", "trading");
+  assert.deepEqual([staleResult.status, staleResult.reason_code], ["FAILED", "unsettled"]);
+
+  const broken = new FakeTab(TRADING_URL, "Harlequin Crest");
+  broken.readSettledPage = async () => {
+    throw new Error("cdp socket died");
+  };
+  await assert.rejects(() => readView(broken, "Harlequin Crest", "trading"), /cdp socket died/u);
+});
+
+test("a product page whose title is a different item is FAILED as wrong_item", async () => {
+  const result = await readView(new FakeTab(TRADING_URL, "Stone of Jordan"), "Stone of Jordan", "trading");
+  assert.deepEqual([result.status, result.reason_code], ["FAILED", "wrong_item"]);
+  assert.match(result.reason, /不是 Stone of Jordan 的商品頁/u);
+});
+
+test("a tick that throws runs the controller work once more and reports the tick's own error", async () => {
+  const commands = [];
+  const agent = {
+    state: { awaiting_handoff: true },
+    tab: new FakeTab(TRADING_URL, lines("Harlequin Crest", "There are no listings")),
+    command: async (name) => {
+      commands.push(name);
+      if (name === "tick") throw new Error("tick-boom");
+    },
+  };
+  await assert.rejects(() => step(agent, "Harlequin Crest", newMarket()), /tick-boom/u);
+  assert.deepEqual(commands, ["handoff", "tick", "handoff"]);
+});
+
+test("an AbortedError from the tick does not run the controller work again", async () => {
+  const commands = [];
+  const agent = {
+    state: { awaiting_handoff: true },
+    tab: new FakeTab(TRADING_URL, lines("Harlequin Crest", "There are no listings")),
+    command: async (name) => {
+      commands.push(name);
+      if (name === "tick") throw new AbortedError();
+    },
+  };
+  await assert.rejects(() => step(agent, "Harlequin Crest", newMarket()), /查詢已停止/u);
+  assert.deepEqual(commands, ["handoff", "tick"]);
 });

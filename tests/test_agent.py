@@ -855,3 +855,380 @@ def test_a_first_observation_that_fails_closes_the_browser_and_raises(monkeypatc
     with pytest.raises(RuntimeError):
         loop.Agent("https://example.test/", "Find a book")
     assert browser.close.called
+
+
+# --- the recovery path is bounded: a failed probe is ignored, a stale read is retried, the last try re-raises ---
+
+
+def test_a_failing_readiness_probe_never_stops_stale_recovery(runner):
+    runner.state["browser"].fresh.side_effect = StalePage("Document navigating")
+    runner.state["browser"].wait_until_ready = Mock(side_effect=RuntimeError("the daemon went away"))
+
+    runner.command("tick")
+
+    assert runner.state["status"] == "ready"
+
+
+def test_a_stale_observation_is_retried_before_the_run_gives_up(runner):
+    runner.state["browser"].fresh.side_effect = StalePage("Document navigating")
+    runner.state["browser"].observe.side_effect = [StalePage("still navigating"), page()]
+
+    runner.command("tick")
+
+    assert runner.state["status"] == "ready"
+    assert runner.state["browser"].observe.call_count == 2
+
+
+def test_the_last_reobserve_attempt_re_raises_so_the_run_cannot_spin(runner):
+    runner.state["browser"].fresh.side_effect = StalePage("Document navigating")
+    runner.state["browser"].observe.side_effect = StalePage("still navigating")
+
+    with pytest.raises(StalePage):
+        runner.command("tick")
+
+    assert runner.state["browser"].observe.call_count == loop.REOBSERVE_ATTEMPTS
+
+
+# --- the mechanical loading rule hands back to Jev when the page offers nothing to press ---
+
+
+def test_the_loading_rule_hands_back_to_jev_when_the_next_button_is_missing(runner, monkeypatch):
+    runner.finish_phase_after = ("Load More", 5)
+    runner.state["history"] = [{"action": "Wait", "choice": "wait", "kind": "wait"}]
+    asked = []
+    monkeypatch.setattr(
+        loop, "choose", lambda *_a, **_k: asked.append(1) or _jev_answer("e3", "CLICK", {"CLICK": 1.0})
+    )
+    runner.state["decision"] = None
+    runner.state["status"] = "ready"
+
+    runner.command("predict")
+
+    assert asked == [1]
+    assert runner.state["decision"]["choice"] == "e3"
+
+
+# --- the decision log names a blocked verdict the way the panel shows it ---
+
+
+def test_a_blocked_choice_is_logged_as_blocked(runner, monkeypatch):
+    monkeypatch.setattr(loop, "choose", lambda *_a, **_k: _jev_answer("BLOCKED", "BLOCKED", {"BLOCKED": 1.0}))
+    runner.state["decision"] = None
+    runner.state["status"] = "ready"
+
+    runner.command("predict")
+
+    assert runner.state["decisions"][-1]["label"] == "受阻"
+
+
+# --- every command/guard that must refuse does so with its contract message ---
+
+
+def test_an_unknown_command_is_refused(runner):
+    with pytest.raises(ValueError, match="Unknown command"):
+        runner.command("teleport")
+
+
+def test_predict_without_a_browser_asks_for_a_demo_first(runner):
+    runner.state["browser"] = None
+    runner.state["decision"] = None
+    runner.state["status"] = "ready"
+
+    with pytest.raises(ValueError, match="Start a demo first"):
+        runner.command("predict")
+
+
+def test_the_first_prediction_starts_the_clock(runner, monkeypatch):
+    monkeypatch.setattr(loop, "choose", lambda *_a, **_k: _jev_answer("e3", "CLICK", {"CLICK": 1.0}))
+    runner.state["started_at"] = None
+    runner.state["decision"] = None
+    runner.state["status"] = "ready"
+
+    runner.command("predict")
+
+    assert isinstance(runner.state["started_at"], float)
+    assert runner.state["decisions"][-1]["elapsed_ms"] >= 0
+
+
+def test_predict_during_a_pending_handoff_is_refused(runner):
+    runner.state["awaiting_handoff"] = True
+    runner.state["decision"] = None
+    runner.state["status"] = "ready"
+
+    with pytest.raises(ValueError, match="Controller handoff required"):
+        runner.command("predict")
+
+    runner.state["browser"].fresh.assert_not_called()
+
+
+def test_predict_stops_when_the_model_call_budget_is_spent(runner, monkeypatch):
+    monkeypatch.setattr(loop, "choose", lambda *_a, **_k: pytest.fail("no model call past the budget"))
+    runner.state["decisions"] = [{}] * (loop.MAX_STEPS * 2)
+    runner.state["history"] = []
+    runner.state["decision"] = None
+    runner.state["status"] = "ready"
+
+    with pytest.raises(ValueError, match="model-call budget"):
+        runner.command("predict")
+
+
+def test_predict_reobserves_when_the_page_is_no_longer_fresh(runner, monkeypatch):
+    monkeypatch.setattr(loop, "choose", lambda *_a, **_k: _jev_answer("e3", "CLICK", {"CLICK": 1.0}))
+    fresh_page = {**page(), "text": "Search results"}
+    fresh_page["fingerprint"] = fingerprint(fresh_page)
+    runner.state["browser"].fresh.return_value = False
+    runner.state["browser"].observe.return_value = fresh_page
+    runner.state["decision"] = None
+    runner.state["status"] = "ready"
+
+    runner.command("predict")
+
+    runner.state["browser"].observe.assert_called_once()
+    assert runner.state["page"] is fresh_page
+    assert runner.state["decisions"][-1]["fingerprint"] == fresh_page["fingerprint"]
+
+
+def test_handoff_without_a_pending_phase_is_refused(runner):
+    runner.state["awaiting_handoff"] = False
+
+    with pytest.raises(ValueError, match="No phase handoff is pending"):
+        runner.command("handoff")
+
+    runner.state["browser"].observe.assert_not_called()
+
+
+def test_act_without_a_current_decision_is_refused(runner):
+    runner.state["decision"] = None
+
+    with pytest.raises(ValueError, match="Observe and choose before acting"):
+        runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
+
+    runner.state["browser"].act.assert_not_called()
+
+
+def test_act_with_a_stale_fingerprint_is_refused(runner):
+    with pytest.raises(ValueError, match="Observe and choose before acting"):
+        runner.command("act", {"fingerprint": "outdated"})
+
+    runner.state["browser"].act.assert_not_called()
+    assert runner.state["decision"] is not None  # a refused act never consumes the decision
+
+
+def test_a_choice_that_left_the_page_is_stale_and_never_an_input(runner):
+    runner.state["decision"] = decision("gone")
+
+    with pytest.raises(StalePage, match="Chosen element is no longer available"):
+        runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
+
+    runner.state["browser"].act.assert_not_called()
+    assert runner.state["history"] == []
+
+
+# --- the agent is a context manager over its browser ---
+
+
+def test_close_hands_off_to_the_browser(runner):
+    runner.browser = Mock()
+    runner.close()
+    runner.browser.close.assert_called_once()
+
+
+def test_the_agent_closes_its_browser_as_a_context_manager(runner):
+    runner.browser = Mock()
+    with runner as entered:
+        assert entered is runner
+    runner.browser.close.assert_called_once()
+
+
+# --- browser.py: wait_until_ready, observe's probe/retry, act's wait, target resolution, cookies ---
+
+
+def test_a_cookie_that_cannot_be_set_is_reported_by_name(monkeypatch):
+    import jev_ultrafast.browser as browser
+
+    monkeypatch.setattr(browser, "get_settings", lambda: object())
+    monkeypatch.setattr(browser, "cookie_specs", lambda _settings: [{"name": "traderie_session", "value": "x"}])
+
+    def call(_method, **params):
+        return {"success": False}
+
+    with pytest.raises(RuntimeError, match="Failed to set Traderie cookie 'traderie_session'"):
+        browser._inject_traderie_auth(call)
+
+
+def test_wait_until_ready_polls_past_a_navigation_and_returns_true(monkeypatch):
+    import jev_ultrafast.browser as browser
+
+    b = browser.Browser.__new__(browser.Browser)
+    b.evaluate = Mock(side_effect=[False, StalePage("navigating"), True])
+    monkeypatch.setattr(browser.time, "sleep", lambda _s: None)
+
+    assert b.wait_until_ready(timeout=1.0) is True
+    assert b.evaluate.call_count == 3
+
+
+def test_wait_until_ready_gives_up_at_its_deadline(monkeypatch):
+    import jev_ultrafast.browser as browser
+
+    b = browser.Browser.__new__(browser.Browser)
+    b.evaluate = Mock(return_value=False)
+    monkeypatch.setattr(browser.time, "sleep", lambda _s: None)
+
+    assert b.wait_until_ready(timeout=0) is False
+    assert b.evaluate.call_count == 1
+
+
+def test_the_after_input_probe_runs_once_per_action(monkeypatch):
+    import jev_ultrafast.browser as browser
+
+    b = browser.Browser.__new__(browser.Browser)
+    b.session = "s"
+    b.after_input = {"id": "e1", "kind": "click", "label": "Go", "node": 20}
+    b.call = Mock(return_value={})
+    result = page()
+    operation = Mock(return_value=result)
+    monkeypatch.setattr(browser, "browser_operation", operation)
+
+    assert b.observe(screenshot=False) is result
+    assert b.after_input is None
+    assert b.call.call_count == 1  # the settle probe ran exactly once, before the observation
+    assert b.call.call_args.args[0] == "Runtime.evaluate"
+    assert '"id": "e1"' in b.call.call_args.kwargs["expression"]
+
+    b.observe(screenshot=False)  # no probe is left to run on the next read
+    assert b.call.call_count == 1
+    assert operation.call_count == 2
+
+
+def test_a_failed_after_input_probe_never_hides_the_next_observation(monkeypatch):
+    import jev_ultrafast.browser as browser
+
+    b = browser.Browser.__new__(browser.Browser)
+    b.session = "s"
+    b.after_input = {"id": "e1", "kind": "click", "label": "Go", "node": 20}
+    b.call = Mock(side_effect=RuntimeError("the page navigated under the probe"))
+    result = page()
+    monkeypatch.setattr(browser, "browser_operation", Mock(return_value=result))
+
+    assert b.observe(screenshot=False) is result
+    assert b.after_input is None
+
+
+def test_observe_retries_a_stale_document_before_giving_up(monkeypatch):
+    import jev_ultrafast.browser as browser
+
+    b = browser.Browser.__new__(browser.Browser)
+    b.session = "s"
+    operation = Mock(side_effect=StalePage("navigating"))
+    monkeypatch.setattr(browser, "browser_operation", operation)
+    monkeypatch.setattr(browser.time, "sleep", lambda _s: None)
+
+    with pytest.raises(StalePage):
+        b.observe(screenshot=False)
+
+    assert operation.call_count == 10
+
+
+def test_a_stale_observation_is_retried_without_giving_up(monkeypatch):
+    import jev_ultrafast.browser as browser
+
+    b = browser.Browser.__new__(browser.Browser)
+    b.session = "s"
+    operation = Mock(side_effect=[StalePage("navigating"), page()])
+    monkeypatch.setattr(browser, "browser_operation", operation)
+    monkeypatch.setattr(browser.time, "sleep", lambda _s: None)
+
+    assert b.observe(screenshot=False)["url"] == "https://example.test/"
+    assert operation.call_count == 2
+
+
+def test_a_wait_action_sleeps_and_leaves_nothing_to_settle(monkeypatch):
+    import jev_ultrafast.browser as browser
+
+    b = browser.Browser.__new__(browser.Browser)
+    b.session = "s"
+    b.fresh = Mock(return_value=True)
+    b.after_input = {"id": "old", "kind": "click"}
+    sleeps = []
+    monkeypatch.setattr(browser.time, "sleep", lambda seconds: sleeps.append(seconds))
+    operation = Mock(return_value={"executed": "wait"})
+    monkeypatch.setattr(browser, "browser_operation", operation)
+
+    assert b.act({"id": "wait", "kind": "wait", "label": "Wait"}, page()) == {"executed": "wait"}
+
+    assert sleeps == [4.0]
+    assert b.after_input is None
+
+
+def test_acting_on_a_node_that_is_not_an_observed_integer_is_refused(monkeypatch):
+    import jev_ultrafast.browser as browser
+
+    cdp = Mock()
+    monkeypatch.setattr(browser, "cdp", cdp)
+
+    with pytest.raises(ValueError, match="Invalid observed node"):
+        browser_operation(
+            {"operation": "act", "session": "s", "action": {"id": "e1", "kind": "click", "node": "e1"}}
+        )
+
+    cdp.assert_not_called()
+
+
+def test_a_click_on_a_target_that_moved_is_stale(monkeypatch):
+    import jev_ultrafast.browser as browser
+
+    cdp = Mock(return_value={"result": {"value": None}})
+    monkeypatch.setattr(browser, "cdp", cdp)
+
+    with pytest.raises(StalePage, match="Target changed or is covered"):
+        browser_operation(
+            {"operation": "act", "session": "s", "action": {"id": "e1", "kind": "click", "node": 20}}
+        )
+
+
+def test_a_click_presses_and_releases_at_the_resolved_point(monkeypatch):
+    import jev_ultrafast.browser as browser
+
+    cdp = Mock(side_effect=[{"result": {"value": {"x": 12, "y": 34}}}, {}, {}])
+    monkeypatch.setattr(browser, "cdp", cdp)
+
+    result = browser_operation(
+        {"operation": "act", "session": "s", "action": {"id": "e1", "kind": "click", "node": 20}}
+    )
+
+    assert result == {"executed": "e1"}
+    methods = [c.args[0] for c in cdp.call_args_list]
+    assert methods == ["Runtime.evaluate", "Input.dispatchMouseEvent", "Input.dispatchMouseEvent"]
+    assert [c.kwargs["type"] for c in cdp.call_args_list[1:]] == ["mousePressed", "mouseReleased"]
+    assert [(c.kwargs["x"], c.kwargs["y"]) for c in cdp.call_args_list[1:]] == [(12, 34), (12, 34)]
+
+
+def test_a_fill_types_at_the_resolved_point(monkeypatch):
+    import jev_ultrafast.browser as browser
+
+    cdp = Mock(side_effect=[{"result": {"value": {"x": 1, "y": 2}}}] + [{}] * 5)
+    monkeypatch.setattr(browser, "cdp", cdp)
+
+    browser_operation(
+        {
+            "operation": "act",
+            "session": "s",
+            "text": "Shako",
+            "action": {"id": "e1", "kind": "fill", "node": 20},
+        }
+    )
+
+    methods = [c.args[0] for c in cdp.call_args_list]
+    assert methods.count("Input.dispatchKeyEvent") == 2
+    insert = next(c for c in cdp.call_args_list if c.args[0] == "Input.insertText")
+    assert insert.kwargs["text"] == "Shako"
+
+
+def test_an_observation_while_the_document_is_navigating_is_stale(monkeypatch):
+    import jev_ultrafast.browser as browser
+
+    cdp = Mock(return_value={"result": {}})
+    monkeypatch.setattr(browser, "cdp", cdp)
+
+    with pytest.raises(StalePage, match="Document is navigating"):
+        browser_operation({"operation": "observe", "session": "s", "screenshot": False})

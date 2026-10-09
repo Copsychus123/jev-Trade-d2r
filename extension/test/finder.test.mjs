@@ -151,3 +151,25 @@ test("an empty search after the base search is not found, with no third try", as
   assert.equal(await findAndRead(args), "not_found");
   assert.equal(calls.picked, 1);
 });
+
+test("a table landing whose page never settles is a miss and search takes over", async () => {
+  const { args, calls } = setup({
+    landing: { url: `${ROOT}/product/harlequin-crest`, title: "Harlequin Crest" },
+    agents: [done],
+  });
+  const stuck = new FakeTab(`${ROOT}/product/harlequin-crest`, null);
+  stuck.readSettledPage = async () => {
+    throw new Error("never settled");
+  };
+  args.openTab = async (url) => {
+    calls.opened.push(url);
+    calls.tab = stuck;
+    return stuck;
+  };
+  const tableStats = { jumps: 0, misses: 0 };
+  assert.equal(await findAndRead({ ...args, tableStats }), "ran");
+  assert.equal(args.market.lookup.layer, "search");
+  assert.deepEqual(tableStats, { jumps: 1, misses: 1 });
+  assert.match(args.market.lookup.notes.join(" "), /商品頁沒有載入完成/u);
+  assert.equal(calls.tab.visited.at(-1), ROOT);
+});

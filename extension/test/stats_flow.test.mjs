@@ -6,6 +6,8 @@ import { newMarket } from "../src/traderie/controller.js";
 import { PROPERTIES_KEY } from "../src/traderie/properties.js";
 import { TRADERIE_D2R_URL } from "../src/traderie/site.js";
 import { findAndReadStats } from "../src/traderie/stats_flow.js";
+import { StalePage, TimeoutError } from "../src/errors.js";
+import { newTimeline } from "../src/timeline.js";
 
 const list = readFileSync(new URL("../../tests/fixtures/home_stats.txt", import.meta.url), "utf8");
 const apiProperties = JSON.parse(readFileSync(new URL("./fixtures/properties.json", import.meta.url), "utf8"));
@@ -164,4 +166,45 @@ test("the sidebar's type list that is drawn late is waited for before a base is 
   const { market } = await run(never, { conditions: [cond("fcr", "施法速度", 10)], base: "Ring" });
   assert.deepEqual(never.navigated, [`${TRADERIE_D2R_URL}?prop_520Min=10`]);
   assert.ok(market.lookup.notes.some((note) => note.includes("不是網站的物品類型")));
+});
+
+test("the home read is recorded with its attempt number and whether the page settled", async () => {
+  const session = { tab: null, timeline: newTimeline() };
+  await run(new FlowTab(), { conditions: [cond("fcr", "施法速度", 10)], session });
+  const entry = session.timeline.entries.find((e) => e.stage === "read_home");
+  assert.deepEqual([entry.attempt, entry.settled], [1, true]);
+});
+
+test("a home page that never settles is reported as such, not as a raw timeout", async () => {
+  class StalledHome extends FlowTab {
+    async readSettledPage() {
+      throw new TimeoutError("never settled");
+    }
+  }
+  await assert.rejects(
+    () => run(new StalledHome(), { conditions: [cond("fcr", "施法速度", 10)] }),
+    /Traderie 首頁一直沒有載入完成/u,
+  );
+
+  class StaleHome extends FlowTab {
+    async readSettledPage() {
+      throw new StalePage();
+    }
+  }
+  await assert.rejects(
+    () => run(new StaleHome(), { conditions: [cond("fcr", "施法速度", 10)] }),
+    /Traderie 首頁一直沒有載入完成/u,
+  );
+});
+
+test("a home read that fails for another reason is propagated unchanged", async () => {
+  class BrokenHome extends FlowTab {
+    async readSettledPage() {
+      throw new Error("cdp socket died");
+    }
+  }
+  await assert.rejects(
+    () => run(new BrokenHome(), { conditions: [cond("fcr", "施法速度", 10)] }),
+    /cdp socket died/u,
+  );
 });

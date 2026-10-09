@@ -14,6 +14,7 @@ import {
   resolveBase,
   resolveInput,
   searchFoundNothing,
+  searchShowsItem,
   stripToBase,
   suggestNames,
   tableAge,
@@ -388,4 +389,25 @@ test("baseOptions hands the shipped item types over in the table's own order, wi
   assert.deepEqual(baseOptions(null), []);
   assert.deepEqual(baseOptions({}), []);
   assert.deepEqual(baseOptions({ bases: ["Ring", "Helm", "Ring", "Grand Charm"] }), ["Ring", "Helm", "Grand Charm"]);
+});
+
+test("a search page that lists the item as a link means a blocked verdict was a misjudgement", () => {
+  const url = "https://www.traderie.com/diablo2resurrected?search=harlequin+crest";
+  const found = {
+    url,
+    text: "Best Match\nHarlequin Crest",
+    actions: [{ kind: "click", role: "link", label: "Harlequin Crest" }],
+  };
+  assert.equal(searchShowsItem(found, "Harlequin Crest"), true);
+  // the address is not a search page
+  assert.equal(searchShowsItem({ ...found, url: "https://www.traderie.com/diablo2resurrected" }, "Harlequin Crest"), false);
+  // the page itself says nothing matched
+  assert.equal(searchShowsItem({ ...found, text: "Best Match\nNo results could be found" }, "Harlequin Crest"), false);
+  // the only link names a different item
+  assert.equal(searchShowsItem({ ...found, actions: [{ kind: "click", role: "link", label: "Shako" }] }, "Harlequin Crest"), false);
+  // a matching label that is not a clickable link does not count
+  assert.equal(
+    searchShowsItem({ ...found, actions: [{ kind: "click", role: "button", label: "Harlequin Crest" }] }, "Harlequin Crest"),
+    false,
+  );
 });

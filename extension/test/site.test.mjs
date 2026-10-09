@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { TRADERIE_D2R_URL, detectGuard } from "../src/traderie/site.js";
+import { TRADERIE_D2R_URL, detectGuard, phaseFinishRule, traderieScopeReason } from "../src/traderie/site.js";
 
 const tab = { evaluate: async () => false };
 const frameTab = { evaluate: async () => true };
@@ -67,4 +67,20 @@ test("verify you are human is a guard even when the page carries listings", asyn
 
 test("a challenge frame in the page is a guard on its own", async () => {
   assert.equal(await detectGuard(page("Trading For\n1 X Gul Rune"), frameTab), "防護頁/驗證碼");
+});
+
+test("the load-more finish rule names the button only when a count was asked for", () => {
+  assert.equal(phaseFinishRule(0), null);
+  assert.deepEqual(phaseFinishRule(1), ["Load More", 1]);
+  assert.deepEqual(phaseFinishRule(5), ["Load More", 5]);
+});
+
+test("the scope reason accepts the D2R root, product and search paths and rejects anything else", () => {
+  assert.equal(traderieScopeReason(`${TRADERIE_D2R_URL}/product/shako`), null);
+  assert.equal(traderieScopeReason(`${TRADERIE_D2R_URL}/search`), null);
+  assert.equal(traderieScopeReason(TRADERIE_D2R_URL), null);
+  assert.equal(
+    traderieScopeReason(`${TRADERIE_D2R_URL}/settings/profile`),
+    "超出 Traderie D2R 範圍：/diablo2resurrected/settings/profile",
+  );
 });

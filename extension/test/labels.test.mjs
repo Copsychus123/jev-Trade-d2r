@@ -456,3 +456,16 @@ test("the source line names where the input came from, and nothing for typing", 
   );
   assert.equal(sourceLine({ kind: "scan", time: "", affixes: "" }), "來源：掃描紀錄");
 });
+
+test("progressSteps with nothing found yet and a run underway marks find active", () => {
+  const market = {
+    trading: { status: "NOT_RUN", reason: null },
+    recent_trades: { status: "NOT_RUN", reason: null },
+    verification: null,
+    lookup: null,
+  };
+  const result = progressSteps({ market, phase: null, running: true });
+  assert.equal(result[0].key, "find");
+  assert.equal(result[0].state, "active"); // nothing found (no layer, no phase, both views NOT_RUN) and running
+  assert.equal(result[1].state, "pending"); // find is not done yet, so trading waits
+});

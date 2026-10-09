@@ -20,3 +20,15 @@ test("a failure is recorded and rethrown unchanged; no timeline means the work j
   assert.equal(await timed({}, "x", async () => 7), 7);
   assert.equal(await timed(null, "x", async () => 8), 8);
 });
+
+test("a details callback that throws is caught: the query's result comes back and the entry has no details", async () => {
+  const session = { timeline: newTimeline(clock(0, 10, 30)) };
+  const value = await timed(
+    session,
+    "read_list",
+    async () => ({ rows: 3 }),
+    () => { throw new TypeError("details boom"); },
+  );
+  assert.deepEqual(value, { rows: 3 });
+  assert.deepEqual(session.timeline.entries, [{ stage: "read_list", start_ms: 10, ms: 20 }]);
+});
