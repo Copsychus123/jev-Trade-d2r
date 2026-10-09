@@ -100,7 +100,10 @@
 
 ### 可選（工程量大，先探測）
 
-#### 功能 8：模糊搜尋也讀近期成交（L → 8a 探測／8b 讀取／8c 呈現）
+#### 功能 8：模糊搜尋也讀近期成交（L → 8a 探測／8b 讀取／8c 呈現）— **8a 完成：不可行，8b／8c 取消**（探測 `da28156`）
+**事實**（專用 Chrome 已登入，2026-10-09，已寫進 `docs/design.md` 的探測清單）：帶 filter 的首頁 **1037 個連結裡沒有任何一個通往近期成交分頁**、頁面只有掛單標記（`Make an Offer`）；把商品頁在用的 `/recent` 寫法套上同一組 filter（`/diablo2resurrected/recent?prop_520Min=1`）會落到 HELP 頁尾、**0 筆、無成交標記**；真正的成交價**只存在於商品頁**的 `They Give` 區塊（對照組 B 讀到 `They Give`＋`1 X Ist Rune`）。
+**結論**：模糊搜尋這條路徑**沒有成交價的資料來源**，「要價 + 成交價」在此不成立 → 8b／8c 取消。日後若要成交價，唯一方向是**先鎖定單一商品**（也就是回到精準搜尋那條路）。
+**探測腳本注意**：`scripts/probe_stats.py` 會**改寫 tracked 的 `tests/fixtures/home_stats.txt`**（本次執行後已還原到 HEAD）；要刷新那份 fixture 請**單獨提交**，不要讓它混在功能提交裡。
 **8a（read-only，S）**：`scripts/probe_stats.py` 實測「同一組 filter URL 是否存在 `/recent` 分頁、頁面文字是否含成交」。
 **驗收**：產出「可／不可＋實測 URL 與頁面片段」，不寫死假設。
 **相依**：8a 擋 8b、8c。
