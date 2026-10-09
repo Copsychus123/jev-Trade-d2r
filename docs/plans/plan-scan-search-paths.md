@@ -41,19 +41,21 @@
 
 ### 核心（與入口無關，先做）
 
-#### 功能 1：無法對應的詞綴先剔除並列出（S）
+#### 功能 1：無法對應的詞綴先剔除並列出（S）— **已完成，範圍縮小後實作**（`1f75022`）
+> 查證後發現「剔除並列出」大部分已存在（`setOn` 對 `unavailable` 的 key 一律拒絕；`judgeStats` 會列出並請玩家再查一次）。真正的缺口只有「第一次查詢前不知道屬性清單」。實作改成 `properties.ensureProperties`：**新鮮快取不開分頁**、舊副本才讀一次（開一個分頁、`finally` 關閉）、失敗丟錯（**不用舊副本**）；面板的 getter 是 best-effort（catch 後回 null，填表照舊）。3 個新測試；**開分頁那條路徑要實機才驗得到**。
 **檔案**：`extension/src/stats-form-state.js`（`fillFromScreenshot` 回傳／記錄被略過的標籤）、`extension/src/stats-form.js`、`extension/src/sidepanel.js`＋`sidepanel.css`（表單旁一行「已略過 N 條：…」）。
 **驗收**：任何入口帶進來的詞綴，若 Traderie 沒有對應屬性，就不被勾選、且被列在表單旁；按開始不會再被 `judgeStats` 的 unmapped 分支中止（前提：剩下的條件有值）。
 **驗證**：`node --test extension/test/stats-form-state.test.mjs extension/test/panel-state.test.mjs`；`uv run pytest`；實機 `scripts/ocr_e2e.py`（截圖入口）與 `scripts/scan_e2e.py`（掃描入口）。
 **相依**：無。
 
-#### 功能 2：數值預填但標記（S，**你已同意：要**）
-**檔案**：`extension/src/stats-form-state.js`（`fillFromScreenshot` 增加可選「帶入數值」）、`extension/src/stats-form.js`、`extension/src/sidepanel.css`（`.from-capture`）。
-**驗收**：只預填**單純整數**；欄位標記「從擷取讀到，請確認」；**玩家仍須自己按開始查詢**；不勾選的條件不受影響；`startBlocker` 對已預填的條件不再要求手打。
-**驗證**：`stats-form-state` 單測（預填／不預填兩態、非整數不填、± 保留）＋ `node --test` ＋ `pytest` ＋ 實機 `ocr_e2e.py`／`scan_e2e.py`。
-**相依**：無。
+#### 功能 2：數值預填但標記（S，**你已同意：要**）— **已完成**（`7cc08c3` 功能、`cfc272a` e2e、`cbeb900` 只標記有值的那一格）
+**檔案**：`extension/src/stats-form-state.js`（`fillFromScreenshot` 的 `{ carryValues }`）、`extension/src/stats-form.js`、`extension/src/sidepanel.css`（`.from-capture`）、`scripts/ocr_e2e.py`（詞綴組改量測新行為）、`tests/test_e2e_scripts.py`。
+**驗收（已達成）**：只預填擷取到的數字；只有**真的有值**的那一格加上 `.from-capture` 與「從擷取讀到，請確認」；玩家自己打過的數字不會被後續讀取覆蓋；**仍需玩家按開始查詢**。
+**實機證據**（`artifacts/ocr-e2e/report.json`，19:29，exit 0）：`values_filled: true`（`min: "11"`）、`values_marked: true`、`start_gate_after_capture: {disabled:false}`（擷取到的值就開了閘門）、把每一格透過頁面清空後 `start_gate_after_clearing: {disabled:true, whyVisible:true}` 且理由為「有勾選的條件還沒填數值：冰寒抗性」、補回一個值後 `start_enabled_after_value: {disabled:false}`。`scan_e2e.py` 19:34 exit 0（`fuzzy_item.ticks 1`、`fuzzy_base.ticks 3`）。準確度未受影響（22/21/22、30/22/29）。
+**待辦**：`cbeb900` 的標記粒度修正在那次實機之後，下一個實機檢查點要重跑 `ocr_e2e` 確認（離線測試已綠）。
 
-#### 功能 3：模糊搜尋結果的價格摘要（S）
+#### 功能 3：模糊搜尋結果的價格摘要（S）— **已完成**（`7282391`）
+`traderie/price-summary.js`（純）：High Rune Value 的最低／中位數／四分位（nearest-rank；`priced < 4` 不給四分位）＋未標價計數，不改動 rows；`labels.priceSummaryLine` 產出單句，`renderChrome` 把它放在結果註記行最前面（模式為 stats 時）。**注意**：parser 寫的是 `high_rune_value`（snake_case），模組兩種都讀。
 **檔案**：新純函式（`extension/src/traderie/stats.js` 或 `price-summary.js`）、`extension/src/panel-dom.js`、測試。
 **驗收**：對已讀 rows 給最低／中位數／四分位（略過無法解析者並計數）；空清單顯示「沒有可比較的價格」；**排序鍵用 High Rune Value**（你的決定）；無模型、無額度。
 **驗證**：純函式單測（`Unknown`／複合價格／空清單／單筆）＋ `node --test` ＋ `pytest`。
@@ -68,7 +70,8 @@
 
 ### 加值（入口 ③ 掃描專屬）
 
-#### 功能 5：掃描紀錄帶上底材候選 → 模糊搜尋自動預填（S）
+#### 功能 5：掃描紀錄帶上底材候選 → 模糊搜尋自動預填（S）— **已完成**（`b2c6b64`）
+`scan/session.js` 匯出純函式 `baseCandidate(candidates)`（第一個 `kind === "base"`），`addRecord` 存 `base`，`scan-panel.js` 把同一輪 `ocr.match(text)` 的候選交進去；`onSearchStats` 對非底材紀錄用 `record.base` 預填（`setBaseFromScreenshot` 仍不覆蓋玩家自己打的值、並標記來自擷取）。
 **檔案**：`extension/src/scan/scan-panel.js`（`:124` 已算出 `ocr.match(text)` 的完整候選，現在只取 `[0]`）、`extension/src/scan/session.js`（`addRecord` 多存 `base`）、`extension/src/sidepanel.js`（`onSearchStats`）。
 **驗收**：唯一物品的紀錄按下模糊搜尋後底材欄已填（欄位標記為「來自擷取」可改），無候選時維持原本提示；CSV 欄位與既有紀錄不變。
 **驗證**：`node --test extension/test/scan-session.test.mjs`（候選挑選的純函式）＋ `pytest` ＋ 實機 `scan_e2e.py`。
