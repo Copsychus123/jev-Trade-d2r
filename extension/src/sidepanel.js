@@ -490,7 +490,19 @@ function showSettings(open) {
 /** Switches between the name search and the affix search. Never persisted: the panel asks every time. */
 function setMode(mode) {
   queryMode = mode;
+  if (mode === "stats") warmUpProperties(); // so the first fill does not wait for the read (it may open one tab)
   render();
+}
+
+/** Best effort, once: have Traderie's property list ready before the first affix fill. A failure is reported where the
+ * query needs it (judgeStats), never here. */
+let propertiesWarmed = false;
+function warmUpProperties() {
+  if (propertiesWarmed) return;
+  propertiesWarmed = true;
+  loadPageScripts()
+    .then((scripts) => ensureProperties({ openTab: () => Tab.open(TRADERIE_D2R_URL, scripts), scripts }))
+    .catch(() => {});
 }
 
 /** Where typing starts on the current screen. */
