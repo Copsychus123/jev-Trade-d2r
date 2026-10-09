@@ -1,5 +1,33 @@
 import { csvFileName, toCsv } from "/csv.js";
 const $ = (id) => document.getElementById(id);
+
+// What a failed check means, in the player's words: the ids in `verification.failed_checks` are internal, and a
+// non-technical player must not be shown "same_product" or "recent_rows_ok". The panel has the same list
+// (`extension/src/labels.js` CHECK_REASONS) and `extension/test/check-reasons-parity.test.mjs` keeps the two in step.
+const CHECK_REASONS = {
+  product_page: "無法確認進到了商品頁面",
+  item_match: "這頁面不像是你找的商品",
+  same_product: "掛單和成交紀錄是不同商品的",
+  trading_view: "掛單頁不是預期的頁面",
+  recent_view: "沒有打開近期成交頁面",
+  trading_rows_ok: "無法讀取掛單",
+  recent_rows_ok: "無法讀取成交紀錄",
+  not_blocked: "網站擋住了讀取（可能需要登入）",
+  home_page: "沒有停在 Traderie 首頁",
+  filters_in_url: "網站沒有保留你設定的條件",
+  filters_shown: "頁面上看不到套用中的條件",
+  rows_match_filters: "掛單上看不到你設定的條件，網站可能沒有套用篩選",
+};
+
+/** The sentences of the failed checks, each said once, in the order they failed. */
+function explainChecks(ids) {
+  const sentences = [];
+  for (const id of ids || []) {
+    const sentence = CHECK_REASONS[id] ?? "有一項檢查沒通過";
+    if (!sentences.includes(sentence)) sentences.push(sentence);
+  }
+  return sentences;
+}
 const token = document.querySelector('meta[name="demo-token"]').content;
 let state = null,
   busy = false,
@@ -378,9 +406,8 @@ function renderReport() {
     $("report-content").textContent = "";
     $("download-report").hidden = true;
     const reasons = Object.values(verification.view_reasons || {});
-    const failed = (verification.failed_checks || []).join("、");
     reasonEl.hidden = false;
-    reasonEl.textContent = `檢查未通過：${[...reasons, failed].filter(Boolean).join("；")}`;
+    reasonEl.textContent = `檢查未通過：${[...reasons, ...explainChecks(verification.failed_checks)].filter(Boolean).join("；")}`;
   } else {
     section.hidden = true;
     reasonEl.hidden = true;
