@@ -78,6 +78,15 @@ export function indexTables(data) {
 }
 
 /**
+ * The item types the table ships, in its own order, for the affix form's suggestion list. The list is a fixed option
+ * list (never a filter over the page's elements) and it comes from the shipped table, so no base name is written in
+ * code. Empty when the tables are not loaded yet.
+ */
+export function baseOptions(tables) {
+  return [...new Set(tables?.bases ?? [])];
+}
+
+/**
  * Up to `limit` names from the item tables for what is typed so far, best first; never the typed name itself.
  * Chinese: table names (separators ignored) that start with it, then those containing it; { label, hint: English }.
  * English (at least 2 letters after normalizeName): product names that start with it, then those with a word that

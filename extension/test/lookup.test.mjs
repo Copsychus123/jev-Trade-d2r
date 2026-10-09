@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  baseOptions,
   chineseName,
   findProduct,
   indexTables,
@@ -381,4 +382,10 @@ test("the helper is the Chinese half of the label, so the two cannot drift", () 
     const label = labelWithChinese(name, t, matched);
     assert.equal(chineseName(name, t, matched), displayChinese(label), `${name} / ${matched} -> ${label}`);
   }
+});
+
+test("baseOptions hands the shipped item types over in the table's own order, without duplicates", () => {
+  assert.deepEqual(baseOptions(null), []);
+  assert.deepEqual(baseOptions({}), []);
+  assert.deepEqual(baseOptions({ bases: ["Ring", "Helm", "Ring", "Grand Charm"] }), ["Ring", "Helm", "Grand Charm"]);
 });

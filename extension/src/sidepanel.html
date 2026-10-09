@@ -96,7 +96,8 @@
         <label id="item-label" for="item">裝備名稱</label>
         <div class="field">
           <input id="item" type="text" placeholder="輸入名稱，或貼上截圖" autocomplete="off" />
-          <input id="stats-base" type="text" placeholder="請輸入底材，例如：戒指、頭環、Ring…" autocomplete="off" hidden />
+          <input id="stats-base" type="text" placeholder="請輸入底材，例如：戒指、頭環、Ring…" autocomplete="off" list="stats-base-options" hidden />
+          <datalist id="stats-base-options"></datalist>
           <ul id="item-suggest" class="suggest" hidden></ul>
           <button id="ocr-pick" type="button" class="field-icon" aria-label="用截圖查名稱">📷<i id="ocr-dot" hidden></i></button>
           <div id="ocr-hint" class="tooltip" hidden>用截圖查名稱<br /><small>或按 Ctrl+V、拖圖進來</small></div>

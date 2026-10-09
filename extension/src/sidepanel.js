@@ -21,7 +21,7 @@ import { filterLine, filteredAway, tabCount, viewNote } from "./rows.js";
 import { nextTab } from "./tabs.js";
 import { newMarket, verifyViews } from "./traderie/controller.js";
 import { findAndRead } from "./traderie/finder.js";
-import { indexTables, searchShowsItem } from "./traderie/lookup.js";
+import { baseOptions, indexTables, searchShowsItem } from "./traderie/lookup.js";
 import { priceSummary } from "./traderie/price-summary.js";
 import { initNameSuggest } from "./name-suggest.js";
 import { initOcrPanel } from "./ocr/panel.js";
@@ -495,19 +495,30 @@ function showSettings(open) {
 /** Switches between the name search and the affix search. Never persisted: the panel asks every time. */
 function setMode(mode) {
   queryMode = mode;
-  if (mode === "stats") warmUpProperties(); // so the first fill does not wait for the read (it may open one tab)
+  if (mode === "stats") warmUpAffixForm(); // the first fill should not have to wait, and the base list should be there
   render();
 }
 
-/** Best effort, once: have Traderie's property list ready before the first affix fill. A failure is reported where the
- * query needs it (judgeStats), never here. */
-let propertiesWarmed = false;
-function warmUpProperties() {
-  if (propertiesWarmed) return;
-  propertiesWarmed = true;
+/** Best effort, once: have Traderie's property list and the shipped item types ready before the first affix fill. A
+ * failure is reported where the query needs it (judgeStats), never here. */
+let affixWarmed = false;
+function warmUpAffixForm() {
+  if (affixWarmed) return;
+  affixWarmed = true;
+  loadTables()
+    .then((loaded) => fillBaseOptions(baseOptions(loaded)))
+    .catch(() => {});
   loadPageScripts()
     .then((scripts) => ensureProperties({ openTab: () => Tab.open(TRADERIE_D2R_URL, scripts), scripts }))
     .catch(() => {});
+}
+
+/** The base is still required, but the form offers the shipped item types: a unique item's tooltip never names its base,
+ * so without this the player would have to know it from the game. A suggestion, never a restriction. */
+function fillBaseOptions(options) {
+  const list = $("stats-base-options");
+  if (!list || !options.length) return;
+  list.replaceChildren(...options.map((name) => Object.assign(document.createElement("option"), { value: name })));
 }
 
 /** Where typing starts on the current screen. */

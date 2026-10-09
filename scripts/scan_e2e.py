@@ -81,6 +81,7 @@ STATE = """(() => {
     statsBase: $('stats-base')?.value || '',
     statsBaseFrom: $('stats-base')?.dataset.from || '',
     affixRows: document.querySelectorAll('#affix-list li').length,
+    baseOptions: document.querySelectorAll('#stats-base-options option').length,
     ticks: [...document.querySelectorAll('#affix-list .affix-on')].filter((b) => b.checked).length,
     records: [...document.querySelectorAll('#scan-list li')].map((li) => li.textContent),
     banner: !!$('banner') && !$('banner').hidden,
@@ -232,6 +233,7 @@ async def _collect_record_clicks(
     report["fuzzy_item"] = {
         "outcome": outcome, "mode": after["mode"], "view": after["view"],
         "ticks": after["ticks"], "statsBase": after["statsBase"], "statsBaseFrom": after["statsBaseFrom"],
+        "baseOptions": after["baseOptions"],
     }
     say(
         f"  模糊搜尋 {item_name!r} -> {outcome}，mode={after['mode']} 勾選={after['ticks']}"
@@ -324,6 +326,10 @@ def verdict(report: dict) -> list[str]:
             failures.append(f"暗金紀錄應預填同一輪讀到的底材候選，實際 {fuzzy['statsBase']!r}")
         elif fuzzy.get("statsBaseFrom") != "ocr":
             failures.append(f"預填的底材要標記為來自擷取，實際 from={fuzzy.get('statsBaseFrom')!r}")
+        # The base is still required, but the form offers the shipped item types (a unique's tooltip never names its
+        # base): the datalist must be filled from the table, not from a list written in code.
+        if (fuzzy.get("baseOptions") or 0) < 50:
+            failures.append(f"底材欄沒有出貨清單的建議選項，實際 {fuzzy.get('baseOptions')!r}")
     base = report.get("fuzzy_base")
     if not base or base["outcome"] != "clicked" or base["mode"] != "stats" or base["view"] != "ready":
         failures.append(f"底材紀錄的「模糊搜尋」沒有切到詞綴表單：{base}")

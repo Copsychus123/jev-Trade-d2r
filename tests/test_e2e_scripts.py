@@ -196,6 +196,7 @@ def scan_report() -> dict:
             "ticks": 2,
             "statsBase": "Sacred Rondache",
             "statsBaseFrom": "ocr",
+            "baseOptions": 250,
         },
         "fuzzy_base": {
             "outcome": "clicked",
@@ -270,6 +271,10 @@ def _fuzzy_item_base_not_marked(report):
     report["fuzzy_item"]["statsBaseFrom"] = ""
 
 
+def _fuzzy_item_no_base_options(report):
+    report["fuzzy_item"]["baseOptions"] = 0
+
+
 def _fuzzy_item_missing(report):
     del report["fuzzy_item"]
 
@@ -307,6 +312,7 @@ def _view_ran_a_query(report):
         pytest.param(_fuzzy_item_no_tick, "'ticks': 0", id="fuzzy-item-no-tick"),
         pytest.param(_fuzzy_item_no_base, "應預填同一輪讀到的底材候選", id="fuzzy-item-no-base"),
         pytest.param(_fuzzy_item_base_not_marked, "標記為來自擷取", id="fuzzy-item-base-not-marked"),
+        pytest.param(_fuzzy_item_no_base_options, "沒有出貨清單的建議選項", id="fuzzy-item-no-base-options"),
         pytest.param(_fuzzy_item_missing, "None", id="fuzzy-item-missing"),
         pytest.param(_fuzzy_base_mode_wrong, "'mode': 'name'", id="fuzzy-base-mode"),
         pytest.param(_fuzzy_base_not_filled, "stats-base", id="fuzzy-base-not-filled"),
