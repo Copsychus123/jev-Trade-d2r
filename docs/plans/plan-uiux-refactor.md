@@ -75,7 +75,8 @@
 
 - **任務 4.2（資料／文字規則）— 部分完成**（`0bb2057`）：查證發現兩邊**真的漂移**——demo 的掛單表 6 欄、成交 3 欄，面板（與其 CSV）是 7 欄與 5 欄；同一份 `market.json` 用 demo 匯出會**少掉 `遊戲版本`（兩個視圖）與成交的環境欄**。已把 demo 的 `head`／`cells` 對齊面板的 `TRADING_COLUMNS`／`tradingCells`、`RECENT_COLUMNS`／`recentCells`，並用 `extension/test/columns-parity.test.mjs` 釘住（兩檔無法共用程式碼 → 測試當契約，與 `tests/test_run_budgets.py` 同型）。變異驗證：拿掉一欄測試立刻紅。**限制**：只比標籤與順序，不比 cell 值（demo 的 cells 是行內 lambda；寫在測試 docstring 裡）。
 - **任務 4.2 續 — 已完成**（`c8aaf11`）：demo 原本把 **`failed_checks` 的原始 id** 印給玩家（「檢查未通過：…；same_product、recent_rows_ok」），違反 repo 自己「白話繁中、不要術語」的規則。現在改用與面板相同的句子（各說一次、依失敗順序），句子由 demo **自帶一份**（兩邊無法共用程式碼），並用 `extension/test/check-reasons-parity.test.mjs` 釘住（變異驗證：改一句立刻紅並列出兩邊）。
-- **任務 4.1（視覺 token）— 仍待你決定**：兩套樣式（demo `style.css` 1,143 行 vs `sidepanel.css`）共用顏色／間距／表格樣式是**美學**決定。我看得到 demo 的靜態頁（可截圖給你看），但不該替你挑配色。**建議**：先讓我截兩邊現況，你指一套為基準，再改。
+- **任務 4.1（視覺 token）— 詞彙已完成（`bce1fa3`），配色仍待你決定**：查出面板**本來就有**語意 token（`--accent`／`--ok`／`--bad`／`--line`／`--muted` ＋跟隨系統主題），demo 則是 1,143 行、**86 個不同色值散在 119 處**、強制淺色。已做：`src/jev_ultrafast/static/tokens.css` 成為唯一色票來源（值＝面板的，因為它是出貨介面），`extension/build.py` 像複製頁面腳本那樣複製它，面板 17 處字面值全改成名字、`:root` 只剩 `color-scheme` 與字型，深色覆寫也移進 token 檔，順手刪掉死的 `var(--warn, #b8860b)` fallback。**外觀零變化是量出來的**：用 `scripts/scan_e2e.py --headed` 在改前改後各截一張面板，兩張 JPEG **位元完全相同**（42943 bytes、sha256 `c9782a0a75486fbd`），e2e 全流程也仍通過。守衛：`tests/test_ui_tokens.py`（面板不得再出現色值字面值、用到名字必須有定義、demo 的 119 處只能減不能增）＋ `tests/test_extension_build.py` 檢查出貨的 `tokens.css`。**剩下的是美學**：要不要讓 demo 也用面板的配色（或反之）——現在是「一個角色改一行」，你要哪一套說一聲即可。
+- **任務 4.2（資料／文字規則）**：見上面兩條，皆已完成。
 
 - **任務 4.1**：抽出共用視覺（顏色 token、表格、信任線、badge）到單一 CSS 來源，demo 與面板都吃它（demo 目前 `style.css` 1,143 行與面板的樣式各自長）。
 - **任務 4.2**：demo 的渲染規則改吃同一組 cells/`verificationSummary`（目前 demo 有自己的一套），讓「同一份資料在任何 UI 都長一樣」。
