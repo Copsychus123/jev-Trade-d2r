@@ -96,7 +96,7 @@ def _reset_command(body):
     global AGENT
     item = clean_item_name(body.get("goal", ""))
     if len(item) > 200:
-        raise ValueError("Item name must be 1–200 characters")
+        raise ValueError("裝備名稱要 1 到 200 個字")
     load_more = validate_load_more(body.get("load_more", LOAD_MORE_LIMIT))
     get_settings().require_typesafe_api_key()  # before Chrome starts, not on the first step
     close_browser()
@@ -112,20 +112,20 @@ def _reset_command(body):
 
 def _tick_command(body):
     if AGENT is None:
-        raise ValueError("Start a demo first")
+        raise ValueError("請先按「開始查詢」")
     AGENT.command("tick", body)
     advance(AGENT, RUN["item_name"], RUN["market"])
 
 
 def _report_command(_body):
     if AGENT is None:
-        raise ValueError("Start a demo first")
+        raise ValueError("請先按「開始查詢」")
     verification = RUN["market"]["verification"]
     if verification is None:
         raise ValueError("Agent 尚未完成兩段讀取，無法產生報告")
     RUN["report_md"] = save_report(RUN["item_name"], RUN["market"], OUTPUT_DIR)
     if RUN["report_md"] is None:
-        raise ValueError("檢查未通過，不產生報告：" + ", ".join(verification["failed_checks"]))
+        raise ValueError("檢查未通過，不產生報告")
 
 
 COMMANDS = {"reset": _reset_command, "tick": _tick_command, "report": _report_command}
@@ -134,7 +134,7 @@ COMMANDS = {"reset": _reset_command, "tick": _tick_command, "report": _report_co
 def command(name, body):
     handler = COMMANDS.get(name)
     if handler is None:
-        raise ValueError("Unknown command")
+        raise ValueError("未知的指令")
     handler(body)
     return response_state()
 
@@ -160,7 +160,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.forbidden():
-            return self.send(403, "Forbidden", "text/plain")
+            return self.send(403, "只接受本機的示範頁面", "text/plain")
         path = urlparse(self.path).path
         if path == "/api/state":
             with LOCK:
@@ -191,30 +191,30 @@ class Handler(BaseHTTPRequestHandler):
             "/style.css": ("style.css", "text/css"),
         }
         if path not in files:
-            return self.send(404, "Not found", "text/plain")
+            return self.send(404, "找不到", "text/plain")
         name, mime = files[path]
         content = (ROOT / "static" / name).read_text(encoding="utf-8").replace("__TOKEN__", TOKEN)
         self.send(200, content, mime + "; charset=utf-8")
 
     def do_POST(self):
         if self.forbidden() or self.forbidden_post():
-            return self.send(403, json.dumps({"error": "Local demo requests only"}))
+            return self.send(403, json.dumps({"error": "只接受本機示範頁面的請求"}))
         if not LOCK.acquire(blocking=False):
-            return self.send(409, json.dumps({"error": "A browser step is already running"}))
+            return self.send(409, json.dumps({"error": "已經有一個步驟在執行中，請等它結束"}))
         try:
             length = int(self.headers.get("Content-Length", "0"))
             if not 0 < length < 8192:
-                raise ValueError("Invalid request size")
+                raise ValueError("請求大小不正確")
             body = json.loads(self.rfile.read(length))
             if not isinstance(body, dict):
-                raise ValueError("The request body must be a JSON object")
+                raise ValueError("請求內容必須是 JSON 物件")
             result = command(self.path.removeprefix("/api/"), body)
             self.send(200, json.dumps(result))
         except (ValueError, RuntimeError, TimeoutError) as error:
             self.send(400, json.dumps({"error": str(error)}))
         except Exception:
             traceback.print_exc()
-            self.send(500, json.dumps({"error": "Local demo failed; no automatic retry. Reset to recover."}))
+            self.send(500, json.dumps({"error": "示範發生錯誤，不會自動重試；請重新整理這一頁，再按「開始查詢」。"}))
         finally:
             LOCK.release()
 
