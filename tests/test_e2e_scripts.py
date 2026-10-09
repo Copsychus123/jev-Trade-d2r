@@ -189,7 +189,14 @@ def scan_report() -> dict:
             {"name": name, "outcome": "clicked", "mode": "name", "view": "ready", "item": name}
             for name in expects
         ],
-        "fuzzy_item": {"outcome": "clicked", "mode": "stats", "view": "ready", "ticks": 2, "statsBase": ""},
+        "fuzzy_item": {
+            "outcome": "clicked",
+            "mode": "stats",
+            "view": "ready",
+            "ticks": 2,
+            "statsBase": "Sacred Rondache",
+            "statsBaseFrom": "ocr",
+        },
         "fuzzy_base": {
             "outcome": "clicked",
             "mode": "stats",
@@ -255,8 +262,12 @@ def _fuzzy_item_no_tick(report):
     report["fuzzy_item"]["ticks"] = 0
 
 
-def _fuzzy_item_prefilled_base(report):
-    report["fuzzy_item"]["statsBase"] = "Ring"
+def _fuzzy_item_no_base(report):
+    report["fuzzy_item"]["statsBase"] = ""
+
+
+def _fuzzy_item_base_not_marked(report):
+    report["fuzzy_item"]["statsBaseFrom"] = ""
 
 
 def _fuzzy_item_missing(report):
@@ -294,7 +305,8 @@ def _view_ran_a_query(report):
         pytest.param(_fuzzy_item_mode_wrong, "'mode': 'name'", id="fuzzy-item-mode"),
         pytest.param(_fuzzy_item_view_wrong, "'view': 'running'", id="fuzzy-item-view"),
         pytest.param(_fuzzy_item_no_tick, "'ticks': 0", id="fuzzy-item-no-tick"),
-        pytest.param(_fuzzy_item_prefilled_base, "Ring", id="fuzzy-item-prefilled-base"),
+        pytest.param(_fuzzy_item_no_base, "應預填同一輪讀到的底材候選", id="fuzzy-item-no-base"),
+        pytest.param(_fuzzy_item_base_not_marked, "標記為來自擷取", id="fuzzy-item-base-not-marked"),
         pytest.param(_fuzzy_item_missing, "None", id="fuzzy-item-missing"),
         pytest.param(_fuzzy_base_mode_wrong, "'mode': 'name'", id="fuzzy-base-mode"),
         pytest.param(_fuzzy_base_not_filled, "stats-base", id="fuzzy-base-not-filled"),

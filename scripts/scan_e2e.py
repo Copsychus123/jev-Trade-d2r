@@ -79,6 +79,8 @@ STATE = """(() => {
     csv: !!$('scan-csv') && !$('scan-csv').disabled,
     item: $('item')?.value || '',
     statsBase: $('stats-base')?.value || '',
+    statsBaseFrom: $('stats-base')?.dataset.from || '',
+    affixRows: document.querySelectorAll('#affix-list li').length,
     ticks: [...document.querySelectorAll('#affix-list .affix-on')].filter((b) => b.checked).length,
     records: [...document.querySelectorAll('#scan-list li')].map((li) => li.textContent),
     banner: !!$('banner') && !$('banner').hidden,
@@ -220,14 +222,16 @@ async def _collect_record_clicks(
     report["exact_clicks"] = clicks
     report["names"] = names
 
-    # 模糊搜尋 on a non-base record: conditions ticked, the base box left empty for the player.
+    # 模糊搜尋 on a non-base record: conditions ticked, the base box prefilled with the same read's base candidate.
+    # The fill is asynchronous (the first one may have to read Traderie's property list), so wait until the affix list
+    # shows rows rather than for a fixed moment.
     await ensure_scan(panel)
     outcome = await click_record(panel, item_name, "模糊搜尋")
-    await asyncio.sleep(0.3)
+    await wait_for_fill(panel)
     after = await panel.state()
     report["fuzzy_item"] = {
         "outcome": outcome, "mode": after["mode"], "view": after["view"],
-        "ticks": after["ticks"], "statsBase": after["statsBase"],
+        "ticks": after["ticks"], "statsBase": after["statsBase"], "statsBaseFrom": after["statsBaseFrom"],
     }
     say(
         f"  模糊搜尋 {item_name!r} -> {outcome}，mode={after['mode']} 勾選={after['ticks']}"
@@ -237,7 +241,7 @@ async def _collect_record_clicks(
     # 模糊搜尋 on the base record: the base box is pre-filled with the base's own name.
     await ensure_scan(panel)
     outcome = await click_record(panel, base_name, "模糊搜尋")
-    await asyncio.sleep(0.3)
+    await wait_for_fill(panel)
     after = await panel.state()
     report["fuzzy_base"] = {
         "outcome": outcome, "mode": after["mode"], "view": after["view"],
@@ -276,6 +280,16 @@ async def drive(panel_ws: str, sim_ws: str, expects: list[str], item_name: str, 
     return report
 
 
+async def wait_for_fill(panel: Panel, seconds: int = 25) -> None:
+    """The affix form fills asynchronously: the first fill of a session may have to read Traderie's property list (this
+    e2e starts from a cleared profile, so the panel's cache is empty). Wait until the list shows rows; a timeout is left
+    for the verdict to report rather than raised here."""
+    try:
+        await panel.wait(lambda state: state["affixRows"] > 0, seconds)
+    except Environment:
+        say(f"  等不到詞綴表單填好（{seconds} 秒），交給判定處理：{await panel.state()}")
+
+
 def verdict(report: dict) -> list[str]:
     """The section-6 assertions; returns one Traditional Chinese message per failed one. Pure: no Chrome needed."""
     failures = []
@@ -303,8 +317,13 @@ def verdict(report: dict) -> list[str]:
     else:
         if fuzzy["ticks"] < 1:
             failures.append(f"暗金紀錄的「模糊搜尋」沒有勾選任何詞綴條件：{fuzzy}")
-        if fuzzy["statsBase"] != "":
-            failures.append(f"暗金紀錄不該預填底材，實際 {fuzzy['statsBase']!r}")
+        # A unique item's tooltip does not name its base, so the record carries the base candidate of the same read
+        # (scan/session.js baseCandidate) and 模糊搜尋 prefills it, marked as coming from the capture. The player can
+        # still edit it, and nothing is searched until they press start.
+        if not fuzzy["statsBase"]:
+            failures.append(f"暗金紀錄應預填同一輪讀到的底材候選，實際 {fuzzy['statsBase']!r}")
+        elif fuzzy.get("statsBaseFrom") != "ocr":
+            failures.append(f"預填的底材要標記為來自擷取，實際 from={fuzzy.get('statsBaseFrom')!r}")
     base = report.get("fuzzy_base")
     if not base or base["outcome"] != "clicked" or base["mode"] != "stats" or base["view"] != "ready":
         failures.append(f"底材紀錄的「模糊搜尋」沒有切到詞綴表單：{base}")
