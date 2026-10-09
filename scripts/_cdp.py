@@ -52,6 +52,8 @@ class Panel:
 
     async def state(self):
         """This page's state as an object (see STATE_JS)."""
+        if not self.STATE_JS:
+            raise Environment("this panel page declares no STATE_JS")
         return json.loads(await self.evaluate(self.STATE_JS))
 
     async def wait(self, predicate, seconds=120, step=0.5):
