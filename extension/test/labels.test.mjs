@@ -5,6 +5,7 @@ import {
   CHECK_REASONS,
   STATUS_LABELS,
   explainFailedChecks,
+  priceSummaryLine,
   progressSteps,
   statusLabel,
   verificationSummary,
@@ -429,4 +430,17 @@ test("stats progress ends done when the list was read and checked, and failed wh
 test("stats checks have a sentence each", () => {
   for (const id of ["home_page", "filters_in_url", "filters_shown", "rows_match_filters"]) assert.ok(CHECK_REASONS[id], id);
   assert.deepEqual(explainFailedChecks(["filters_in_url", "filters_in_url"]), [CHECK_REASONS.filters_in_url]);
+});
+
+test("the price line says what to ask, and nothing when nothing is priced", () => {
+  assert.equal(priceSummaryLine(null), "");
+  assert.equal(priceSummaryLine({ count: 3, priced: 0, unpriced: 3, min: null, median: null, q1: null, q3: null }), "");
+  assert.equal(
+    priceSummaryLine({ count: 1, priced: 1, unpriced: 0, min: 3, median: 3, q1: null, q3: null }),
+    "價格（High Rune Value）：最低 3、中位數 3（共 1 筆）",
+  );
+  assert.equal(
+    priceSummaryLine({ count: 10, priced: 7, unpriced: 3, min: 0.06, median: 1, q1: 0.5, q3: 2 }),
+    "價格（High Rune Value）：最低 0.06、中位數 1、四分位 0.5–2（共 10 筆，3 筆沒有標價）",
+  );
 });

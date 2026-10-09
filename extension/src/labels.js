@@ -30,6 +30,20 @@ export const CHECK_REASONS = {
 };
 
 
+/**
+ * The one-sentence conclusion for a batch of listings, from `priceSummary` (traderie/price-summary.js): what the
+ * High Rune Values of the read rows are, so the player does not have to read the table to know what to ask.
+ * "" when there is nothing priced at all.
+ */
+export function priceSummaryLine(summary) {
+  if (!summary || !summary.priced) return "";
+  const parts = [`價格（High Rune Value）：最低 ${summary.min}、中位數 ${summary.median}`];
+  if (summary.q1 !== null && summary.q3 !== null) parts.push(`四分位 ${summary.q1}–${summary.q3}`);
+  const counts = `共 ${summary.count} 筆`;
+  const left = summary.unpriced ? `，${summary.unpriced} 筆沒有標價` : "";
+  return `${parts.join("、")}（${counts}${left}）`;
+}
+
 export function explainFailedChecks(ids) {
   const sentences = [];
   const seen = new Set();

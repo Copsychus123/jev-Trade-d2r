@@ -3,7 +3,7 @@ import { Agent, newCallBudget } from "./agent.js";
 import { API_BASE } from "./config.js";
 import { Tab, closeStaleWindows, loadPageScripts } from "./cdp.js";
 import { ApiError } from "./errors.js";
-import { statusLabel } from "./labels.js";
+import { priceSummaryLine, statusLabel } from "./labels.js";
 import { SECTION_NAMES, deriveView, visibleSections } from "./panel-state.js";
 import { PAGE_SIZE, clampPage, pageCount, pageRows } from "./paginate.js";
 import { drawProgress, drawTrust } from "./panel-dom.js";
@@ -22,6 +22,7 @@ import { nextTab } from "./tabs.js";
 import { newMarket, verifyViews } from "./traderie/controller.js";
 import { findAndRead } from "./traderie/finder.js";
 import { indexTables, searchShowsItem } from "./traderie/lookup.js";
+import { priceSummary } from "./traderie/price-summary.js";
 import { initNameSuggest } from "./name-suggest.js";
 import { initOcrPanel } from "./ocr/panel.js";
 import { initScanPanel } from "./scan/scan-panel.js";
@@ -226,7 +227,10 @@ function renderInvite() {
 function renderChrome() {
   const view = deriveView({ settingsOpen, hasInvite: Boolean(currentInvite()), running, after, mode: queryMode });
   document.body.dataset.view = view;
-  const notes = (market.lookup?.notes ?? []).join("。");
+  // The affix search's own conclusion: what the listings it read are asking, so the player does not have to work it
+  // out from the table. It leads the notes line (the base translation note follows).
+  const priceLine = market.mode === "stats" ? priceSummaryLine(priceSummary(market.trading?.rows ?? [])) : "";
+  const notes = [priceLine, ...(market.lookup?.notes ?? [])].filter(Boolean).join("。");
   const shown = visibleSections(view, hasRows());
   for (const name of SECTION_NAMES) $(`part-${name}`).hidden = !shown.has(name);
   $("part-notes").textContent = notes;
