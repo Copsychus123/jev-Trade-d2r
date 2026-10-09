@@ -19,17 +19,25 @@ def _declared(path: str, pattern: str) -> int:
     return int(match.group(1))
 
 
-def test_the_jev_call_budget_is_the_same_in_all_three_places():
+def _documented(pattern: str) -> int:
+    """The number AGENTS.md promises with `pattern`. The docs are part of this contract, not decoration: without
+    this the three code sites could drift together and the rulebook would quietly lie."""
+    return _declared("AGENTS.md", pattern)
+
+
+def test_the_jev_call_budget_is_the_same_everywhere():
     assert (
         _declared("extension/src/agent.js", r"const JEV_CALL_LIMIT = (\d+);")
         == _declared("services/jevsvc/app.py", r"MAX_MODEL_CALLS = (\d+)")
         == _declared("scripts/extension_batch.py", r"JEV_CALL_LIMIT = (\d+)")
+        == _documented(r"one budget of (\d+) Jev calls per run")
     )
 
 
-def test_the_action_budget_is_the_same_in_all_three_places():
+def test_the_action_budget_is_the_same_everywhere():
     assert (
         _declared("extension/src/agent.js", r"const MAX_STEPS = (\d+);")
         == _declared("services/jevsvc/app.py", r"MAX_HISTORY = (\d+)")
         == _declared("src/jev_ultrafast/config.py", r"MAX_STEPS = (\d+)")
+        == _documented(r"\((\d+) actions, \d+ decisions,")
     )
