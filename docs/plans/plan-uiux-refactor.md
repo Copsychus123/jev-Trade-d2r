@@ -36,15 +36,11 @@
 
 ## 四、分階段計畫
 
-### Phase 0：契約與量測（S，先做，1 天內）
+### Phase 0：契約與量測（S，先做，1 天內）— **部分完成**
 
-- **任務 0.1**：把面板的**單一狀態機**寫成契約（`view`、`outcome`、`problem`、`source` 四個欄位就夠）並補 `panel-state.js` 的測試；`deriveView` 已有，補「來源」與「問題」。
-  - 檔案：`extension/src/panel-state.js`、`extension/test/panel-state.test.mjs`
-  - 驗收：任何 UI 分支都能由這四個欄位決定；測試覆蓋每種組合。
-- **任務 0.2**：**問題（problem）單一形狀**：`{ kind, headline, reasons: string[], retry?: string }`，把 `judge`/`judgeStats`/e2e 既有的 reason 文字都塞得進去。
-  - 檔案：`extension/src/labels.js`（或新 `problem.js`）、測試。
-  - 驗收：舊的三種來源都轉得過去，文字不變（不刪訊息）。
-- **任務 0.3**：把 UI 契約寫進 `docs/design.md`（一份「面板介面」小節：模組、輸入輸出、錯誤形狀）——**文件就是契約**。
+- **任務 0.1 — 部分完成**：`affixHandoff(shown, source, ended)` 已從 DOM 碼抽成 `panel-state.js` 的純函式（7 案例）；`deriveView`／`visibleSections` 本來就是純的。**面板那組 flat `let`（`market`/`after`/`banner`/`runSource`/`quota`/分頁…）的收斂要等 D1**——沒有 D1 就不該先動狀態形狀。
+- **任務 0.2（單一 problem 形狀）— 延後**：它會動到被多個測試斷言的 reason 文字（`judgeStats`／`judge`／`explainFailedChecks`），屬於「有改動風險的中等重構」，應與 D1／D2 一起決定。
+- **任務 0.3 — 已完成**：面板契約寫進 `docs/design.md` 的「The side panel's screens and state (extension)」小節（四個事實 → `VIEWS`／`SECTIONS`、兩個純決策、cells 以欄位名稱取值、以及「唯一 import `config.js` 的模組」這道可測性牆）。
 
 ### Phase 1：兩條搜尋的核心改善（＝既有計畫，進行中）
 
@@ -67,7 +63,7 @@
 
 - **任務 3.1 — 已完成**：價格摘要（`7282391`）與「來源是哪個入口／哪一筆」回連（`a8a9029`），細節見 `plan-scan-search-paths.md` 的功能 3／7。
 - **任務 3.2 — 查證後：已經存在，不用做**。`sidepanel.js` 早就用 `paginate.js`（`PAGE_SIZE`／`clampPage`／`pageCount`／`pageRows`）、顯示「第 N / M 頁」，且 `total <= PAGE_SIZE` 時整個分頁器隱藏。原計畫是在沒查證的情況下寫的（本計畫已有兩項如此：功能 1、這項）。若還想要「共 M 筆」的字樣，那是文案層的小改。
-- **任務 3.3 — 部分存在**：CSV／複製與畫面共用同一組 cells 已經是 `tradingCells`／`statsCells` 的設計；剩下的是補一個「三處不漂移」的測試（未做）。
+- **任務 3.3 — 查證後：已經滿足，不需要測試**。`rows.js` 以**欄位名稱**取值（`reader(head, cells)`，缺欄位時 throw），而 `rows.test.mjs` 已經釘住「the listing layout uses every column of the table, so a new column cannot be left off the screen」「every cell the CSV gets also reaches the two-line row」「a missing column is an error instead of a silently empty row」（stats／recent 各有一條對應）。原計畫的「三處不漂移」測試會是重複的。
 
 ### Phase 4：兩套 UI 收斂（M）
 

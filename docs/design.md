@@ -51,6 +51,33 @@ What `scripts/probe_stats.py` measured on a logged-in dedicated Chrome (2026-10-
 
 The affix dictionary keeps 40 entries; `unmappedKeys` (tested against the saved real list in `extension/test/fixtures/properties.json`) shows there is a property for each. Number words in a screenshot are only hints (the reader often sees "20%" as "2006" or "20096"), so a captured value is never taken as truth: the reader ticks the attributes it recognised and fills the numbers it read into the form, each marked as coming from the capture so the player confirms or edits it, and the player still presses start. A ticked non-bool condition must carry at least one value (0 counts) before the search starts, while a bool condition needs none and ticking nothing at all stays legal.
 
+## The side panel's screens and state (extension)
+
+One module decides which screen is up: `extension/src/panel-state.js` (pure, no DOM, tested). Everything else renders what
+it says. Its inputs are four facts about the panel, and nothing else may decide a screen:
+
+| fact | meaning |
+|---|---|
+| `settingsOpen` | the settings screen replaces the main area |
+| `hasInvite` | an invite code is stored (otherwise the welcome screen) |
+| `running` | a query is in flight (the panel's own run, not the scan) |
+| `after` | how the last query ended: `"done"`, `"problem"`, `"stopped"`, or `null` when the form is up |
+| `mode` | `null`, `"name"`, `"stats"` or `"scan"` (which search the player chose) |
+
+`deriveView` turns those into one of `VIEWS`; `visibleSections(view, hasRows)` turns a view into the sections of the
+panel that may show (the results only once a table has rows). Two smaller decisions are pure functions beside it, because
+one DOM line cannot be tested: `affixHandoff(shown, source, ended)` (offer the affix search for the item a failed,
+scan-sourced query came from) and, in `labels.js`, the two lines the results screen writes above the tables —
+`priceSummaryLine` (the asking prices of the rows it read, from `traderie/price-summary.js`) and `sourceLine` (which entry
+the query's input came from).
+
+The panel's own mutable state lives in `sidepanel.js` as one flat set of `let`s (`market`, `after`, `banner`, `runSource`,
+`quota`, paging per tab…), and its rows are drawn from the same cell arrays CSV and TSV use, found **by column name**
+(`rows.js` `reader`, which throws when a column is missing), so the screen, the copy button and the file cannot drift
+apart. Modules that import the build product `config.js` cannot be unit-tested in node; today that is only
+`sidepanel.js`, which is why the flow logic that can be extracted lives elsewhere (see the remark at the end of this
+section).
+
 ## Screenshot reader accuracy (extension)
 
 The reader's real accuracy only shows on pictures it was not tuned on. A 54-picture corpus measured 2026-10 with the same matcher (`artifacts/ocr-bench/compare.json`) shows the effect: on the 22 tuned pictures the reader reaches top-1 20 / top-3 21 against an off-the-shelf PP-OCR engine's 19 / 20, but on the other 30 scored pictures, which were never tuned on, it reaches only top-1 18 / top-3 20 against PP-OCR's 23 / 27 — the tuned set hides the gap. `scripts/ocr_e2e.py` therefore scores both groups in the same run: the tuned list `scripts/data/ocr_truth.json` and the held-out list `scripts/data/ocr_truth_holdout.json`, each against the same group of the last accepted `artifacts/ocr-e2e/report.json` (the held-out floor is set by its first accepted run; `--only` skips the held-out group).
