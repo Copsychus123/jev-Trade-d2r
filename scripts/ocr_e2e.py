@@ -352,9 +352,10 @@ async def affix_group(panel: Panel, report: dict, item: dict) -> None:
     checks["all_mapped_on"] = all(r["on"] is True for r in rows if not r["unmapped"])
     # The reader read a number for every non-bool condition it yielded (it drops the ones without one), so each ticked
     # row with a box must carry a value, and that value must be marked as coming from the capture for the player to
-    # confirm. A bool row has no box and is left out of both.
+    # confirm. A bool row has no box and is left out of both. `marked` counts the marked boxes of a row, and only the
+    # box that carries a number is marked, so a filled row has at least one.
     checks["values_filled"] = bool(boxed) and all(r["min"] or r["max"] for r in boxed)
-    checks["values_marked"] = bool(boxed) and all(r["marked"] for r in boxed)
+    checks["values_marked"] = bool(boxed) and all(r["marked"] >= 1 for r in boxed)
     checks["no_query_started"] = state["mode"] == "stats" and state["view"] == "ready"
     GATE = (
         "JSON.stringify({ disabled: document.getElementById('start').disabled,"

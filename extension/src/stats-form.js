@@ -56,15 +56,17 @@ export function initStatsForm({ getProperties, onChange }) {
   function limitFields(condition) {
     const limits = element("span", { className: "affix-limits" });
     for (const [field, text] of [["min", "最小"], ["max", "最大"]]) {
+      // Only the box that actually carries a captured number is marked: an empty one came from nothing.
+      const captured = condition.fromCapture && condition[field] !== null && condition[field] !== "";
       const input = element("input", {
         type: "number",
-        className: `affix-${field}${condition.fromCapture ? " from-capture" : ""}`,
+        className: `affix-${field}${captured ? " from-capture" : ""}`,
         min: "0",
         step: "1",
         value: condition[field] ?? "",
         placeholder: text,
       });
-      if (condition.fromCapture) input.title = "從擷取讀到，請確認";
+      if (captured) input.title = "從擷取讀到，請確認";
       input.setAttribute("aria-label", `${condition.label}${text}值`);
       input.disabled = busy;
       limits.append(input);
