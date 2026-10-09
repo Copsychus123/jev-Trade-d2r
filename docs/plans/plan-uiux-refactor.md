@@ -73,6 +73,9 @@
 
 ### Phase 4：兩套 UI 收斂（M）
 
+- **任務 4.2（資料／文字規則）— 部分完成**（`0bb2057`）：查證發現兩邊**真的漂移**——demo 的掛單表 6 欄、成交 3 欄，面板（與其 CSV）是 7 欄與 5 欄；同一份 `market.json` 用 demo 匯出會**少掉 `遊戲版本`（兩個視圖）與成交的環境欄**。已把 demo 的 `head`／`cells` 對齊面板的 `TRADING_COLUMNS`／`tradingCells`、`RECENT_COLUMNS`／`recentCells`，並用 `extension/test/columns-parity.test.mjs` 釘住（兩檔無法共用程式碼 → 測試當契約，與 `tests/test_run_budgets.py` 同型）。變異驗證：拿掉一欄測試立刻紅。**限制**：只比標籤與順序，不比 cell 值（demo 的 cells 是行內 lambda；寫在測試 docstring 裡）。
+- **任務 4.1（視覺 token）— 仍待你決定**：兩套樣式（demo `style.css` 1,143 行 vs `sidepanel.css`）共用顏色／間距／表格樣式是**美學**決定。我看得到 demo 的靜態頁（可截圖給你看），但不該替你挑配色。**建議**：先讓我截兩邊現況，你指一套為基準，再改。
+
 - **任務 4.1**：抽出共用視覺（顏色 token、表格、信任線、badge）到單一 CSS 來源，demo 與面板都吃它（demo 目前 `style.css` 1,143 行與面板的樣式各自長）。
 - **任務 4.2**：demo 的渲染規則改吃同一組 cells/`verificationSummary`（目前 demo 有自己的一套），讓「同一份資料在任何 UI 都長一樣」。
   - 驗收：兩邊對同一份 market 產生相同的欄位與文字；`tests/test_ui_static.py` 與新測試通過。
