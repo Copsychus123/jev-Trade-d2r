@@ -239,6 +239,39 @@ def test_executor_rejects_a_stale_page_before_browser_input(monkeypatch):
     operation.assert_not_called()
 
 
+def test_element_freshness_compares_the_page_key_and_the_element_guard(monkeypatch):
+    """`fresh` is what stops a stale decision from being executed: the element is re-checked by the node number the
+    observation handed out (never a selector), and both the page key and that element's own guard must still match."""
+    import jev_ultrafast.browser as browser
+
+    observed = {"page_key": "k", "guards": {"1": "g"}, "marker": "m"}
+    b = browser.Browser.__new__(browser.Browser)
+
+    b.evaluate = Mock(return_value=["k", "g"])
+    assert b.fresh(observed, {"kind": "click", "node": 1}) is True
+    expression = b.evaluate.call_args.args[0]
+    assert "c.pageKey()" in expression and "c.nodes.get(1)" in expression
+
+    b.evaluate = Mock(return_value=["k", "moved"])  # the element itself was replaced
+    assert b.fresh(observed, {"kind": "click", "node": 1}) is False
+    b.evaluate = Mock(return_value=["other", "g"])  # the page moved on
+    assert b.fresh(observed, {"kind": "click", "node": 1}) is False
+    b.evaluate = Mock(return_value=None)  # the observation bridge is gone
+    assert b.fresh(observed, {"kind": "click", "node": 1}) is False
+
+    # A page-level action has no element: it is the marker that must still match.
+    b.evaluate = Mock(return_value="m")
+    assert b.fresh(observed) is True
+    assert b.evaluate.call_args.args[0] == browser.MARKER
+    b.evaluate = Mock(return_value="changed")
+    assert b.fresh(observed) is False
+
+    # A node that is not the integer the observation handed out never reaches the page.
+    b.evaluate = Mock(return_value=["k", "g"])
+    assert b.fresh(observed, {"kind": "click", "node": "e1"}) is False
+    b.evaluate.assert_not_called()
+
+
 @pytest.mark.parametrize("response", [{"exceptionDetails": {}}, {"result": {}}])
 def test_interrupted_dropdown_mutation_cannot_be_retried_as_stale(monkeypatch, response):
     import jev_ultrafast.browser as browser
