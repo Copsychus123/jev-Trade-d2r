@@ -47,13 +47,13 @@
 照 `docs/plans/plan-scan-search-paths.md`：功能 2 已完成；接下來 功能 1（屬性清單先取得）、3（價格摘要）、4（底材來源，待決策 D5）、5–7（掃描加值）、8a（近期成交探測）。
 檢查點 A/B/C 依該計畫。
 
-### Phase 2：`sidepanel.js` 解耦（M，本計劃的重點）— **切片 1 完成**
+### Phase 2：`sidepanel.js` 解耦（M）— **切片 1 完成；切片 2／3 查證後不建議，停在這裡**
 
 - **切片 1（已完成，`a1d7a01`）**：把**名稱查詢的結果判斷**（`judge`：guard／not_found／blocked（有無 guard 頁）／blocked view／done，以及 `describeError`：被拒的邀請碼／執行中失敗／查詢視窗被關）搬到純模組 `extension/src/run-outcome.js`。呼叫端傳事實（stopped／outcome／status／scope reason／page／tab／market／itemName）並**注入**兩個會碰頁面與 controller 的東西（`detectGuard`、`verify`）；驗證結果由面板套用，`market.verification` 的寫入時機與原本一致。**12 個新測試**涵蓋每一種畫面。
-  → 這正是原計畫 Phase 0.2「單一 problem 形狀」的前置：判斷樹現在離線可測，之後要收斂形狀就有地方落。
-- **切片 2（下一步，同樣零額度可驗）**：`run-stats-flow.js`（`stats-query.js` 已是雛形，收斂 `runStatsQuery` 與 `judgeStats` 的呼叫面）。
-- **切片 3**：`run-session`／`beginQuery`／`publishRun` 與渲染分離（`render*` 全留在面板），目標 `sidepanel.js ≤ 300`。
-- **驗證方式**：每切一刀都跑 `node --test` ＋ **零 Jev** 的 `scripts/extension_e2e.py --stub-chooser`（本輪實測 exit=0：6 樣本成功／0 失敗、150 掛單／20 成交、0 次 Jev 呼叫）。
+- **切片 2 — 查證後：沒有東西可收斂，取消**。原計畫以為要「收斂 `runStatsQuery`」，但 `runStatsFlow`（`stats-query.js` 171 行）與 `judgeStats` 早已在該模組；面板那段只是**6 行轉接**（`begin`／`setStatus`／`render`／`shouldStop` 四個 hook ＋ 指派 `itemName`）。搬走它＝把同樣的複雜度換位置。
+- **切片 3 — 評估後：不建議做**。最大的候選是 `start()` 內的名稱流程工作函式（finder 的選項物件），但它依賴 `API_BASE`（建置產物 config.js）、`findAndRead`、`startRun`／`chooseNext`、`searchShowsItem`、`phaseFinishRule`、`Agent`／`newCallBudget` 六項以上；要讓它離線可測就得把這些全部注入，**讀者要同時持有的概念數不變**，而驗證仍只能靠 Chrome e2e。依「重構要讓分支消失、不是搬家」的原則，停在切片 1。
+- **目標修正**：原計畫寫「`sidepanel.js ≤ 300 行」是**任意的行數指標**。剩下的 785 行裡約 200 行是 `render*`（計畫本來就說留在面板）、約 150 行是初始化與事件綁定；真正的業務規則（判斷樹、兩種搜尋的流程、cells 對應、狀態機）**都已經在可測的模組裡**。所以判準改成**概念數**，不是行數。
+- **驗證方式（切片 1 用它驗過）**：`node --test` ＋ **零 Jev** 的 `scripts/extension_e2e.py --stub-chooser`（實測 exit=0：6 樣本成功／0 失敗、150 掛單／20 成交、0 次 Jev 呼叫）。
 
 把 741 行拆成「純流程 + 細薄綁定」，目標：**同一支不再同時知道 DOM 與業務規則**。
 
