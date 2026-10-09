@@ -6,6 +6,7 @@ import {
   KEY_TOLERANCE,
   MAX_QUEUE,
   RECORD_HEAD,
+  baseCandidate,
   createScanSession,
   keyDistance,
   normalizeText,
@@ -244,6 +245,26 @@ test("addRecord refuses the same text differing only in whitespace", () => {
   assert.equal(session.addRecord(record({ text: "  Spiderweb \t Sash \n" })), false);
   assert.equal(session.records.length, 1);
   assert.equal(session.stats.read, 2);
+});
+
+test("baseCandidate picks the first base candidate and ignores the item ones", () => {
+  assert.equal(
+    baseCandidate([
+      { kind: "item", name: "Arachnid Mesh" },
+      { kind: "base", name: "Spiderweb Sash" },
+    ]),
+    "Spiderweb Sash",
+  );
+  assert.equal(baseCandidate([{ kind: "item", name: "Arachnid Mesh" }]), null);
+  assert.equal(baseCandidate([]), null);
+});
+
+test("addRecord keeps the base candidate read alongside the item, and null when there was none", () => {
+  const session = createScanSession();
+  assert.equal(session.addRecord(record({ base: "Spiderweb Sash" })), true);
+  assert.equal(session.records[0].base, "Spiderweb Sash");
+  assert.equal(session.addRecord(record({ text: "another panel", base: undefined })), true);
+  assert.equal(session.records[0].base, null);
 });
 
 test("addRecord refuses a record with neither a name nor conditions", () => {

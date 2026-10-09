@@ -510,11 +510,13 @@ function onSearchName(record) {
   focusEntry();
 }
 
-/** The scan list's 模糊搜尋: ticks the affixes the OCR text shows; the base is prefilled only for a base result. */
+/** The scan list's 模糊搜尋: ticks the affixes the OCR text shows; the base is the record's own name for a base result,
+ * otherwise the base candidate of the same read, so a unique item does not need the player to know its base. */
 function onSearchStats(record) {
   modeFromPicture = false;
   setMode("stats");
-  if (record.kind === "base") statsForm.setBaseFromScreenshot(record.name);
+  const base = record.kind === "base" ? record.name : record.base;
+  if (base) statsForm.setBaseFromScreenshot(base);
   statsForm.fillFromText(record.text, { carryValues: true }); // the numbers come from the capture, marked for confirmation
   focusEntry();
 }

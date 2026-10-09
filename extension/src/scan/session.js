@@ -18,6 +18,12 @@ export function normalizeText(text) {
   return String(text ?? "").replace(/\s+/g, "");
 }
 
+/** The name of the first `kind === "base"` candidate among OCR matches, or null when there is none. */
+export function baseCandidate(candidates) {
+  for (const c of candidates ?? []) if (c?.kind === "base") return c.name ?? null;
+  return null;
+}
+
 /** How many of the two keys' cells differ; keys of different lengths never match. */
 export function keyDistance(a, b) {
   if (a.length !== b.length) return Infinity;
@@ -127,6 +133,7 @@ export function createScanSession() {
       name: record.name ?? null,
       zh: record.zh ?? "",
       kind: record.kind ?? null,
+      base: record.base ?? null,
       conditions: conditions.map((c) => ({ ...c })),
       text: record.text ?? "",
     });

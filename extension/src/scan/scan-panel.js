@@ -8,7 +8,7 @@ import { saveText } from "../download.js";
 import { parseAffixLines } from "../ocr/affixes.js";
 import { chineseName } from "../traderie/lookup.js";
 import { startCapture } from "./capture.js";
-import { RECORD_HEAD, createScanSession, recordCells } from "./session.js";
+import { RECORD_HEAD, baseCandidate, createScanSession, recordCells } from "./session.js";
 import { DETECT_WIDTH, boxKey } from "./tooltip.js";
 
 const $ = (id) => document.getElementById(id);
@@ -121,7 +121,8 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
         const started = performance.now();
         const text = await ocr.recognize(blob);
         errorText = ""; // a later read worked: the old failure is no longer the current state
-        const match = ocr.match(text)[0] ?? null;
+        const candidates = ocr.match(text);
+        const match = candidates[0] ?? null;
         session.stats.ocrSeconds += (performance.now() - started) / 1000;
         const name = match?.name ?? null;
         session.addRecord({
@@ -129,6 +130,7 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
           name,
           zh: name ? chineseName(name, tables, match.matched) : "",
           kind: match?.kind ?? null,
+          base: baseCandidate(candidates),
           conditions: parseAffixLines(text).conditions,
           text,
         });
