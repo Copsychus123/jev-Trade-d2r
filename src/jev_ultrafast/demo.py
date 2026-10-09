@@ -141,8 +141,12 @@ def command(name, body):
 
 class Handler(BaseHTTPRequestHandler):
     def forbidden(self):
-        """403 unless the request comes from the local demo page: Host check here, token and Origin for POST."""
+        """403 unless the request comes from the local demo page: the Host check every request needs."""
         return self.headers.get("Host") != f"127.0.0.1:{PORT}"
+
+    def forbidden_post(self):
+        """403 unless a POST also carries this run's token and comes from the demo page (no Origin is allowed)."""
+        return self.headers.get("X-Demo-Token") != TOKEN or self.headers.get("Origin") not in (None, ORIGIN)
 
     def send(self, status, content, mime="application/json"):
         content = content if isinstance(content, bytes) else content.encode()
@@ -193,11 +197,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send(200, content, mime + "; charset=utf-8")
 
     def do_POST(self):
-        if (
-            self.forbidden()
-            or self.headers.get("X-Demo-Token") != TOKEN
-            or self.headers.get("Origin") not in (None, ORIGIN)
-        ):
+        if self.forbidden() or self.forbidden_post():
             return self.send(403, json.dumps({"error": "Local demo requests only"}))
         if not LOCK.acquire(blocking=False):
             return self.send(409, json.dumps({"error": "A browser step is already running"}))
