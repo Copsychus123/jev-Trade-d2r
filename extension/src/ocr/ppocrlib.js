@@ -315,39 +315,58 @@ function pointInPoly(poly, x, y) {
 
 // --------------------------------------------------------- det postprocess
 
-// pid: component labels; returns {points: [[x,y],...]} lists in raster order.
-function componentsOf(bin, w, h, want) {
-  const visited = new Uint8Array(w * h);
-  const out = [];
-  const stack = [];
-  for (let idx0 = 0; idx0 < w * h; idx0++) {
-    if (visited[idx0] || bin[idx0] !== want) continue;
-    const pts = [];
-    let touch = false;
-    stack.push(idx0);
-    visited[idx0] = 1;
-    while (stack.length) {
-      const cur = stack.pop();
-      const cy = (cur / w) | 0;
-      const cx = cur - cy * w;
-      pts.push([cx, cy]);
-      if (cx === 0 || cy === 0 || cx === w - 1 || cy === h - 1) touch = true;
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          if (dx === 0 && dy === 0) continue;
-          const nx = cx + dx;
-          const ny = cy + dy;
-          if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
-          const ni = ny * w + nx;
-          if (visited[ni] || bin[ni] !== want) continue;
-          visited[ni] = 1;
-          stack.push(ni);
-        }
+// One depth-first flood of the `want` pixels from `seed`. In `visited`, this component's
+// pixels start at `from` and every pixel this flood reaches becomes `to`, so the caller can
+// first walk the component (0 -> 1) just to mark it and learn whether it reaches the bitmap
+// border, then walk it again (1 -> 2) and collect the points. Two same-label neighbours are
+// always one component, so the `from` test never leaks into a neighbouring component; `pts`
+// receives an [x, y] per pixel, in the same pop order as the original single-pass flood.
+function floodComponent(bin, visited, w, h, want, seed, from, to, pts) {
+  const stack = [seed];
+  visited[seed] = to;
+  let touch = false;
+  while (stack.length) {
+    const cur = stack.pop();
+    const cy = (cur / w) | 0;
+    const cx = cur - cy * w;
+    if (pts) pts.push([cx, cy]);
+    if (cx === 0 || cy === 0 || cx === w - 1 || cy === h - 1) touch = true;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const nx = cx + dx;
+        const ny = cy + dy;
+        if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+        const ni = ny * w + nx;
+        if (visited[ni] !== from || bin[ni] !== want) continue;
+        visited[ni] = to;
+        stack.push(ni);
       }
     }
+  }
+  return touch;
+}
+
+// pid: component labels; returns {points: [[x,y],...]} lists in raster order; the ascending-index
+// scan already yields them ordered by `first`, so nothing re-sorts here (the caller orders the merged list).
+// `keep` is given only a component's `touch` flag, so a component the caller discards (the
+// border-touching background blob, which is the whole bitmap when the map has no text) is
+// flooded once to mark it and learn `touch`, and never allocates an [x, y] pair. The kept
+// components are flooded a second time to collect their points. This is a deviation from the
+// reference's single ready-made flood: upstream collect every point first and filters after.
+// Discarding a blob changes no output either way (its box always scores below `det.box_thresh`);
+// it only spares the allocation and one `max_candidates` slot.
+function componentsOf(bin, w, h, want, keep = () => true) {
+  const visited = new Uint8Array(w * h);
+  const out = [];
+  for (let idx0 = 0; idx0 < w * h; idx0++) {
+    if (visited[idx0] || bin[idx0] !== want) continue;
+    const touch = floodComponent(bin, visited, w, h, want, idx0, 0, 1, null);
+    if (!keep(touch)) continue;
+    const pts = [];
+    floodComponent(bin, visited, w, h, want, idx0, 1, 2, pts);
     out.push({ first: idx0, pts, touch });
   }
-  out.sort((a, b) => a.first - b.first);
   return out;
 }
 
@@ -381,7 +400,7 @@ export function dbPostprocess(prob, mapW, mapH, destW, destH) {
   }
 
   const fg = componentsOf(mask, mapW, mapH, 1);
-  const bg = componentsOf(mask, mapW, mapH, 0).filter((c) => !c.touch); // holes, as RETR_LIST yields them
+  const bg = componentsOf(mask, mapW, mapH, 0, (touch) => !touch); // holes, as RETR_LIST yields them
   const contours = fg.concat(bg).sort((a, b) => a.first - b.first);
 
   const boxes = [];
