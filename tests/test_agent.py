@@ -793,3 +793,65 @@ def test_closing_always_forgets_the_tab_even_when_closing_fails(monkeypatch):
         b.close()
     assert b.target is None
     b.close()  # a second close does nothing and must not raise
+
+
+# --- the goal becomes a plan, and a goal that says nothing opens nothing ---
+
+
+def _stub_browser(monkeypatch, observe=None):
+    if isinstance(observe, BaseException):
+        observed = Mock(side_effect=observe)
+    else:
+        observed = Mock(return_value=page() if observe is None else observe)
+    browser = Mock(observe=observed, close=Mock())
+    monkeypatch.setattr(loop, "Browser", lambda url, images=False: browser)
+    return browser
+
+
+def test_a_single_traderie_goal_becomes_the_planned_views(monkeypatch):
+    traderie_page = page()
+    traderie_page["url"] = f"{TRADERIE_D2R_URL}/product/123"
+    traderie_page["fingerprint"] = fingerprint(traderie_page)
+    browser = _stub_browser(monkeypatch, observe=traderie_page)
+    goal = "Find Harlequin Crest"
+    a = loop.Agent(TRADERIE_D2R_URL, goal)
+    plan, names = loop.phase_plan(goal)
+    assert (a.state["plan"], a.phase_names) == (plan, names) and len(names) == 2
+    assert a.state["goal"] == plan[0] and a.state["phase"] == names[0]
+    assert (a.state["status"], a.state["plan_index"], a.state["history"]) == ("ready", 0, [])
+    assert browser.observe.call_args.kwargs["screenshot"] is False  # no pictures unless asked for
+    assert a.scope_guard is not None  # a Traderie run is guarded
+
+
+def test_a_traderie_goal_that_opens_on_another_site_is_blocked_at_once(monkeypatch):
+    _stub_browser(monkeypatch)  # page() lives on example.test
+    a = loop.Agent(TRADERIE_D2R_URL, "Find Harlequin Crest")
+    assert a.state["status"] == "blocked" and a.state["scope_blocked_reason"]
+
+
+def test_a_goal_list_is_planned_verbatim_with_generic_phase_names(monkeypatch):
+    _stub_browser(monkeypatch)
+    a = loop.Agent("https://example.test/", ["  Open the page  ", "", "Read the list"])
+    assert a.state["plan"] == ["Open the page", "Read the list"]
+    assert a.phase_names == ["phase_1", "phase_2"] and a.state["phase"] == "phase_1"
+    assert a.scope_guard is None and a.state["goal"] == "Open the page"
+
+
+def test_a_single_goal_on_another_site_is_one_unnamed_phase(monkeypatch):
+    _stub_browser(monkeypatch)
+    a = loop.Agent("https://example.test/", "  Find a book ")
+    assert (a.state["plan"], a.phase_names) == (["Find a book"], ["phase_1"])
+
+
+def test_a_goal_that_says_nothing_opens_nothing(monkeypatch):
+    monkeypatch.setattr(loop, "Browser", lambda *a, **k: pytest.fail("a browser must not be opened"))
+    for empty in ("   ", ["", "  "]):
+        with pytest.raises(ValueError, match="Supply a task"):
+            loop.Agent("https://example.test/", empty)
+
+
+def test_a_first_observation_that_fails_closes_the_browser_and_raises(monkeypatch):
+    browser = _stub_browser(monkeypatch, observe=RuntimeError("no tab"))
+    with pytest.raises(RuntimeError):
+        loop.Agent("https://example.test/", "Find a book")
+    assert browser.close.called

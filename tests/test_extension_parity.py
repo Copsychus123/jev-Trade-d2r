@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from jev_ultrafast.traderie.controller import read_view
-from jev_ultrafast.traderie.parsing import TIME_REGEX, parse_recent_trades, parse_trading_txt
+from jev_ultrafast.traderie.parsing import TIME_REGEX, _card_data, parse_recent_trades, parse_trading_txt
 from jev_ultrafast.traderie.site import TRADERIE_D2R_URL, product_root_url, product_section, traderie_scope_reason
 
 REPO = Path(__file__).resolve().parents[1]
@@ -310,3 +310,29 @@ def test_original_game_version_tag_is_read_in_trading_and_recent_rows():
     recent = "They Give\n1 X Shako\nClassic (Base Game) \u2022 \nPC \u2022 \nI Give\n1 X Pul Rune\n1 \u5929\u524d"
     trade = parse_recent_trades(recent)["trades"][0]
     assert trade["game_version"] == "Classic (Base Game)" and trade["buyer_or_seller"] == "1 X Shako"
+
+
+def test_trading_cards_read_the_platform_from_their_middle_lines():
+    """A trading card names its platform between the item line and the ask, like the Recent Trades side does."""
+    rows = parse_trading_txt(_fixture("trading_platforms.txt"), item_name=ITEM)
+    assert [row.platform for row in rows] == ["Playstation", "Xbox", "Switch"]
+
+
+def test_a_card_made_only_of_noise_lines_is_not_a_listing():
+    """`_card_data` drops a card whose every line is chrome (the module's LISTING_NOISE_LINES).
+    No page can build such a card through `parse_trading_txt` (its last line is always a timestamp), so the
+    guard is exercised directly."""
+    noise_card = ["Join Akrew Pro for an ad free experience!", "Pro", "Marketplace", "Community", "Add Listing",
+                  "Log In", "Sign Up"]
+    assert _card_data(noise_card, ITEM) is None
+
+
+def test_recent_trades_reports_a_login_wall_when_no_rows_are_parsed():
+    for name, needle in (("recent_signin.txt", "Sign In"), ("recent_login.txt", "Login")):
+        text = _fixture(name)
+        assert needle in text
+        result = parse_recent_trades(text)
+        assert (result["code"], result["blocked"], result["trades"]) == ("login_required", True, [])
+    # Without a sign-in/login word the same empty page is the plain "no records" answer, not a login wall.
+    plain = parse_recent_trades("There are no offers for this item")
+    assert (plain["code"], plain["blocked"]) == (None, True)

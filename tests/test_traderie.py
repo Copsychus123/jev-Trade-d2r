@@ -659,3 +659,66 @@ def test_save_report_writes_through_the_atomic_writer(tmp_path):
     market["verification"] = {"passed": False, "failed_checks": ["recent_rows_ok"]}
     assert save_report("Shako", market, tmp_path / "out") is None
     assert not (tmp_path / "out" / "market.json").exists()
+
+
+def test_a_stale_cosmetic_scroll_does_not_lose_the_handoff(monkeypatch):
+    from jev_ultrafast.traderie.controller import advance, new_market
+
+    _read_stub(monkeypatch)
+
+    def stale_scroll(*_args, **_kwargs):
+        raise browser_module.StalePage("Document changed during evaluation")
+
+    agent = _FakeAgent({"awaiting_handoff": True, "status": "handoff"}, lambda a: None)
+    agent.browser = types.SimpleNamespace(evaluate=stale_scroll)
+    market = new_market()
+    advance(agent, "Harlequin Crest", market)
+    assert agent.calls == ["handoff"]
+    assert agent.state["awaiting_handoff"] is False
+
+
+def test_a_controller_error_during_a_raised_tick_does_not_mask_the_ticks_error(monkeypatch):
+    from jev_ultrafast.traderie import controller
+
+    reads = []
+
+    def read_raises_once(_browser, _item, view):
+        reads.append(view)
+        if len(reads) == 1:
+            raise RuntimeError("recent read hiccup")
+        return {"status": "PASSED", "reason": None, "url": "u", "title": "t", "text": "t"}
+
+    monkeypatch.setattr(controller, "read_view", read_raises_once)
+
+    def tick(agent):
+        agent.state["status"] = "done"
+        raise ValueError("tick broke")
+
+    agent = _FakeAgent({"awaiting_handoff": False, "status": "ready"}, tick)
+    market = controller.new_market()
+    with pytest.raises(ValueError, match="tick broke"):  # the tick's error, not the retried controller error
+        controller.step(agent, "Harlequin Crest", market)
+    assert reads == ["recent_trades"] and market["recent_trades"]["status"] == "NOT_RUN"
+    agent._tick = lambda a: None
+    controller.step(agent, "Harlequin Crest", market)  # the next step re-runs the controller work
+    assert market["recent_trades"]["status"] == "PASSED"
+
+
+def test_a_row_cell_cannot_inject_a_pipe_or_a_newline_into_the_report_table():
+    from jev_ultrafast.traderie.controller import _markdown
+
+    market = _passed_market("page", False)
+    market["recent_trades"]["rows"] = [{"buyer_or_seller": "a|b", "price": "1\nUm", "trade_time": "now"}]
+    report = _markdown("Shako", market)
+    assert "| a\\|b | 1 Um | now |" in report
+
+
+def test_the_trading_environment_column_joins_the_parts_that_are_there_and_skips_the_empty_ones():
+    from jev_ultrafast.traderie.controller import _trading_cells
+
+    row = {
+        "seller": "s", "ask": "a", "high_rune_value": "h", "posted_time": "t", "defense": "d",
+        "platform": "PC", "mode": "", "ladder": None,
+    }
+    assert _trading_cells(row)[4] == "PC"
+    assert _trading_cells({**row, "mode": "Softcore", "ladder": "Ladder"})[4] == "PC / Softcore / Ladder"

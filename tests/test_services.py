@@ -1,7 +1,7 @@
 import json
 import os
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
@@ -423,3 +423,161 @@ print("ok")
     )
     assert result.returncode == 0, f"Build import failed: {result.stderr}"
     assert "ok" in result.stdout
+
+
+# --- what the client gets when the store or the request is wrong ---
+
+
+def test_a_body_that_is_not_an_object_is_refused_by_every_route(store):
+    for path, route in app.ROUTES.items():
+        answer = route([], "1.1.1.1", store, SECRET, NOW)
+        assert answer == (400, {"error": "請求格式錯誤", "code": "bad_request"}), path
+
+
+def test_a_request_id_of_the_wrong_shape_is_refused_before_the_use_is_counted(store, code):
+    status, body = start(store, code, request_id="short")
+    assert (status, body["code"]) == (400, "bad_request")
+    assert "used" not in store.data[f"invite:{invites.code_hash(code)}"]
+
+
+def test_repeating_a_start_with_the_same_request_id_answers_the_same_and_counts_once(store, code):
+    first = start(store, code, request_id="abcdefgh")
+    assert start(store, code, request_id="abcdefgh") == first
+    assert store.data[f"invite:{invites.code_hash(code)}"]["used"] == "1"
+
+
+def test_a_store_that_cannot_remember_the_start_still_answers(store, code, capsys):
+    class Forgetful(MemoryStore):
+        def run(self, *command):
+            if command[0] == "SET" and str(command[1]).startswith("start:"):
+                raise StoreError("kv down")
+            return super().run(*command)
+
+    forgetful = Forgetful()
+    its_code = invites.add(forgetful, "amy")
+    status, body = app.run_start(
+        {"invite": its_code, "item_name": "Shako", "request_id": "abcdefgh"}, "1.1.1.1", forgetful, SECRET, NOW
+    )
+    assert (status, body["used"]) == (200, 1)  # the use is already counted: the answer must not be lost to it
+    assert "start not remembered" in capsys.readouterr().out
+
+
+def test_a_store_that_cannot_record_usage_still_answers_the_step(store, code, capsys):
+    class NoUsage(MemoryStore):
+        def pipeline(self, commands, atomic=False):
+            if any(c[0] == "SET" and str(c[1]).startswith("ok:") for c in commands):
+                raise StoreError("kv down")
+            return super().pipeline(commands, atomic=atomic)
+
+    quiet = NoUsage()
+    its_code = invites.add(quiet, "amy")
+    token = app.run_start({"invite": its_code, "item_name": "Shako"}, "1.1.1.1", quiet, SECRET, NOW)[1]["run_token"]
+    status, body = app.choose_step(
+        {"run_token": token, "phase": "trading", "page": PAGE, "history": []},
+        quiet,
+        SECRET,
+        NOW,
+        lambda *a, **k: {"operation": "CLICK", "target": "1", "model_calls": 1, "usage": {}},
+    )
+    assert (status, body["operation"]) == (200, "CLICK")
+    assert "usage not recorded" in capsys.readouterr().out
+
+
+def test_a_step_without_a_model_key_is_not_configured(store, code, monkeypatch):
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    token = token_for(store, code)
+    body = {"run_token": token, "phase": "trading", "page": PAGE, "history": []}
+    status, reply = app.choose_step(body, store, SECRET, NOW)
+    assert (status, reply["code"]) == (500, "not_configured")
+
+
+def test_a_page_that_is_not_an_object_is_a_bad_page(store, code):
+    token = token_for(store, code)
+    body = {"run_token": token, "phase": "trading", "page": PRODUCT, "history": []}
+    status, reply = app.choose_step(body, store, SECRET, NOW, lambda *a, **k: {})
+    assert (status, reply["code"]) == (400, "bad_page")
+
+
+def test_an_item_name_the_goal_cannot_carry_is_refused_and_not_counted(store, code):
+    for bad in ('Shako"', "Sha\u200bko"):
+        status, body = start(store, code, item_name=bad)
+        assert (status, body["error"]) == (400, "裝備名稱含有不允許的字元"), bad
+    assert "used" not in store.data[f"invite:{invites.code_hash(code)}"]
+
+
+# --- the invite rules that keep a name or an unreadable date from granting anything ---
+
+
+def test_an_invite_whose_stored_expiry_cannot_be_read_never_grants_access(store, code):
+    store.run("HSET", invites.record_key(invites.code_hash(code)), "expires", "2026/05/01")
+    assert start(store, code) == (401, {"error": "邀請碼已過期"})
+
+
+def test_a_second_invite_with_the_same_name_is_refused(store, code):
+    with pytest.raises(ValueError) as err:
+        invites.add(store, "amy")
+    assert str(err.value) == invites.DUPLICATE
+
+
+def test_a_name_claimed_between_the_check_and_the_write_is_refused(store, code):
+    class Racing(MemoryStore):
+        def run(self, *command):
+            if command[0] == "HSETNX":
+                return 0  # another admin claimed the name in between
+            return super().run(*command)
+
+    with pytest.raises(ValueError) as err:
+        invites.add(Racing(), "amy")
+    assert str(err.value) == invites.DUPLICATE
+
+
+def test_a_name_missing_from_the_index_is_found_and_indexed_again(store, code):
+    digest = invites.code_hash(code)
+    store.run("HDEL", invites.NAME_INDEX, "amy")
+    found = invites._find(store, "amy")
+    assert found["key"] == invites.record_key(digest)
+    assert store.run("HGET", invites.NAME_INDEX, "amy") == digest
+
+
+# --- the base list is the server's, and a broken one is refused rather than served ---
+
+
+def test_a_base_list_that_is_not_a_clean_list_of_names_is_refused(tmp_path):
+    path = tmp_path / "bases.json"
+    for broken in ({"bases": []}, {"bases": ["Ring", "Ring"]}, {"bases": ["Ring", ""]}, {"bases": ['Say "hi"']}):
+        path.write_text(json.dumps(broken), encoding="utf-8")
+        with pytest.raises(ValueError, match="non-empty list of unique item names"):
+            app.bases.load(path)
+    path.write_text(json.dumps({"bases": ["Ring", "Circlet"]}), encoding="utf-8")
+    assert app.bases.load(path) == ("Ring", "Circlet")
+
+
+def test_an_expiry_may_be_a_date_a_datetime_or_a_day_string_but_not_anything_else(store):
+    assert invites.parse_expires(datetime(2026, 5, 1, 15, 30, tzinfo=TAIPEI)) == "2026-05-01"
+    assert invites.parse_expires(date(2026, 5, 1)) == "2026-05-01"
+    assert invites.parse_expires("2026-05-01") == "2026-05-01"
+    assert invites.parse_expires(None) == "" and invites.parse_expires("") == ""
+    with pytest.raises(ValueError, match="YYYY-MM-DD"):
+        invites.parse_expires("01/05/2026")
+    # The last valid day still counts as valid, whichever way it was given.
+    assert start(store, invites.add(store, "day", expires=date(2026, 5, 1)))[0] == 200
+
+
+def test_a_store_that_cannot_settle_a_failed_step_still_reports_the_failure(store, code, capsys):
+    class NoSettle(MemoryStore):
+        def pipeline(self, commands, atomic=False):
+            if any(c[0] == "DECRBY" and str(c[1]).startswith("run:") for c in commands):
+                raise StoreError("kv down")
+            return super().pipeline(commands, atomic=atomic)
+
+    broken = NoSettle()
+    its_code = invites.add(broken, "amy")
+    token = app.run_start({"invite": its_code, "item_name": "Shako"}, "1.1.1.1", broken, SECRET, NOW)[1]["run_token"]
+
+    def jev_is_down(*_args, **_kwargs):
+        raise RuntimeError("provider down")
+
+    body = {"run_token": token, "phase": "trading", "page": PAGE, "history": []}
+    status, reply = app.choose_step(body, broken, SECRET, NOW, jev_is_down)
+    assert (status, reply["code"]) == (502, "model_unavailable")
+    assert "failed step not settled" in capsys.readouterr().out
