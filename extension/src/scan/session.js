@@ -64,6 +64,9 @@ export function createScanSession() {
   let emitted = false;
   let lastBox = null;
   let lastHash = null;
+  // Bumped by `clear`. A crop taken before it belongs to the cleared run: its result must not become a record, or
+  // records reappear after the player pressed 清除紀錄. `take`/`addRecord` carry it, so this is provable offline.
+  let generation = 0;
 
   const sameBox = (a, b) =>
     Math.abs(a.x - b.x) <= 2 &&
@@ -117,8 +120,10 @@ export function createScanSession() {
     return true;
   }
 
-  // True when this OCR result becomes a record.
-  function addRecord(record) {
+  // True when this OCR result becomes a record. A result carrying the generation of a run that was cleared since
+  // its crop was taken is refused: the player asked for a clean list.
+  function addRecord(record, from = generation) {
+    if (from !== generation) return false;
     stats.read += 1;
     const text = normalizeText(record.text);
     if (text && seenText.has(text)) return false;
@@ -140,13 +145,31 @@ export function createScanSession() {
     return true;
   }
 
-  // Drops the records and the "already seen" memory so the player can start over.
+  // The next crop waiting for OCR, with the generation it was captured in, or null when none is waiting.
+  function take() {
+    const blob = queue.shift();
+    return blob === undefined ? null : { blob, generation };
+  }
+
+  // Drops the records, the crops still waiting for OCR and the "already seen" memory so the player can start over.
   function clear() {
+    queue.length = 0;
     records.length = 0;
     seenText.clear();
     seenKeys.length = 0;
+    generation += 1;
     reset();
   }
 
-  return { feed, accept, queue, stats, records, addRecord, clear };
+  return {
+    feed,
+    accept,
+    queue,
+    take,
+    generation: () => generation,
+    stats,
+    records,
+    addRecord,
+    clear,
+  };
 }

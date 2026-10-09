@@ -208,6 +208,7 @@ def scan_report() -> dict:
         },
         "banner": "",
         "views": [["scan", ""], ["stats", ""]],
+        "clear": {"before": 4, "after": 0, "csv": False, "status": "已停止，待辨識 0 件"},
     }
 
 
@@ -276,6 +277,14 @@ def _fuzzy_item_base_mark_missing(report):
     report["fuzzy_item"]["statsBaseMarked"] = False
 
 
+def _clear_never_pressed(report):
+    report["clear"] = {"before": 0, "after": 0, "csv": False, "status": ""}
+
+
+def _clear_left_records(report):
+    report["clear"] = {"before": 4, "after": 1, "csv": True, "status": "待辨識 0 件"}
+
+
 def _fuzzy_item_no_base_options(report):
     report["fuzzy_item"]["baseOptions"] = 0
 
@@ -320,6 +329,8 @@ def _view_ran_a_query(report):
         pytest.param(_fuzzy_item_base_mark_missing, "看不出是擷取來的", id="fuzzy-item-base-mark-missing"),
         pytest.param(_fuzzy_item_no_base_options, "沒有出貨清單的建議選項", id="fuzzy-item-no-base-options"),
         pytest.param(_fuzzy_item_missing, "None", id="fuzzy-item-missing"),
+        pytest.param(_clear_never_pressed, "沒有在有紀錄時按下去", id="clear-never-pressed"),
+        pytest.param(_clear_left_records, "仍有紀錄", id="clear-left-records"),
         pytest.param(_fuzzy_base_mode_wrong, "'mode': 'name'", id="fuzzy-base-mode"),
         pytest.param(_fuzzy_base_not_filled, "stats-base", id="fuzzy-base-not-filled"),
         pytest.param(_banner_shown, "橫幅", id="banner-shown"),

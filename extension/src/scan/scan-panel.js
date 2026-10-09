@@ -117,23 +117,26 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
     pumping = true;
     try {
       while (session.queue.length) {
-        const blob = session.queue.shift();
+        const crop = session.take();
         const started = performance.now();
-        const text = await ocr.recognize(blob);
+        const text = await ocr.recognize(crop.blob);
         errorText = ""; // a later read worked: the old failure is no longer the current state
         const candidates = ocr.match(text);
         const match = candidates[0] ?? null;
         session.stats.ocrSeconds += (performance.now() - started) / 1000;
         const name = match?.name ?? null;
-        session.addRecord({
-          at: new Date(),
-          name,
-          zh: name ? chineseName(name, tables, match.matched) : "",
-          kind: match?.kind ?? null,
-          base: baseCandidate(candidates),
-          conditions: parseAffixLines(text).conditions,
-          text,
-        });
+        session.addRecord(
+          {
+            at: new Date(),
+            name,
+            zh: name ? chineseName(name, tables, match.matched) : "",
+            kind: match?.kind ?? null,
+            base: baseCandidate(candidates),
+            conditions: parseAffixLines(text).conditions,
+            text,
+          },
+          crop.generation, // a crop taken before 清除紀錄 does not come back as a record
+        );
         renderRecords();
         refreshStatus();
         renderStats();

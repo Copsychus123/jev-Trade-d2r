@@ -300,3 +300,51 @@ test("a cell starting with = survives recordCells and gets its apostrophe from t
   assert.ok(csv.includes("'=SUM(1)"), csv);
   assert.ok(csv.startsWith("\uFEFF時間,名稱"));
 });
+
+test("clear drops the records and forgets the seen text, keys and detector, so the same panel records again", () => {
+  // The player-visible point of 清除紀錄 is starting over: after it, the very same panel/text must be read again.
+  // So this asserts the memory is gone, not merely that an array is empty.
+  const session = createScanSession();
+  const img = frame(BOX_A);
+
+  assert.equal(appearance(session, img), true); // one stable crop queued
+  assert.equal(session.addRecord(record()), true); // ... and its text recorded
+  assert.equal(session.accept("deadbeef"), true); // ... and one standalone key remembered
+  assert.equal(session.records.length, 1);
+
+  session.clear();
+
+  assert.deepEqual(session.records, []); // the records are dropped ...
+  assert.equal(session.addRecord(record()), true); // ... and the same text is recorded again
+  assert.equal(session.accept("deadbeef"), true); // ... and the same key is queued again
+  assert.equal(appearance(session, img), true); // ... and the same stable panel crops once more (detector reset)
+});
+
+test("clear drops the crops still waiting for OCR", () => {
+  // 待辨識 N 件 is on the screen, so "clear" that leaves work pending would be a visible lie - and the panel's pump
+  // would go on to record those crops after the player asked for a clean list.
+  const session = createScanSession();
+  session.queue.push({ blob: "waiting 1" }, { blob: "waiting 2" });
+  assert.equal(session.stats.queued, 2);
+
+  session.clear();
+
+  assert.equal(session.stats.queued, 0);
+  assert.equal(session.take(), null);
+});
+
+test("a crop taken before clear does not come back as a record", () => {
+  const session = createScanSession();
+  session.queue.push({ blob: "taken before the click" });
+  const crop = session.take(); // the pump took it ...
+  assert.equal(session.addRecord(record()), true); // ... and an earlier read is on the list
+
+  session.clear(); // the player clears while the OCR of that crop is still running
+
+  assert.equal(session.addRecord(record(), crop.generation), false); // the finished read is refused
+  assert.deepEqual(session.records, []);
+  session.queue.push({ blob: "captured after the click" });
+  const fresh = session.take(); // a crop captured after the clear is a record like any other
+  assert.equal(session.addRecord(record(), fresh.generation), true);
+  assert.equal(session.records.length, 1);
+});

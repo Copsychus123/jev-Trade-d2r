@@ -256,6 +256,27 @@ async def _collect_record_clicks(
     report["banner"] = after["banner"]
 
 
+async def _clear_records(panel: Panel, report: dict) -> None:
+    """清除紀錄 with records on the list: they go, the crops still waiting for OCR go with them, and - the part a
+    crop already being recognised could break - no record comes back a moment later."""
+    await ensure_scan(panel)
+    before = await panel.state()
+    await panel.evaluate("document.getElementById('scan-clear').click()")
+    try:
+        await panel.wait(lambda s: not s["records"], 20)
+    except Environment as error:
+        report["clear_timeout"] = str(error)
+    await asyncio.sleep(1.5)  # a result of a crop taken before the click would land right after it
+    after = await panel.state()
+    report["clear"] = {
+        "before": len(before["records"]),
+        "after": len(after["records"]),
+        "csv": after["csv"],
+        "status": after["status"],
+    }
+    say(f"  清除紀錄：{len(before['records'])} 筆 -> {len(after['records'])} 筆（CSV 可用 {after['csv']}）")
+
+
 async def drive(panel_ws: str, sim_ws: str, expects: list[str], item_name: str, base_name: str) -> dict:
     report: dict = {"started": time.strftime("%Y-%m-%d %H:%M:%S"), "expects": expects, "base_name": base_name}
     async with attach(panel_ws, Panel, collect_events=True) as panel, attach(sim_ws) as sim:
@@ -280,6 +301,7 @@ async def drive(panel_ws: str, sim_ws: str, expects: list[str], item_name: str, 
 
         await _run_scan(panel, sim, report)
         await _collect_record_clicks(panel, expects, item_name, base_name, report)
+        await _clear_records(panel, report)
     return report
 
 
@@ -342,6 +364,13 @@ def verdict(report: dict) -> list[str]:
         failures.append("查詢橫幅出現：掃描過程不該送出任何查詢")
     if any(view == "running" for view, _ in report.get("views", [])):
         failures.append("掃描過程中畫面變成 running：有查詢被送出")
+    cleared = report.get("clear")
+    if not cleared or cleared.get("before", 0) < 1:
+        failures.append(f"清除紀錄沒有在有紀錄時按下去：{cleared}")
+    elif cleared.get("after") != 0:
+        failures.append(f"清除紀錄之後仍有紀錄（清除前已取走的裁圖不該回來）：{cleared}")
+    elif cleared.get("csv"):
+        failures.append(f"清除紀錄之後 #scan-csv 還可以用（清單應該是空的）：{cleared}")
     return failures
 
 
