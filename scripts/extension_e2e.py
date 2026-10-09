@@ -124,15 +124,17 @@ def start_backend(stub: bool = False) -> tuple[subprocess.Popen, str, BackendLog
         raise Environment(f"本機後端的連接埠 {BACKEND_PORT} 已被佔用（舊的後端還在跑？），請先關閉")
     say("啟動本機後端（stub 選擇器，不會呼叫 Jev）…" if stub else "啟動本機後端…")
     log = BackendLog()
+    inherited = os.environ.get("PYTHONPATH", "")
+    # The parent reads this pipe as UTF-8, so the child must write UTF-8: without this it uses the Windows ANSI codepage
+    # (cp950 on this machine) and the backend's first Chinese line kills the run with a UnicodeDecodeError.
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
     if stub:
-        inherited = os.environ.get("PYTHONPATH", "")
-        env = {
-            **os.environ,
-            "PYTHONPATH": os.pathsep.join(part for part in (str(Path(__file__).resolve().parent), inherited) if part),
-        }
+        env["PYTHONPATH"] = os.pathsep.join(
+            part for part in (str(Path(__file__).resolve().parent), inherited) if part
+        )
         command, missing = [sys.executable, "-u", "-c", STUB_SERVER], "stub 後端沒有啟動（見上面的後端輸出）"
     else:
-        env, command = None, [sys.executable, "-u", "services/dev_server.py"]
+        command = [sys.executable, "-u", "services/dev_server.py"]
         missing = "後端沒有啟動（.env 需要有 TYPESAFE_API_KEY）"
     process = subprocess.Popen(
         command,
@@ -144,17 +146,23 @@ def start_backend(stub: bool = False) -> tuple[subprocess.Popen, str, BackendLog
         encoding="utf-8",
     )
     code, deadline, output = "", time.time() + 30, []
-    while time.time() < deadline:
-        line = process.stdout.readline()
-        if not line:
-            break
-        log.keep(line)
-        output.append(line)
-        if "開發用邀請碼：" in line:
-            code = line.split("開發用邀請碼：", 1)[1].strip()
-        if "Jev backend:" in line and code:
-            log.drain(process)
-            return process, code, log
+    try:
+        while time.time() < deadline:
+            line = process.stdout.readline()
+            if not line:
+                break
+            log.keep(line)
+            output.append(line)
+            if "開發用邀請碼：" in line:
+                code = line.split("開發用邀請碼：", 1)[1].strip()
+            if "Jev backend:" in line and code:
+                log.drain(process)
+                return process, code, log
+    except BaseException:
+        # A crashed parent must not leave the backend holding the port: the next run then refuses to start.
+        process.terminate()
+        log.close()
+        raise
     process.terminate()
     log.close()
     say("".join(output[-10:]))  # whatever the backend printed before dying: the log file is not printed on this path
@@ -180,7 +188,9 @@ def headless_user_agent() -> str:
     binary = Path(chrome_binary())
     versions = [d.name for d in binary.parent.iterdir() if re.fullmatch(r"\d+(\.\d+){3}", d.name)]  # Windows layout
     if not versions:
-        out = subprocess.run([str(binary), "--version"], capture_output=True, text=True, timeout=20).stdout
+        out = subprocess.run(
+            [str(binary), "--version"], capture_output=True, text=True, errors="replace", timeout=20
+        ).stdout
         versions = re.findall(r"\d+(?:\.\d+){3}", out)
     if not versions:
         raise Environment("讀不到 Chrome 版本，請加 --headed")
