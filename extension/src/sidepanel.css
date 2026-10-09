@@ -680,6 +680,11 @@ summary {
   width: 64px;
   min-width: 0;
 }
+/* A number the reader filled in from the capture: shown as needing a look, not as the player's own entry. */
+.affix-limits input.from-capture {
+  border-color: var(--warn, #b8860b);
+  border-style: dashed;
+}
 .affix.unmapped {
   color: var(--muted);
 }

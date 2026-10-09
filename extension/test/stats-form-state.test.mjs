@@ -46,6 +46,30 @@ test("a second screenshot keeps what the player switched on and changed, even fo
   assert.deepEqual(next.conditions.map((c) => [c.key, c.on, c.min]), [["fcr", true, 25], ["mana", true, null], ["life", true, null]]);
 });
 
+test("with carryValues the numbers the reader read are filled in and marked as captured", () => {
+  const reading = rows(row("fcr", { min: 7 }), row("life", { min: 141 }));
+  const filled = fillFromScreenshot(emptyStatsForm(), reading, [], { carryValues: true });
+  assert.deepEqual(
+    filled.conditions.map((c) => [c.key, c.on, c.min, c.fromCapture]),
+    [["fcr", true, 7, true], ["life", true, 141, true]],
+  );
+});
+
+test("without carryValues nothing is filled and nothing is marked as captured", () => {
+  const filled = fillFromScreenshot(emptyStatsForm(), rows(row("fcr", { min: 7 })));
+  assert.deepEqual(filled.conditions.map((c) => [c.min, c.fromCapture]), [[null, false]]);
+});
+
+test("the player's own number survives a captured one, and stops being marked", () => {
+  let form = fillFromScreenshot(emptyStatsForm(), rows(row("fcr", { min: 7 })));
+  form = setLimit(setOn(form, "fcr", true), "fcr", "min", "25");
+  const next = fillFromScreenshot(form, rows(row("fcr", { min: 7 }), row("life", { min: 141 })), [], { carryValues: true });
+  assert.deepEqual(
+    next.conditions.map((c) => [c.key, c.min, c.fromCapture ?? null]),
+    [["fcr", 25, false], ["life", 141, true]],
+  );
+});
+
 test("a condition Traderie has no property for is listed but not switched on", () => {
   const form = fillFromScreenshot(emptyStatsForm(), parsed("fcr", "eth"), ["eth"]);
   assert.deepEqual(form.conditions.map((c) => [c.key, c.on]), [["fcr", true], ["eth", false]]);

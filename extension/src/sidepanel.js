@@ -515,7 +515,7 @@ function onSearchStats(record) {
   modeFromPicture = false;
   setMode("stats");
   if (record.kind === "base") statsForm.setBaseFromScreenshot(record.name);
-  statsForm.fillFromText(record.text); // like onText: the values stay for the player to type
+  statsForm.fillFromText(record.text, { carryValues: true }); // the numbers come from the capture, marked for confirmation
   focusEntry();
 }
 
@@ -711,8 +711,9 @@ async function init() {
       },
       onText: (text) => {
         if (running) return;
-        // The reader ticks the attributes it recognised and leaves every value box empty; the player types the numbers.
-        if (queryMode === "stats") statsForm.fillFromText(text);
+        // The reader ticks what it recognised and fills in the numbers it read, marked for confirmation; the player
+        // still presses start.
+        if (queryMode === "stats") statsForm.fillFromText(text, { carryValues: true });
         else statsForm.rememberScreenshot(text);
       },
       onImage: () => {

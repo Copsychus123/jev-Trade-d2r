@@ -48,7 +48,7 @@ What `scripts/probe_stats.py` measured on a logged-in dedicated Chrome (2026-10-
 - The first page holds 50 listings. More pages are not read.
 - A search nothing matches prints "There are no listings" (measured). A sidebar followed only by blank placeholder lines (U+200C) is a list that has not loaded: it is a failed read, never an empty result.
 
-The affix dictionary keeps 40 entries; `unmappedKeys` (tested against the saved real list in `extension/test/fixtures/properties.json`) shows there is a property for each. Number words in a screenshot are only hints (the reader often sees "20%" as "2006" or "20096"), so the form never carries them: the reader ticks the attributes it recognised and the player types every value; a ticked non-bool condition must carry at least one value (0 counts) before the search starts, while a bool condition needs none and ticking nothing at all stays legal.
+The affix dictionary keeps 40 entries; `unmappedKeys` (tested against the saved real list in `extension/test/fixtures/properties.json`) shows there is a property for each. Number words in a screenshot are only hints (the reader often sees "20%" as "2006" or "20096"), so a captured value is never taken as truth: the reader ticks the attributes it recognised and fills the numbers it read into the form, each marked as coming from the capture so the player confirms or edits it, and the player still presses start. A ticked non-bool condition must carry at least one value (0 counts) before the search starts, while a bool condition needs none and ticking nothing at all stays legal.
 
 ## Screenshot reader accuracy (extension)
 

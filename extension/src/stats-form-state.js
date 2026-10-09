@@ -24,15 +24,27 @@ const change = (form, key, update) => ({
 
 /**
  * The conditions read from a screenshot (parseAffixLines) replace the list. The tick marks the attributes the reader
- * recognised; the numbers are never carried over, so every read row starts with `min`/`max` null. A condition the player
- * had switched on keeps their own numbers, whatever the new reading says, and stays in the list even when the screenshot
- * no longer shows it. Every read condition is switched on in reading order; ones Traderie has no property for and those
- * past the limit stay off.
+ * recognised. With `carryValues` the numbers the reader read are filled in as well and marked `fromCapture`, so the
+ * form can say where they came from; the player still edits them and still presses start. Without it every read row
+ * starts with `min`/`max` null, which is what this reader has always done.
+ * A condition the player had switched on keeps their own numbers, whatever the new reading says, and stays in the list
+ * even when the screenshot no longer shows it. Every read condition is switched on in reading order; ones Traderie has
+ * no property for and those past the limit stay off.
  */
-export function fillFromScreenshot(form, parsed, unavailable = form.unavailable) {
+export function fillFromScreenshot(form, parsed, unavailable = form.unavailable, { carryValues = false } = {}) {
   const chosen = new Map(form.conditions.filter((c) => c.on).map((c) => [c.key, c]));
   const read = parsed.conditions.map(
-    (c) => chosen.get(c.key) ?? { key: c.key, label: c.label, kind: c.kind, line: c.line, min: null, max: null, on: false },
+    (c) =>
+      chosen.get(c.key) ?? {
+        key: c.key,
+        label: c.label,
+        kind: c.kind,
+        line: c.line,
+        min: carryValues ? c.min ?? null : null,
+        max: carryValues ? c.max ?? null : null,
+        fromCapture: carryValues && c.min !== null,
+        on: false,
+      },
   );
   const kept = [...chosen.values()].filter((c) => !parsed.conditions.some((p) => p.key === c.key));
   let next = { ...form, conditions: [...read, ...kept], unavailable };
@@ -63,11 +75,13 @@ export function setOn(form, key, on, maxConditions = MAX_CONDITIONS) {
   return change(form, key, () => ({ on: true }));
 }
 
-/** field is "min" or "max"; an empty or invalid entry means no limit. */
+/** field is "min" or "max"; an empty or invalid entry means no limit. Editing a value clears its from-capture mark. */
 export function setLimit(form, key, field, value) {
   const number = value === "" || value === null || value === undefined ? null : Number(value);
   const limit = number !== null && Number.isFinite(number) && number >= 0 ? number : null;
-  return change(form, key, () => (field === "min" ? { min: limit } : { max: limit }));
+  return change(form, key, () =>
+    field === "min" ? { min: limit, fromCapture: false } : { max: limit, fromCapture: false },
+  );
 }
 
 export const setQuality = (form, quality) => ({ ...form, quality });

@@ -58,12 +58,13 @@ export function initStatsForm({ getProperties, onChange }) {
     for (const [field, text] of [["min", "最小"], ["max", "最大"]]) {
       const input = element("input", {
         type: "number",
-        className: `affix-${field}`,
+        className: `affix-${field}${condition.fromCapture ? " from-capture" : ""}`,
         min: "0",
         step: "1",
         value: condition[field] ?? "",
         placeholder: text,
       });
+      if (condition.fromCapture) input.title = "從擷取讀到，請確認";
       input.setAttribute("aria-label", `${condition.label}${text}值`);
       input.disabled = busy;
       limits.append(input);
@@ -141,14 +142,21 @@ export function initStatsForm({ getProperties, onChange }) {
     for (const radio of document.querySelectorAll('input[name="quality"]')) {
       radio.addEventListener("change", () => set(setQuality(form, radio.value)));
     }
-    $("affix-fill").addEventListener("click", () => fillFromText(screenshotText));
+    $("affix-fill").addEventListener("click", () => fillFromText(screenshotText, { carryValues: true }));
   }
 
-  async function fillFromText(text) {
+  async function fillFromText(text, options) {
     screenshotText = text;
     hasScreenshot = Boolean(text);
     const properties = await getProperties();
-    set(fillFromScreenshot(form, parseAffixLines(text), properties ? unmappedKeys(properties) : form.unavailable));
+    set(
+      fillFromScreenshot(
+        form,
+        parseAffixLines(text),
+        properties ? unmappedKeys(properties) : form.unavailable,
+        options,
+      ),
+    );
   }
 
   wireEvents();
