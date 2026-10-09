@@ -230,21 +230,25 @@ export function initOcrPanel({ tables, onPick, onText = () => {}, onImage, isBus
     }
   }
 
-  /** True when reading can proceed (models present, or downloaded now). False when the download was cancelled. */
-  async function ensureModels() {
-    const { names, bytes } = await manager.missing();
-    if (!names.length) return true;
+  /**
+   * The one "download once, with a notice" path this panel and the gear scanner share: it shows `noticeId`, writes
+   * `textId`, drives `progressId` and (when given) wires `cancelId`. `tail` is the screen's own closing sentence and
+   * `say` its own status line, so each screen keeps its wording while the controller, the progress scale and the
+   * cancel bookkeeping live here only. True when the models are there; a cancelled download throws as it always did.
+   */
+  async function downloadWithNotice({ noticeId, textId, progressId, cancelId = null, tail, names, bytes, say }) {
     const controller = new AbortController();
-    downloading = controller;
-    $("ocr-download-text").textContent =
-      `首次使用，正在下載辨識模型（約 ${formatMB(bytes)} MB，只下載一次，存在這個瀏覽器裡，之後可以離線使用）。`;
-    $("ocr-download").hidden = false;
-    $("ocr-progress").value = 0;
+    downloading = controller; // the panel's own cancel listener aborts this one
+    if (cancelId) $(cancelId).onclick = () => controller.abort();
+    $(textId).textContent =
+      `首次使用，正在下載辨識模型（約 ${formatMB(bytes)} MB，只下載一次，存在這個瀏覽器裡，${tail}）。`;
+    $(noticeId).hidden = false;
+    $(progressId).value = 0;
     try {
       await runDownloads(names, bytes, {
         signal: controller.signal,
         onProgress: (got) => {
-          $("ocr-progress").value = bytes ? Math.round((got / bytes) * 100) : 0;
+          $(progressId).value = bytes ? Math.round((got / bytes) * 100) : 0;
           say(`下載辨識模型（${formatMB(got)} / ${formatMB(bytes)} MB）`);
         },
       });
@@ -252,9 +256,25 @@ export function initOcrPanel({ tables, onPick, onText = () => {}, onImage, isBus
     } finally {
       if (downloading === controller) {
         downloading = null;
-        $("ocr-download").hidden = true;
+        $(noticeId).hidden = true;
       }
+      if (cancelId) $(cancelId).onclick = null;
     }
+  }
+
+  /** True when reading can proceed (models present, or downloaded now). False when the download was cancelled. */
+  async function ensureModels() {
+    const { names, bytes } = await manager.missing();
+    if (!names.length) return true;
+    return downloadWithNotice({
+      noticeId: "ocr-download",
+      textId: "ocr-download-text",
+      progressId: "ocr-progress",
+      tail: "之後可以離線使用",
+      names,
+      bytes,
+      say,
+    });
   }
 
   function showCandidates(candidates) {
@@ -367,11 +387,8 @@ export function initOcrPanel({ tables, onPick, onText = () => {}, onImage, isBus
   return {
     /** The four assets still missing on this computer: { names, bytes }. */
     missingModels: () => manager.missing(),
-    /** Downloads what is missing, in order, on the given progress scale. */
-    async downloadModels({ signal, onProgress = () => {} } = {}) {
-      const { names, bytes } = await manager.missing();
-      await runDownloads(names, bytes, { signal, onProgress });
-    },
+    /** Download what `names`/`bytes` describe behind this panel's own notice; the scanner passes its own ids. */
+    downloadWithNotice,
     /** A cropped tooltip (Blob) as OCR text. A broken engine drops the stored models, so a download is offered again. */
     async recognize(blob) {
       try {

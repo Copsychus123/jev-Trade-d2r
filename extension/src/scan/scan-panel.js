@@ -6,7 +6,6 @@
 import { toCsv } from "../csv.js";
 import { saveText } from "../download.js";
 import { parseAffixLines } from "../ocr/affixes.js";
-import { formatMB } from "../ocr/models.js";
 import { chineseName } from "../traderie/lookup.js";
 import { startCapture } from "./capture.js";
 import { RECORD_HEAD, createScanSession, recordCells } from "./session.js";
@@ -224,29 +223,22 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
 
   // ---- starting and stopping -------------------------------------------------------------------------------------
 
-  /** Shows the download notice, downloads what is missing on the given progress scale; false when cancelled. */
-  async function downloadMissing({ bytes }) {
-    const controller = new AbortController();
-    $("scan-download-text").textContent =
-      `首次使用，正在下載辨識模型（約 ${formatMB(bytes)} MB，只下載一次，存在這個瀏覽器裡，之後可離線使用）。`;
-    $("scan-download").hidden = false;
-    $("scan-progress").value = 0;
-    $("scan-cancel").onclick = () => controller.abort();
+  /** Shows the download notice through the reader's shared path; false when the player cancelled. */
+  async function downloadMissing({ names, bytes }) {
     try {
-      await ocr.downloadModels({
-        signal: controller.signal,
-        onProgress: (got, total) => {
-          $("scan-progress").value = total ? Math.round((got / total) * 100) : 0;
-          say(`下載辨識模型（${formatMB(got)} / ${formatMB(total)} MB）`);
-        },
+      return await ocr.downloadWithNotice({
+        noticeId: "scan-download",
+        textId: "scan-download-text",
+        progressId: "scan-progress",
+        cancelId: "scan-cancel",
+        tail: "之後可離線使用",
+        names,
+        bytes,
+        say,
       });
-      return true;
     } catch (error) {
       if (error?.kind === "cancelled") return false;
       throw error;
-    } finally {
-      $("scan-cancel").onclick = null;
-      $("scan-download").hidden = true;
     }
   }
 
