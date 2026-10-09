@@ -365,6 +365,7 @@ print("ok")
         cwd=str(tmp_path),
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,  # see tests/test_csv_export.py: an invalid inherited stdin fails with WinError 6
         env={k: v for k, v in os.environ.items() if k != "RUN_TOKEN_SECRET"},
     )
     assert result.returncode == 0, f"Build import failed: {result.stderr}"
