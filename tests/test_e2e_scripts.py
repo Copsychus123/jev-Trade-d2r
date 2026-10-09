@@ -343,9 +343,11 @@ def ocr_report() -> dict:
             "label_ok": True,
             "rows_present": True,
             "all_mapped_on": True,
-            "values_empty": True,
+            "values_filled": True,
+            "values_marked": True,
             "no_query_started": True,
-            "start_gate_with_empty_values": {"disabled": True, "whyVisible": True},
+            "start_gate_after_capture": {"disabled": False, "whyVisible": False},
+            "start_gate_after_clearing": {"disabled": True, "whyVisible": True},
             "start_enabled_after_value": {"disabled": False, "whyVisible": False},
         },
     }
@@ -446,7 +448,7 @@ def test_ocr_verdict_rejects_an_auto_check_that_is_not_true(key):
 
 
 @pytest.mark.parametrize(
-    "key", ["label_ok", "rows_present", "all_mapped_on", "values_empty", "no_query_started"]
+    "key", ["label_ok", "rows_present", "all_mapped_on", "values_filled", "values_marked", "no_query_started"]
 )
 def test_ocr_verdict_rejects_an_affix_check_that_is_not_true(key):
     report = ocr_report()
@@ -456,13 +458,22 @@ def test_ocr_verdict_rejects_an_affix_check_that_is_not_true(key):
     assert key in failures[0]
 
 
-@pytest.mark.parametrize("gate", [{"disabled": False, "whyVisible": True}, {"disabled": True, "whyVisible": False}])
-def test_ocr_verdict_rejects_an_affix_start_gate_that_is_not_blocked_with_a_reason(gate):
+@pytest.mark.parametrize("gate", [{"disabled": True, "whyVisible": False}, {"disabled": True, "whyVisible": True}])
+def test_ocr_verdict_rejects_a_captured_value_that_did_not_open_the_start_gate(gate):
     report = ocr_report()
-    report["affix"]["start_gate_with_empty_values"] = gate
+    report["affix"]["start_gate_after_capture"] = gate
     failures = ocr_e2e.verdict(report, floors=ACCURACY_FLOORS, holdout=HOLDOUT_FLOORS)
     assert len(failures) == 1, failures
-    assert "start_gate_with_empty_values" in failures[0]
+    assert "start_gate_after_capture" in failures[0]
+
+
+@pytest.mark.parametrize("gate", [{"disabled": False, "whyVisible": True}, {"disabled": True, "whyVisible": False}])
+def test_ocr_verdict_rejects_a_start_gate_that_stayed_open_with_every_box_empty(gate):
+    report = ocr_report()
+    report["affix"]["start_gate_after_clearing"] = gate
+    failures = ocr_e2e.verdict(report, floors=ACCURACY_FLOORS, holdout=HOLDOUT_FLOORS)
+    assert len(failures) == 1, failures
+    assert "start_gate_after_clearing" in failures[0]
 
 
 def test_ocr_verdict_rejects_a_start_that_stayed_disabled_after_filling_a_value():

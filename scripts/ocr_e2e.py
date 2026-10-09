@@ -87,6 +87,8 @@ STATE = """JSON.stringify({
   affixRows: [...document.querySelectorAll('#affix-list li')].map((li) => ({
     key: li.dataset.key, on: li.querySelector('.affix-on')?.checked ?? null,
     unmapped: li.classList.contains('unmapped'),
+    box: li.querySelector('.affix-min') !== null,
+    marked: li.querySelectorAll('input.from-capture').length,
     min: li.querySelector('.affix-min')?.value ?? null, max: li.querySelector('.affix-max')?.value ?? null })),
   external: performance.getEntriesByType('resource').map((e) => e.name).filter((n) => !n.startsWith('chrome-extension://'))
 })"""
@@ -317,8 +319,8 @@ async def accuracy_speed_group(
 
 async def affix_group(panel: Panel, report: dict, item: dict) -> None:
     """A base-kind picture read in the affix (模糊搜尋) form: the reading itself fills the base and every recognised
-    condition — the attributes are ticked and the value boxes stay empty (nothing is clicked) — the status names the
-    item as English（中文）, and no query is started. `item` is the truth entry of the picture to read."""
+    condition — the attributes are ticked, and the numbers the reader read are filled in and marked as captured — the
+    status names the item as English（中文）, and no query is started. `item` is the truth entry of the picture."""
     checks = report.setdefault("affix", {})
     checks["file"] = item["file"]
     checks["expect"] = item["expect"]
@@ -338,7 +340,7 @@ async def affix_group(panel: Panel, report: dict, item: dict) -> None:
     # (a) the status holds the recognised name as English（中文）: a Latin name, a full-width open bracket, some Chinese
     # and the closing bracket. The 「只認出底材（不會依品質篩選）」 prefix has no Latin name before its bracket.
     label = re.search(r"[A-Za-z][A-Za-z0-9' \-]*（[^（）]*[\u3400-\u9fff][^（）]*）", status)
-    values = [r[f] for r in rows for f in ("min", "max") if r[f] is not None]
+    boxed = [r for r in rows if r["box"] and r["on"] and not r["unmapped"]]
     checks["status"] = status
     checks["label"] = label.group(0) if label else ""
     checks["base"] = state["base"]
@@ -348,29 +350,42 @@ async def affix_group(panel: Panel, report: dict, item: dict) -> None:
     checks["label_ok"] = bool(label)
     checks["rows_present"] = len(rows) >= 1
     checks["all_mapped_on"] = all(r["on"] is True for r in rows if not r["unmapped"])
-    checks["values_empty"] = all(value == "" for value in values)
+    # The reader read a number for every non-bool condition it yielded (it drops the ones without one), so each ticked
+    # row with a box must carry a value, and that value must be marked as coming from the capture for the player to
+    # confirm. A bool row has no box and is left out of both.
+    checks["values_filled"] = bool(boxed) and all(r["min"] or r["max"] for r in boxed)
+    checks["values_marked"] = bool(boxed) and all(r["marked"] for r in boxed)
     checks["no_query_started"] = state["mode"] == "stats" and state["view"] == "ready"
-    # The ticked rows carry no numbers yet, so the start button must stay off and say why: startBlocker's NEED_VALUES
-    # rule blocks a search while a ticked non-bool row has both boxes empty (the base the picture filled is there).
     GATE = (
         "JSON.stringify({ disabled: document.getElementById('start').disabled,"
         " whyVisible: !document.getElementById('start-why').hidden })"
     )
-    checks["start_gate_with_empty_values"] = json.loads(await panel.evaluate(GATE))
-    # Give the first number box a value through the page (a real input event, the way the listener hears it): the gate
-    # must open. A row without a number box (bool) has nothing to fill, so that path is simply not measured here.
-    filled = await panel.evaluate(
-        "(() => { const li = [...document.querySelectorAll('#affix-list li')]"
-        ".find((l) => l.querySelector('.affix-min')); if (!li) return false;"
-        " const box = li.querySelector('.affix-min'); box.value = '5';"
-        " box.dispatchEvent(new Event('input', { bubbles: true })); return true; })()"
+    # The captured numbers are in the boxes, so the gate is open. Emptying every box through the page (real input
+    # events, the way the listener hears them) must close it and show startBlocker's NEED_VALUES reason; giving one
+    # value back must open it again.
+    checks["start_gate_after_capture"] = json.loads(await panel.evaluate(GATE))
+    emptied = await panel.evaluate(
+        "(() => { const boxes = [...document.querySelectorAll('#affix-list .affix-min')];"
+        " if (!boxes.length) return false;"
+        " for (const box of boxes) { box.value = ''; box.dispatchEvent(new Event('input', { bubbles: true })); }"
+        " return true; })()"
     )
-    if filled:
-        checks["start_enabled_after_value"] = json.loads(await panel.evaluate(GATE))
+    if emptied:
+        checks["start_gate_after_clearing"] = json.loads(await panel.evaluate(GATE))
+        checks["start_why_after_clearing"] = await panel.evaluate("document.getElementById('start-why').textContent")
+        filled = await panel.evaluate(
+            "(() => { const li = [...document.querySelectorAll('#affix-list li')]"
+            ".find((l) => l.querySelector('.affix-min')); if (!li) return false;"
+            " const box = li.querySelector('.affix-min'); box.value = '5';"
+            " box.dispatchEvent(new Event('input', { bubbles: true })); return true; })()"
+        )
+        if filled:
+            checks["start_enabled_after_value"] = json.loads(await panel.evaluate(GATE))
     say(
         f"  詞綴：{checks['label']!r} 底材 {state['base']!r} {len(rows)} 條"
-        f"（值都空 {checks['values_empty']}，沒查詢 {checks['no_query_started']}）"
-        f" 開始閘門 {checks['start_gate_with_empty_values']} 填值後 {checks.get('start_enabled_after_value')}"
+        f"（值填了 {checks['values_filled']}／標記 {checks['values_marked']}，沒查詢 {checks['no_query_started']}）"
+        f" 開始閘門 {checks['start_gate_after_capture']} 清空後 {checks.get('start_gate_after_clearing')}"
+        f" 填值後 {checks.get('start_enabled_after_value')}"
     )
 
 
@@ -517,13 +532,19 @@ def verdict(report: dict, floors: dict | None = None, holdout: dict | None = Non
             failures.append(f"自動辨識：{key} 沒通過（{report['auto']}）")
     affix = report.get("affix")
     if affix:
-        for key in ("label_ok", "rows_present", "all_mapped_on", "values_empty", "no_query_started"):
+        for key in ("label_ok", "rows_present", "all_mapped_on", "values_filled", "values_marked", "no_query_started"):
             if not affix.get(key):
                 failures.append(f"詞綴組：{key} 沒通過（{affix.get(key)!r}；狀態={affix.get('status')!r}）")
-        # A ticked row with empty value boxes must keep 開始查詢 off and show the reason; filling a number must open it.
-        gate = affix.get("start_gate_with_empty_values")
-        if not (isinstance(gate, dict) and gate.get("disabled") is True and gate.get("whyVisible") is True):
-            failures.append(f"詞綴組：start_gate_with_empty_values 沒通過（{gate!r}）")
+        # The captured numbers open 開始查詢; emptying them must close it and show the reason, and one value must open
+        # it again.
+        capture = affix.get("start_gate_after_capture")
+        if not (isinstance(capture, dict) and capture.get("disabled") is False):
+            failures.append(f"詞綴組：start_gate_after_capture 沒通過（{capture!r}）")
+        cleared = affix.get("start_gate_after_clearing")
+        if cleared is not None and not (
+            isinstance(cleared, dict) and cleared.get("disabled") is True and cleared.get("whyVisible") is True
+        ):
+            failures.append(f"詞綴組：start_gate_after_clearing 沒通過（{cleared!r}）")
         opened = affix.get("start_enabled_after_value")
         if opened is not None and not (isinstance(opened, dict) and opened.get("disabled") is False):
             failures.append(f"詞綴組：start_enabled_after_value 沒通過（{opened!r}）")
