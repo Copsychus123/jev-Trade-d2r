@@ -48,6 +48,7 @@
 > **實機證據**：`scan_e2e` exit=0（`fuzzy_item {ticks 1, statsBase 'Sacred Rondache', statsBaseFrom 'ocr'}`、`fuzzy_base {ticks 1, statsBase 'Grand Charm'}`）；`ocr_e2e` exit=0（詞綴組 `values_filled/values_marked true`、`marked: 1`、閘門 開→清空關（理由正確）→填值開；準確度 22/21/22、30/22/29 未變；下載組 13 項全 true）。
 > **排除的假設**（離線實驗）：`unmappedKeys(normalizeProperties(fixture))` 是 **[]**，四個紀錄的詞綴鍵都對應得到 → 不是「被拒絕勾選」造成的。
 **檔案**：`extension/src/stats-form-state.js`（`fillFromScreenshot` 回傳／記錄被略過的標籤）、`extension/src/stats-form.js`、`extension/src/sidepanel.js`＋`sidepanel.css`（表單旁一行「已略過 N 條：…」）。
+**實作縮小（2026-10-10 稽核確認）**：出貨的不是那一行彙總，而是**每一列自己的註記**——`stats-form.js` 對 Traderie 沒有對應屬性的條件印「（Traderie 沒有這個屬性）」並把該列變灰、勾選框停用（`stats-form-state.js` 的 `setOn`／`fillFromScreenshot` 也會拒絕把它打開），`sidepanel.css` 有 `.affix.unmapped`。語意相同、位置不同。
 **驗收**：任何入口帶進來的詞綴，若 Traderie 沒有對應屬性，就不被勾選、且被列在表單旁；按開始不會再被 `judgeStats` 的 unmapped 分支中止（前提：剩下的條件有值）。
 **驗證**：`node --test extension/test/stats-form-state.test.mjs extension/test/panel-state.test.mjs`；`uv run pytest`；實機 `scripts/ocr_e2e.py`（截圖入口）與 `scripts/scan_e2e.py`（掃描入口）。
 **相依**：無。

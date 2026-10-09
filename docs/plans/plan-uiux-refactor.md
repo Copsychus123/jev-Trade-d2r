@@ -85,6 +85,7 @@
 ### Phase 5：收尾（S）
 
 - 更新 `docs/design.md`（模組圖、契約、錯誤形狀）、`AGENTS.md` 對應段落；跑一次完整驗證（`pytest`／`node`／`ruff`／`build.py`／實機 `ocr_e2e`＋`scan_e2e`）。
+- **收尾驗收（2026-10-10，本計畫自己承諾的那一輪）**：`uv run pytest` **476 passed**、`node --test` **492 passed**、`ruff` clean、`uv run python extension/build.py` 成功（出貨含 `tokens.css`）；實機 `scripts/scan_e2e.py --headed` **exit 0**（4 筆紀錄、清除紀錄 4→0、`清除後沒有紀錄回來`）；實機 `scripts/ocr_e2e.py --headed` **exit 0**（調校組 top-3 **22/22**、保留組 **29/30**、`auto` 四項全 True：有模型才自讀、不自行送出查詢、沒模型不下載也不讀）。`AGENTS.md`／`docs/design.md`／`README.md` 與各計畫的敘述已在同一批更新。
 
 ## 五、檢查點
 
@@ -94,7 +95,7 @@
 | 1 後 | ＝既有計畫的檢查點 A/B |
 | 2 後 | `sidepanel.js` ≤ 300 行；新模組有單元測試；`config.js` 只有 1 個入口；實機 `extension_e2e`＋`scan_e2e` 綠 |
 | 3 後 | 摘要／來源／分頁在實機看得到；CSV 與畫面一致 |
-| 4 後 | demo 與面板同一份資料同一個樣子 |
+| 4 後 | demo 與面板同一份資料同一個樣子：**資料與文字 ✓**（`columns-parity`／`check-reasons-parity`／視圖標籤三條 parity 測試，同一份 `market` 產生相同欄位與相同句子）；**外觀**：色票詞彙已共用（`tokens.css`＋`tests/test_ui_tokens.py`），但 demo 的配色仍是自己的 86 色——要不要跟面板一致（或反之）是唯一還沒決定的美學項，實作成本＝一個角色改一行 |
 
 ## 六、需要你決定
 

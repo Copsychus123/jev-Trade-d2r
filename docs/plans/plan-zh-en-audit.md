@@ -2,19 +2,19 @@
 
 狀態：**已完成並定版。**（修補 6 不做，見第四節。）資料檔：`extension/src/traderie/data/items.json`（來源 d2r.world 與 Traderie，由 `scripts/build_item_tables.py` 產生）。
 
-## 一、盤點結果（Traderie 共 1402 個商品，有中文名稱的 1234 個，88%）
+## 一、盤點結果（Traderie 共 1402 個商品，有中文名稱的 1370 個，98%）
 
 | 分類 | 有中文／總數 | 比例 | 缺的是什麼 |
 |---|---|---|---|
-| 底材（base） | 500／516 | 97% | 16 個：Axe、Dagger、Helm、Tower Shield、Throwing Knife 等**通用武器防具類名稱**，因為頁面上的「分類標題」和第一件物品撞名，被當成不確定而丟掉；另有 5 種藥水、The Gidbinn、Wirt's Leg |
-| 套裝（sets） | 165／172 | 96% | 7 個：Death's Disguise、Orphan's Call（撞名）、Warlord's 開頭 5 件（d2r.world 沒收） |
-| 獨特（uniques） | 401／418 | 96% | 17 個：Amulet Of The Viper、Constricting Ring、Hellfire Torch（撞名）、Rainbow Facet 8 種、The Black Cleft 等 6 個 |
-| 符文（runes） | 33／34 | 97% | 只缺 Rune Set（組合包，不是單一符文） |
-| 符文之語（runewords） | 97／101 | 96% | Destruction（撞名）、Hustle (Armor)/(Weapon)、Mania |
-| 手工（crafted） | 32／36 | 89% | 4 個 Blood／Caster／Hit Power／Safety Body：Traderie 叫 `Blood Body`，d2r.world 叫 `Blood Body Armor`，名稱對不上 |
+| 底材（base） | 515／516 | 99.8% | 1 個：Wirt's Leg（撞名，見下一節） |
+| 套裝（sets） | 172／172 | 100% | 無（表重建後 d2r.world 的名稱已對上） |
+| 獨特（uniques） | 418／418 | 100% | 無（含 Hellfire Torch；彩虹刻面等已對上） |
+| 符文（runes） | 34／34 | 100% | 無 |
+| 符文之語（runewords） | 101／101 | 100% | 無（含 Destruction、Hustle、Mania） |
+| 手工（crafted） | 36／36 | 100% | 無（`Body` 與 `Body Armor` 已對上） |
 | 護身符（charms） | 3／3 | 100% | — |
-| **寶石（gems）** | **0／36** | **0%** | 全部缺（Chipped/Flawed/Perfect Ruby 等）。d2r.world 沒有寶石頁 |
-| **雜項（misc）** | **3／86** | **3%** | 幾乎全缺：藥水、鑰匙（Key of Terror…）、精華（Essence）、赫拉迪克方塊、世界之石碎片、箭矢等。d2r.world 沒有雜項頁 |
+| **寶石（gems）** | **36／36** | **100%** | 無（表重建後已補齊） |
+| **雜項（misc）** | **55／86** | **64%** | 31 個：箭矢、Key of Terror 等鑰匙、精華、赫拉迪克方塊、世界之石碎片與多數藥水 |
 
 ## 二、盤點時發現的品質問題
 
@@ -30,7 +30,7 @@
 |---|---|---|
 | 1 | 把「咒符」等通用字加入排除，只留種類補充表裡的正確對應 | 貼上一張寫「咒符」的截圖，不應該填入 Entropy Locket |
 | 2 | 比對時也忽略「.」，讓「塔.拉夏的守護」配得上 | 輸入「塔拉夏的守護」，應配到 Tal Rasha's Guardianship |
-| 3 | 通用武器類名稱的撞名：當候選中只有一個是底材、其他是獨特／套裝時，選底材（「匕首→Dagger」）；真的撞名的 7 個維持丟棄 | 輸入「匕首」「塔盾」「巨劍」能查到底材；輸入「地獄火炬」仍然提示表裡沒有 |
+| 3 | 通用武器類名稱的撞名：當候選中只有一個是底材、其他是獨特／套裝時，選底材（「匕首→Dagger」）；真的撞名的維持丟棄（目前只剩 3 個：Crescent Moon、Ward、Wirt's Leg，見 `ALLOWED_DUPLICATE_KEYS`） | 輸入「匕首」「塔盾」「巨劍」能查到底材；輸入「月牙」「守護」仍提示表裡沒有 |
 | 4 | 手工類 `Body` 與 `Body Armor` 的名稱對應 | 輸入「血腥系手工護甲」能配到 Blood Body |
 | 5 | 「遊戲有、Traderie 沒有」清單只留套裝與手工頁的名稱，去掉頁尾雜訊 | 打開資料檔不再看到 Contact Us、Dan Brown 等 |
 | 6 | **寶石與雜項（119 個）補中文名稱**：d2r.world 沒有，需要另找來源（見問題 1） | 輸入「完美紅寶石」「恐懼之鑰」能查到商品 |
@@ -39,6 +39,7 @@
 
 ## 四、結論（已定版）
 
-1. 寶石與雜項：d2r.world 沒有的名稱一律視為沒有中文名稱，只能用英文名稱查詢（不手寫、不另找來源）。
+1. 寶石與雜項：d2r.world 沒有的名稱一律視為沒有中文名稱（不手寫、不另找來源）。**更正（2026-10-10 重新量測）**：表重建後寶石已 36／36 全有、雜項 55／86，剩下 31 個（箭矢、鑰匙、精華、方塊、世界之石碎片與多數藥水）仍只能用英文查。
 2. 中文化插件的名稱表：不採用。
-3. 修補 1 到 5、7、8 已完成；修補 6（寶石與雜項）依第 1 點不做。
+3. 修補 1 到 5、7、8 已完成；修補 6（寶石與雜項）**大部分已由後續的表重建補上**（見第 1 點的更正）：寶石全數到齊，雜項還有 31 個沒有中文名，依第 1 點不再手寫。
+4. 第一節的數字在 2026-10-10 以 `scripts/audit_item_tables.py` 的正規化重新量測過一次（`zh` 共 2043 條、1370／1402 有中文名、各分類如上表）：這份表是快照，會隨每次重建移動。
