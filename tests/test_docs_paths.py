@@ -65,3 +65,27 @@ def test_all_doc_paths_exist():
             missing.append(path_str)
     
     assert not missing, f"Stale paths in README.md/AGENTS.md: {missing}"
+
+
+def test_every_shipped_module_is_named_in_the_rulebook():
+    """A module the rulebook never names is a behaviour with no address: a reader cannot find where it lives, and a
+    rename or a delete of it goes unnoticed (a documented path is checked by the test above, an undocumented one is
+    not). `extension/src/vendor` and the item tables are data, not modules."""
+    repo_root = Path(__file__).resolve().parents[1]
+    rulebook = (repo_root / "AGENTS.md").read_text(encoding="utf-8")
+    skip = ("vendor", "data", "__pycache__", "dist", ".build", ".tmp")
+    modules = [
+        path
+        for base, suffix in (
+            (repo_root / "extension" / "src", ".js"),
+            (repo_root / "src" / "jev_ultrafast", ".py"),
+            (repo_root / "services" / "jevsvc", ".py"),
+        )
+        for path in base.rglob(f"*{suffix}")
+        if path.is_file()
+        and path.name != "__init__.py"
+        and not any(part in skip for part in path.parts)
+    ]
+    assert len(modules) >= 50, f"only {len(modules)} modules were found; the walk is broken"
+    unnamed = sorted(path.relative_to(repo_root).as_posix() for path in modules if path.name not in rulebook)
+    assert not unnamed, f"modules no document names: {unnamed}"
