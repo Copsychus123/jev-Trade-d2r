@@ -335,9 +335,10 @@ def test_read_view_reports_blocked_when_site_shows_a_challenge():
     assert "網站阻擋" in result["reason"]
 
 
-def _market(trading_url, recent_url, *, trading_status="PASSED", recent_status="PASSED"):
+def _market(trading_url, recent_url, *, trading_status="PASSED", recent_status="PASSED", title="Harlequin Crest",
+            text="Harlequin Crest"):
     def view(url, status):
-        return {"status": status, "reason": None, "url": url, "title": "Harlequin Crest", "text": "Harlequin Crest"}
+        return {"status": status, "reason": None, "url": url, "title": title, "text": text}
 
     return {"trading": view(trading_url, trading_status), "recent_trades": view(recent_url, recent_status)}
 
@@ -365,6 +366,29 @@ def test_verify_views_flags_a_blocked_recent_view():
     result = verify_views("Harlequin Crest", market)
     assert "not_blocked" in result["failed_checks"]
     assert "recent_rows_ok" in result["failed_checks"]
+
+
+PRODUCT = f"{TRADERIE_D2R_URL}/product/a"
+
+# One market per check, each breaking only that check. Two of the eight (`item_match`, `trading_rows_ok`) could be
+# replaced by `True` without any test noticing, and the checks are the product's promise: a DONE decision is not proof.
+BROKEN = {
+    "product_page": dict(trading_url=PRODUCT, recent_url=TRADERIE_D2R_URL),
+    "item_match": dict(trading_url=PRODUCT, recent_url=f"{PRODUCT}/recent", title="Stormshield", text="Stormshield"),
+    "same_product": dict(trading_url=PRODUCT, recent_url=f"{TRADERIE_D2R_URL}/product/b/recent"),
+    "trading_view": dict(trading_url=f"{PRODUCT}/recent", recent_url=f"{PRODUCT}/recent"),
+    "recent_view": dict(trading_url=PRODUCT, recent_url=PRODUCT),
+    "trading_rows_ok": dict(trading_url=PRODUCT, recent_url=f"{PRODUCT}/recent", trading_status="FAILED"),
+    "recent_rows_ok": dict(trading_url=PRODUCT, recent_url=f"{PRODUCT}/recent", recent_status="FAILED"),
+    "not_blocked": dict(trading_url=PRODUCT, recent_url=f"{PRODUCT}/recent", recent_status="BLOCKED"),
+}
+
+
+@pytest.mark.parametrize("broken", sorted(BROKEN))
+def test_every_verification_check_can_still_fail_on_its_own(broken):
+    result = verify_views("Harlequin Crest", _market(**BROKEN[broken]))
+    assert result["passed"] is False
+    assert broken in result["failed_checks"]
 
 
 def test_browser_navigate_accepts_page_stuck_in_interactive_after_grace(monkeypatch):
