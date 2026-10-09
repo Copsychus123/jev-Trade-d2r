@@ -41,3 +41,9 @@ def test_the_action_budget_is_the_same_everywhere():
         == _declared("src/jev_ultrafast/config.py", r"MAX_STEPS = (\d+)")
         == _documented(r"\((\d+) actions, \d+ decisions,")
     )
+
+
+def test_the_browser_cache_cap_is_the_size_the_rulebook_states():
+    assert _declared("src/jev_ultrafast/chrome.py", r"DISK_CACHE_BYTES = (\d+) \* 1024 \* 1024") == _documented(
+        r"page cache is capped at (\d+) MB"
+    )

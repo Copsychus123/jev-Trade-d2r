@@ -129,6 +129,27 @@ def test_blocked_url_patterns_cover_ad_hosts_with_and_without_subdomains():
     assert not any("traderie.com" in p for p in patterns)
 
 
+def test_the_blocked_host_list_itself_is_the_contract():
+    """Every host in the list costs memory and keeps the page changing, so trimming it has to be a deliberate act:
+    this test is what makes a removal show up (the pattern test above only looks at two of them)."""
+    assert chrome.BLOCKED_HOSTS == (
+        "mediavine.com",
+        "doubleclick.net",
+        "googlesyndication.com",
+        "googletagmanager.com",
+        "google-analytics.com",
+        "analytics.google.com",
+        "tiktok.com",
+        "grow.me",
+        "maze.co",
+        "sentry.io",
+        "ad-delivery.net",
+        "adnxs.com",
+        "criteo.com",
+        "scorecardresearch.com",
+    )
+
+
 def test_close_chrome_removes_small_caches_but_keeps_the_login_and_page_cache(monkeypatch, tmp_path):
     folders = (
         "Default/Cache",
