@@ -35,6 +35,8 @@
 
 `httpx` 的版本在兩個地方各有一份宣告：本機用 `pyproject.toml` 的 `httpx>=0.28,<1`，Vercel 用 `services/requirements.txt` 釘死的 `httpx==0.28.1`（部署包只裝這一個套件）。升版時兩邊都要改，否則本機測過、線上跑的是另一個版本。
 
+**換到 Vercel 以外的主機時**：錯誤邀請碼的節流（同一來源 10 次／15 分鐘）用的來源位址，依序讀 `X-Vercel-Forwarded-For`（Vercel 自己填、客戶端改不了）、`X-Real-IP`、`X-Forwarded-For`，都沒有才用 socket 位址。後兩個是客戶端可自填的標頭，所以在別的 Proxy 後面部署時，**該 Proxy 必須覆寫這兩個標頭**，否則任何人都能每次換一個值來輪替節流鍵（邀請碼本身是 128 位隨機，猜不到；受影響的是防濫用，不是防猜測）。`tests/test_services.py::test_the_throttle_key_prefers_the_address_the_platform_saw` 把這個順序釘住。
+
 ## 管理邀請碼
 
 在專案根目錄執行（需要 `.env` 裡有 KV_REST_API_URL 與 KV_REST_API_TOKEN）：

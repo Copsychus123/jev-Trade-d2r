@@ -10,6 +10,7 @@ from tests._harness_stub import install
 install()  # before the backend import below: nothing here may start the Chrome daemon
 
 from jevsvc import app, invites, tokens  # noqa: E402, I001
+from jevsvc import http as backend_http  # noqa: E402
 from jevsvc.store import MemoryStore, StoreError  # noqa: E402
 
 SECRET = "s" * 40
@@ -307,6 +308,41 @@ def test_wsgi_rejects_unusable_content_length_and_hostile_json_with_400(monkeypa
     assert call_wsgi("POST", "/api/run/start", body, store, length="abc")[0].startswith("400")
     assert call_wsgi("POST", "/api/run/start", body, store, length="-1")[0].startswith("400")
     assert call_wsgi("POST", "/api/run/start", b"[" * 100000, store)[0].startswith("400")
+
+
+def client_key(headers, remote="203.0.113.9"):
+    """Who the throttle counts: `Client_key` reads the address Vercel saw, else the proxy headers, else the socket."""
+    lower = {name.lower(): value for name, value in headers.items()}
+    request = backend_http.Request(
+        method="POST",
+        path="/api/run/start",
+        content_length="2",
+        header=lambda name: lower.get(name.lower()),
+        read=lambda _length: b"{}",
+        remote=remote,
+    )
+    return backend_http.client_key(request)
+
+
+def test_the_throttle_key_prefers_the_address_the_platform_saw():
+    """The key decides whether the ten-wrong-guesses limit can be rotated away, so the order matters: Vercel's own
+    header wins (a client cannot set it there), the generic proxy headers are only a fallback for other hosts, and the
+    socket address is the last resort."""
+    assert client_key({"X-Vercel-Forwarded-For": "1.1.1.1", "X-Forwarded-For": "9.9.9.9"}) == client_key(
+        {"X-Vercel-Forwarded-For": "1.1.1.1"}
+    )
+    assert client_key({"X-Vercel-Forwarded-For": "1.1.1.1"}) != client_key({"X-Vercel-Forwarded-For": "2.2.2.2"})
+    # The key is the address, not the header: the same caller is the same key whichever header carried it.
+    assert client_key({"X-Vercel-Forwarded-For": "1.1.1.1"}) == client_key({"X-Forwarded-For": "1.1.1.1"})
+    assert client_key({"X-Real-IP": "3.3.3.3"}) == client_key({"X-Forwarded-For": "3.3.3.3"})
+    assert client_key({"X-Forwarded-For": "9.9.9.9, 10.0.0.1"}) == client_key({"X-Forwarded-For": "9.9.9.9"})
+    assert client_key({}, remote="198.51.100.7") == client_key({}, remote="198.51.100.7")
+    assert client_key({}, remote="198.51.100.7") != client_key({}, remote="198.51.100.8")
+
+
+def test_the_throttle_key_is_a_short_hash_and_keeps_no_address():
+    key = client_key({"X-Forwarded-For": "9.9.9.9"})
+    assert len(key) == 16 and "9.9.9.9" not in key
 
 
 def test_a_client_can_ask_again_without_the_blocked_option(store, code):
