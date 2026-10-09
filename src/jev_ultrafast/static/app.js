@@ -157,7 +157,9 @@ function renderDecisions(decisions, executedSteps, ruleEvents = []) {
 const marketViews = {
   trading: {
     prefix: "trading",
-    head: ["賣家", "要價", "高符文價值", "刊登時間", "平台 / 模式 / 天梯", "防禦"],
+    // The same columns (and the same cells, in the same order) as the panel's TRADING_COLUMNS/tradingCells: one run's
+    // market.json must export the same CSV whichever UI the player used.
+    head: ["賣家", "要價", "高符文價值", "刊登時間", "平台 / 模式 / 天梯", "防禦", "遊戲版本"],
     cells: (r) => [
       r.seller,
       r.ask,
@@ -165,14 +167,21 @@ const marketViews = {
       r.posted_time,
       [r.platform, r.mode, r.ladder].filter(Boolean).join(" / "),
       r.defense,
+      r.game_version,
     ],
     label: "目前掛單",
     mergeInto: { from: 2, into: 1 },
   },
   recent_trades: {
     prefix: "recent-trades",
-    head: ["成交物品", "成交價格", "成交時間"],
-    cells: (r) => [r.buyer_or_seller, r.price, r.trade_time],
+    head: ["成交物品", "成交價格", "成交時間", "平台 / 模式 / 天梯", "遊戲版本"],
+    cells: (r) => [
+      r.buyer_or_seller,
+      r.price,
+      r.trade_time,
+      [r.platform, r.mode, r.ladder].filter(Boolean).join(" / "),
+      r.game_version,
+    ],
     label: "近期成交",
   },
 };
