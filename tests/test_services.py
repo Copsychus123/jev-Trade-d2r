@@ -174,6 +174,23 @@ def test_a_run_never_exceeds_30_model_calls(store, code):
     assert status == 429 and "上限" in body["error"]
 
 
+def test_a_reservation_that_does_not_fit_takes_nothing_from_the_run(store):
+    """The run budget is a reservation: a step that cannot fit must leave the counter exactly as it was, or the client
+    silently loses calls it never used and the run is cut short."""
+    run = "run:reserve-test"
+    assert app._reserve(store, run, 2) is True
+    assert int(store.run("GET", run)) == 2
+
+    store.run("SET", run, str(app.MAX_MODEL_CALLS - 1))
+    assert app._reserve(store, run, 1) is True  # filling the budget exactly is allowed
+    assert int(store.run("GET", run)) == app.MAX_MODEL_CALLS
+
+    assert app._reserve(store, run, 1) is False
+    assert int(store.run("GET", run)) == app.MAX_MODEL_CALLS  # nothing was taken
+    assert app._reserve(store, run, 2) is False
+    assert int(store.run("GET", run)) == app.MAX_MODEL_CALLS
+
+
 def test_chooser_failure_is_502(store, code):
     def boom(*args, **extra):
         raise RuntimeError("jev down")
