@@ -65,6 +65,33 @@ export async function loadProperties({ tab, scripts, store = chrome.storage.loca
   }
 }
 
+/**
+ * Makes sure a usable list exists *before* the player's first affix search, so the form can grey out conditions the
+ * site has no property for instead of wasting a trip. The stored copy is used while it is younger than a week; only
+ * when there is none (or it is old) is `openTab()` — a function that opens one Traderie tab and resolves with it —
+ * called, once, to read the list, which is then stored; that tab is closed again whether the read worked or not.
+ * A failed read is an error and an old copy is never a fallback, exactly as `loadProperties` promises, so the caller
+ * may catch it and carry on without the list.
+ */
+export async function ensureProperties({ openTab, scripts, store = chrome.storage.local, now = Date.now() }) {
+  const saved = await cachedProperties(store);
+  if (saved && now - saved.fetchedAt < PROPERTIES_TTL_MS && saved.properties.length) {
+    return { properties: saved.properties, cacheHit: true };
+  }
+  let tab;
+  try {
+    tab = await openTab();
+    const properties = await fetchProperties(tab, scripts);
+    await store.set({ [PROPERTIES_KEY]: { fetchedAt: now, properties } });
+    return { properties, cacheHit: false };
+  } catch (error) {
+    const last = saved ? `（上次取得：${isoDay(saved.fetchedAt)}）` : "";
+    throw new Error(`${error.message}${last}`, { cause: error });
+  } finally {
+    if (tab) await tab.close().catch(() => {});
+  }
+}
+
 /** The line in the settings page. */
 export function propertiesAge(saved) {
   if (!saved) return "Traderie 屬性清單：尚未取得（第一次查詢時會自動取得）";

@@ -25,7 +25,7 @@ import { indexTables, searchShowsItem } from "./traderie/lookup.js";
 import { initNameSuggest } from "./name-suggest.js";
 import { initOcrPanel } from "./ocr/panel.js";
 import { initScanPanel } from "./scan/scan-panel.js";
-import { cachedProperties } from "./traderie/properties.js";
+import { ensureProperties } from "./traderie/properties.js";
 import { MAX_LOAD_MORE, TRADERIE_D2R_URL, detectGuard, phaseFinishRule } from "./traderie/site.js";
 import { marketViews, openable, tabKeysFor, viewConfigFor } from "./result-views.js";
 import { createResultActions } from "./result-actions.js";
@@ -661,7 +661,17 @@ function registerListeners() {
 
   function wireSubPanels() {
     statsForm = initStatsForm({
-      getProperties: async () => (await cachedProperties())?.properties ?? null,
+      // Best effort: a fresh cached list answers without touching a tab, an old one is read once (and that tab closed),
+      // and a failed read returns null so filling carries on exactly as before - the query path still reports it.
+      getProperties: async () => {
+        try {
+          const scripts = await loadPageScripts();
+          const { properties } = await ensureProperties({ openTab: () => Tab.open(TRADERIE_D2R_URL, scripts), scripts });
+          return properties;
+        } catch {
+          return null;
+        }
+      },
       onChange: updateStart,
     });
     initNameSuggest({ input: $("item"), list: $("item-suggest"), getTables: () => tables });

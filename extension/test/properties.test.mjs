@@ -7,6 +7,7 @@ import {
   PROPERTIES_KEY,
   PROPERTIES_TTL_MS,
   cachedProperties,
+  ensureProperties,
   loadProperties,
   normalizeProperties,
   propertiesAge,
@@ -34,10 +35,14 @@ class FakeTab {
   constructor(reply) {
     this.reply = reply;
     this.calls = [];
+    this.closes = 0;
   }
   async evaluate(expression, options) {
     this.calls.push({ expression, options });
     return this.reply;
+  }
+  async close() {
+    this.closes += 1;
   }
 }
 
@@ -78,6 +83,50 @@ test("a refused read is an error that names the last good copy, and the old copy
   await assert.rejects(loadProperties({ tab, scripts, store, now: NOW }), /HTTP 403.*上次取得：2026-09-26/u);
   assert.equal(store.writes, 0);
   await assert.rejects(loadProperties({ tab: new FakeTab({ status: 200, body: { properties: [] } }), scripts, store: new FakeStore(), now: NOW }), /無法取得 Traderie 屬性清單/u);
+});
+
+test("ensureProperties uses a fresh copy without opening a Traderie tab", async () => {
+  const properties = normalizeProperties(API);
+  const store = new FakeStore({ [PROPERTIES_KEY]: { fetchedAt: NOW - 3 * DAY, properties } });
+  let opened = 0;
+  const openTab = async () => {
+    opened += 1;
+    return new FakeTab({ status: 500, body: "" });
+  };
+  assert.deepEqual(await ensureProperties({ openTab, scripts, store, now: NOW }), { properties, cacheHit: true });
+  assert.equal(opened, 0);
+});
+
+test("ensureProperties opens one tab, reads once and stores the list when the copy is old, then closes that tab", async () => {
+  const store = new FakeStore({ [PROPERTIES_KEY]: { fetchedAt: NOW - PROPERTIES_TTL_MS - 1, properties: normalizeProperties(API) } });
+  const tab = new FakeTab({ status: 200, body: API });
+  let opened = 0;
+  const openTab = async () => {
+    opened += 1;
+    return tab;
+  };
+  const { properties, cacheHit } = await ensureProperties({ openTab, scripts, store, now: NOW });
+  assert.equal(properties[0].id, 520);
+  assert.equal(cacheHit, false);
+  assert.equal(opened, 1);
+  assert.equal(tab.calls.length, 1);
+  assert.equal(store.data[PROPERTIES_KEY].fetchedAt, NOW);
+  assert.equal(store.writes, 1);
+  assert.equal(tab.closes, 1);
+});
+
+test("ensureProperties treats a failed read as an error, keeps no old copy and always closes the tab", async () => {
+  const store = new FakeStore({ [PROPERTIES_KEY]: { fetchedAt: NOW - 9 * DAY, properties: normalizeProperties(API) } });
+  const tab = new FakeTab({ status: 403, body: "Just a moment" });
+  await assert.rejects(ensureProperties({ openTab: async () => tab, scripts, store, now: NOW }), /HTTP 403.*上次取得：2026-09-26/u);
+  assert.equal(store.writes, 0);
+  assert.equal(tab.closes, 1);
+  const empty = new FakeTab({ status: 200, body: { properties: [] } });
+  await assert.rejects(
+    ensureProperties({ openTab: async () => empty, scripts, store: new FakeStore(), now: NOW }),
+    /無法取得 Traderie 屬性清單/u,
+  );
+  assert.equal(empty.closes, 1);
 });
 
 test("a damaged stored value counts as no copy", async () => {
