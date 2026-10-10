@@ -89,3 +89,56 @@ def test_every_shipped_module_is_named_in_the_rulebook():
     assert len(modules) >= 50, f"only {len(modules)} modules were found; the walk is broken"
     unnamed = sorted(path.relative_to(repo_root).as_posix() for path in modules if path.name not in rulebook)
     assert not unnamed, f"modules no document names: {unnamed}"
+
+
+# Variables of the platform or of a tool we call, not settings of this project: the WSGI transport's, the OS paths
+# (the Chrome profile and a per-user install), the e2e script's subprocess, browser_harness's own.
+PLATFORM_ENV = {
+    "CONTENT_LENGTH",
+    "HTTP_",
+    "PATH_INFO",
+    "REMOTE_ADDR",
+    "LOCALAPPDATA",
+    "XDG_DATA_HOME",
+    "PYTHONPATH",
+    "BU_CDP_URL",
+}
+ENV_READERS = (
+    r"""os\.environ(?:\.get)?\s*[\[(]\s*['"]?([A-Z][A-Z0-9_]{3,})""",
+    r"""getenv\(\s*['"]?([A-Z][A-Z0-9_]{3,})""",
+    r"""process\.env\.([A-Z][A-Z0-9_]{3,})""",
+    # config.py reads its keys through get_clean/number/price, chrome.py through env.get: the names are literals there
+    r"""(?:get_clean|env\.get|environ\.get|os\.getenv|number|price)\(\s*['"]([A-Z][A-Z0-9_]{3,})['"]""",
+)
+
+
+def test_every_setting_the_code_reads_is_documented():
+    """A setting nobody documents is a knob the operator cannot find. This found two: CHROME_PATH (which the error
+    message itself tells the user to set) and API_RETRY_COUNT (which `.env.example` listed every neighbour of)."""
+    repo_root = Path(__file__).resolve().parents[1]
+    docs = "\n".join(
+        (repo_root / name).read_text(encoding="utf-8")
+        for name in ("AGENTS.md", "README.md", "docs/design.md", ".env.example")
+        if (repo_root / name).exists()
+    )
+    sources = [
+        path
+        for base, suffix in (
+            (repo_root / "src", ".py"),
+            (repo_root / "services", ".py"),
+            (repo_root / "scripts", ".py"),
+            (repo_root / "extension" / "src", ".js"),
+        )
+        for path in base.rglob(f"*{suffix}")
+        if path.is_file()
+        and not any(part in {"vendor", "dist", ".build", ".tmp", "__pycache__"} for part in path.parts)
+    ]
+    read: set[str] = set()
+    for path in sources:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        for pattern in ENV_READERS:
+            read.update(re.findall(pattern, text))
+    ours = read - PLATFORM_ENV
+    assert len(ours) >= 12, f"only {len(ours)} settings were found; the walk is broken: {sorted(ours)}"
+    missing = sorted(name for name in ours if not re.search(rf"\b{re.escape(name)}\b", docs))
+    assert not missing, f"settings the code reads but no document names: {missing}"
