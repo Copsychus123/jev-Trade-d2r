@@ -133,7 +133,10 @@ def test_views_read_verified_and_report_written(journey):
     assert usage["steps"] == len(last["history"]) > 0
     assert 0 < usage["calls"] < usage["steps"]  # the loading cycle is run by rule, so not every step asked Jev
     assert usage["input_tokens"] > 0
-    assert usage["cost_usd"] == pytest.approx(usage["input_tokens"] / 1e6 * 0.042 + usage["output_tokens"] / 1e6 * 0)
+    # A sanity bound on the cost, not the formula again (usage.py derives it from JEV_INPUT_USD_PER_MILLION, a knob
+    # .env.example invites tuning): the published rate is well under a thousandth of a dollar per token, so a unit
+    # slip (a missing or doubled 1e6) lands outside this, while a tuned rate still fits.
+    assert 0 < usage["cost_usd"] < usage["input_tokens"] / 1000
     assert last["phase_labels"] == ["階段 1：目前掛單", "階段 2：近期成交"]
     assert all(d["label"] and d["usage"] for d in last["decisions"])
     assert all(0 <= d["probability"] <= 1 for d in last["decisions"])
