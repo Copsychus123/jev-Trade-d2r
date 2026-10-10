@@ -7,7 +7,7 @@
 | 事實 | 數字 | 為什麼是問題 |
 |---|---|---|
 | `extension/src/sidepanel.js` | **741 行**，且是**唯一**匯入建置產物 `config.js` 的模組 | 面板的狀態機、事件綁定、流程編排全擠在一支裡；離線**不可測**（34 支單元測試沒有一支 cover 它） |
-| 面板 UI 與 demo UI | 面板：`panel-dom.js`+`result-views.js`+`sidepanel.css`；demo：`app.js` 679 + `style.css` 1143 + `index.html` 190 = **2,032 行** | **兩套 UI、兩套渲染、兩套信任線/表格**，同一個產品卻沒有共用視覺語言與規則 |
+| 面板 UI 與 demo UI | 面板：`panel-dom.js` 91 + `result-views.js` 50 + `sidepanel.css` 730＝**871 行**；demo：`app.js` 715 + `style.css` 1143 + `index.html` 190＝**2,048 行**（2026-10-10 重新量測；原本記的是 679＋1143＋190＝2,032） | **兩套 UI、兩套渲染、兩套信任線/表格**，同一個產品卻沒有共用視覺語言與規則 |
 | 已證明有效的樣式 | `stats-form-state.js`（99，純）、`scan/session.js`（145，純）、`panel-state.js`（39，純）都有測試 | 純核心 + 細薄 DOM 這條路本專案走得通，應該推廣到 `sidepanel.js` |
 | 錯誤／狀態的表達 | `banner`、`status`、`reason`、`view`、`kind`、`failed_checks`、`rule_events`… 多套並存 | 消費者（UI、報告、CSV、e2e）各自解讀，容易漂移 |
 | 清單 | 掃描紀錄記憶體上限、`MAX_CANDIDATES`、`MAX_CONDITIONS`、`MAX_ACTIONS` 都有；**結果表**沒有分頁概念 | 一次讀 150 筆掛單時，UI 直接全畫 |

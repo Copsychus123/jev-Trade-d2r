@@ -67,3 +67,46 @@ def test_every_constant_a_document_states_has_that_value_in_the_code():
     assert not mismatches, "documents state numbers the code does not have:\n" + "\n".join(mismatches)
     # A name nobody defines is either a typo in the document or a constant that was deleted from the code.
     assert not unknown, "documents name constants the code does not define:\n" + "\n".join(unknown)
+
+
+def _code_number(path: str, pattern: str) -> float:
+    """The number a source file declares with `pattern` (one capture group); fails loudly when the line is gone."""
+    text = (ROOT / path).read_text(encoding="utf-8")
+    match = re.search(pattern, text)
+    assert match, f"{path} no longer declares {pattern!r}"
+    return float(match.group(1).replace("_", ""))
+
+
+def _doc_number(document: str, pattern: str) -> float:
+    """The number a document states in prose with `pattern`; fails loudly when the sentence was reworded away."""
+    text = (ROOT / document).read_text(encoding="utf-8")
+    match = re.search(pattern, text)
+    assert match, f"{document} no longer states {pattern!r}"
+    return float(match.group(1))
+
+
+# The same guarantee as above, for numbers the documents state in words rather than as `NAME = n`: each of these is a
+# rule a reader acts on, so a drift is a document that lies about behaviour.
+def test_the_publish_gate_is_the_share_the_rulebook_states():
+    assert round(_code_number("scripts/build_item_tables.py", r"MAX_SHRINK = ([\d.]+)") * 100) == _doc_number(
+        "AGENTS.md", r"or shrank by more than (\d+)%"
+    )
+
+
+def test_the_table_age_that_counts_as_stale_is_the_days_the_rulebook_states():
+    assert _code_number("extension/src/traderie/lookup.js", r"TABLE_STALE_DAYS = (\d+)") == _doc_number(
+        "AGENTS.md", r"stale after (\d+) days"
+    )
+
+
+def test_the_ocr_workers_idle_termination_is_the_duration_the_rulebook_states():
+    assert _code_number("extension/src/ocr/engine.js", r"ENGINE_IDLE_MS = ([\d_]+)") / 1000 == _doc_number(
+        "AGENTS.md", r"terminated after about (\d+) s without a read"
+    )
+
+
+def test_the_affix_dictionary_holds_the_entry_count_the_design_document_states():
+    text = (ROOT / "extension/src/ocr/affix_dictionary.js").read_text(encoding="utf-8")
+    entries = re.findall(r'^\s*affix\("', text, re.M)  # the file is an array of affix(...) calls
+    assert len(entries) >= 20, f"only {len(entries)} entries found: the file's shape changed"
+    assert len(entries) == _doc_number("docs/design.md", r"affix dictionary keeps (\d+) entries")
