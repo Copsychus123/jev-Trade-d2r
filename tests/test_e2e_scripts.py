@@ -1,5 +1,5 @@
 """Offline tests of the pure parts of the Chrome end-to-end scripts (`scripts/extension_e2e.py`, `scan_e2e.py`,
-`ocr_e2e.py`, `stub_backend.py`).
+`ocr_e2e.py`, `demo_e2e.py`, `stub_backend.py`).
 
 The real drivers need Windows Chrome, the extension and (for OCR) a model download, so they only run under
 `uv run --group e2e python scripts/<name>.py`. Their `verdict` functions are pure: they turn an already-collected
@@ -20,7 +20,7 @@ import pytest
 from jev_ultrafast.traderie.site import build_goal, phase_plan
 from jevsvc import invites
 from jevsvc.store import MemoryStore
-from scripts import extension_batch, extension_e2e, ocr_e2e, scan_e2e, stub_backend
+from scripts import demo_e2e, extension_batch, extension_e2e, ocr_e2e, scan_e2e, stub_backend
 
 # --- extension_e2e.parse_sample ---------------------------------------------------------------------------
 
@@ -643,3 +643,98 @@ def test_batch_judge_checks_that_a_double_click_spent_only_one_query():
     verdict, reason = extension_batch.judge(case, batch_result(quota="已用 5/100"), 3)
     assert verdict == "FAIL" and "額度" in reason
     assert extension_batch.judge(case, batch_result(quota="—"), 3)[0] == "FAIL"
+
+# --- demo_e2e.verdict (the demo page's result rendering) -----------------------------------------------------
+
+
+def demo_report() -> dict:
+    """What scripts/demo_e2e.py reads out of the rendered page: three listings and two trades, in the page's own
+    shapes (a price cell that carries both names, a seller name holding `|` and a newline, one row whose environment
+    parts are all empty). verdict() -> []."""
+    return {
+        "tab": "查詢結果（掛單 3・成交 2）",
+        "status": "兩段資料已讀取並通過檢查 · 可按「產生報告」",
+        "tables": [
+            {"width": 566.0, "rows": [
+                ["賣家", "要價 / 高符文價值", "高符文價值", "刊登時間", "平台 / 模式 / 天梯", "防禦", "遊戲版本"],
+                ["a|b\nc", "1 Vex Rune", "Vex", "3 days ago", "PC / Softcore / Ladder", "141", "D2R"],
+                ["賣家二", "Ist", "—", "2 days ago", "—", "—", "Classic (Base Game)"],
+                ["Third", "Pul", "Pul", "1 day ago", "Playstation / Hardcore / Ladder", "0", "D2R"],
+            ]},
+            {"width": 366.0, "rows": [
+                ["成交物品", "成交價格", "成交時間", "平台 / 模式 / 天梯", "遊戲版本"],
+                ["They Give", "1 Um", "5 hours ago", "PC / Softcore / Ladder", "D2R"],
+                ["I Give", "1 Mal", "1 day ago", "Xbox / Hardcore / Non Ladder", "D2R"],
+            ]},
+        ],
+        "merged": ["高符文價值", "Vex", "—", "Pul"],
+        "csv": 2,
+        "details": 5,
+    }
+
+
+def test_demo_verdict_accepts_the_page_it_expects():
+    assert demo_e2e.verdict(demo_report()) == []
+
+
+def _demo_no_switch(report):
+    report["tab"] = "查詢過程"
+
+
+def _demo_one_table(report):
+    report["tables"] = report["tables"][:1]
+
+
+def _demo_narrow_left(report):
+    report["tables"][0]["width"] = 300.0
+
+
+def _demo_six_columns(report):
+    report["tables"][0]["rows"][0].pop()
+
+
+def _demo_mangled_seller(report):
+    # A newline collapsed to a space, or a value that lost its text: the row's raw text is the assertion.
+    report["tables"][0]["rows"][1][0] = "a|b c"
+
+
+def _demo_environment_not_joined(report):
+    report["tables"][0]["rows"][3][4] = "Ladder"
+
+
+def _demo_without_the_merge(report):
+    report["merged"] = ["高符文價值"]
+
+
+def _demo_one_csv(report):
+    report["csv"] = 1
+
+
+def _demo_one_details(report):
+    report["details"] = 1
+
+
+def _demo_no_verification_line(report):
+    report["status"] = "準備開始探索"
+
+
+@pytest.mark.parametrize(
+    ("mutation", "needle"),
+    [
+        pytest.param(_demo_no_switch, "沒有自動切到查詢結果", id="no-auto-switch"),
+        pytest.param(_demo_one_table, "應該有兩張表", id="one-table"),
+        pytest.param(_demo_narrow_left, "掛單在左且較寬", id="left-not-wider"),
+        pytest.param(_demo_six_columns, "欄數應為 7 與 5", id="six-columns"),
+        pytest.param(_demo_mangled_seller, "以文字呈現", id="mangled-seller"),
+        pytest.param(_demo_environment_not_joined, "環境欄", id="environment-not-joined"),
+        pytest.param(_demo_without_the_merge, "併在要價下", id="no-merge"),
+        pytest.param(_demo_one_csv, "匯出 CSV", id="one-csv"),
+        pytest.param(_demo_one_details, "網頁原文", id="one-details"),
+        pytest.param(_demo_no_verification_line, "通過檢查", id="no-verification-line"),
+    ],
+)
+def test_demo_verdict_reports_exactly_the_single_broken_assertion(mutation, needle):
+    report = demo_report()
+    mutation(report)
+    failures = demo_e2e.verdict(report)
+    assert len(failures) == 1 and needle in failures[0], failures
