@@ -6,8 +6,9 @@ file that defines the values) is what makes a future "make them match" a one-lin
 which the before/after panel screenshots of the change show - and the local demo declares its own skin by overriding
 the same names.
 
-The panel is migrated, so it may not contain a colour literal at all. The demo's migration waits for the baseline
-decision, so its literal count is a ceiling that may only fall.
+The panel is migrated, so it may not contain a colour literal at all. The demo's palette was kept as it is (the user
+chose 維持現狀 on 2026-10-10), so its literal count is a ceiling: a new colour there has to become a token, and a
+future "make them look alike" is one line per role rather than a hunt through the stylesheet.
 """
 
 import re

@@ -61,7 +61,7 @@
 
 #### 功能 3：模糊搜尋結果的價格摘要（S）— **已完成**（`7282391`）
 `traderie/price-summary.js`（純）：High Rune Value 的最低／中位數／四分位（nearest-rank；`priced < 4` 不給四分位）＋未標價計數，不改動 rows；`labels.priceSummaryLine` 產出單句，`renderChrome` 把它放在結果註記行最前面（模式為 stats 時）。**注意**：parser 寫的是 `high_rune_value`（snake_case），模組兩種都讀。
-**驗證**：離線 8＋4 個案例綠；**實機未斷言**——這條路徑只在真的查詢後才出現，要驗得跑 `scripts/extension_e2e.py`（會花真實 Jev 額度），留到下一次額度驗證時一起看。
+**驗證**：離線 8＋4 個案例綠；**實機未斷言**——這條路徑只在真的查詢後才出現，要驗得跑 `scripts/extension_e2e.py`（會花真實 Jev 額度），留到下一次額度驗證時一起看。**你 2026-10-10 決定：先不跑**，所以這一條仍是離線＋`scan_e2e`／`ocr_e2e` 覆蓋。
 **檔案**：新純函式（`extension/src/traderie/stats.js` 或 `price-summary.js`）、`extension/src/panel-dom.js`、測試。
 **驗收**：對已讀 rows 給最低／中位數／四分位（略過無法解析者並計數）；空清單顯示「沒有可比較的價格」；**排序鍵用 High Rune Value**（你的決定）；無模型、無額度。
 **驗證**：純函式單測（`Unknown`／複合價格／空清單／單筆）＋ `node --test` ＋ `pytest`。
@@ -69,7 +69,7 @@
 
 #### 功能 4：唯一物品的底材怎麼來（M，**需你決定 D5**）— **已完成（採選項 ②：底材建議清單）**（`0889788`）
 **決定**：維持「底材必填」的既有規則（不動 `startBlocker`），改成**讓填得出來**——`#stats-base` 接一個 `<datalist>`，選項來自**出貨表**（`lookup.baseOptions(indexTables)` → `items.json` 的 `bases`，因此沒有任何底材名稱寫在程式裡），在玩家切到模糊搜尋模式時填入（best-effort，與屬性暖機同一個時機）。**是建議、不是限制**：玩家仍可自由輸入。
-**驗收（離線已達）**：`baseOptions` 3 個案例（null／空／去重保序）＋ `scan_e2e` 新斷言（datalist ≥ 50 個選項，並有對應的離線失敗案例）。**實機斷言待跑**：等探測 agent 放開專用 Chrome（一次只能一支 Chrome 腳本）。
+**驗收（離線已達）**：`baseOptions` 3 個案例（null／空／去重保序）＋ `scan_e2e` 新斷言（datalist ≥ 50 個選項，並有對應的離線失敗案例）。**實機斷言已在 `scan_e2e` 通過**（`#stats-base-options` ≥ 50；2026-10-10 exit 0）。
 **問題**：`startBlocker` 要底材，而唯一物品（任何入口）都沒有底材可讀。
 **選項**：①**由品質代替**（用 `prop_<quality>=<value>` 當篩選，底材留空；需改 `startBlocker` 的規則）②保留必填，但提供**底材建議清單**（從 `items.json` 的 bases 取，打字時過濾）③只在「同一趟精準搜尋已經找到該商品」時自動帶入底材（該頁的標題含底材時）。
 **驗收**（依選項而定）：唯一物品從任一入口都能在**不靠遊戲知識**的情況下開始模糊搜尋。
@@ -86,7 +86,7 @@
 **相依**：功能 4 的決定會影響它（若選 ①，這裡的預填只是錦上添花）。
 
 #### 功能 6：精準失敗 → 一鍵轉模糊（S）— **已完成**（`a8a9029`，與功能 7 同一筆：共用「來源」機制）
-`#part-summary` 多一顆 `#fuzzy-handoff`（「用詞綴找同類」），只在**這次查詢來自掃描紀錄**且畫面處於 `requery` 時出現，按下去就是 `onSearchStats(runSource.record)`（與掃描清單那顆同一條路）。**實機未斷言**：需要一次「精準失敗」的實跑（花額度），留到額度檢查點。
+`#part-summary` 多一顆 `#fuzzy-handoff`（「用詞綴找同類」），只在**這次查詢來自掃描紀錄**且畫面處於 `requery` 時出現，按下去就是 `onSearchStats(runSource.record)`（與掃描清單那顆同一條路）。**實機未斷言**：需要一次「精準失敗」的實跑（花額度），留到額度檢查點——**你 2026-10-10 決定：先不跑**。
 **檔案**：`extension/src/sidepanel.js`（失敗訊息旁一顆按鈕，帶入目前的條件）。
 **驗收**：精準以「找不到這個裝備」或 game-only 收場時出現「用這些詞綴找同類」，按下切到詞綴模式且條件已勾。
 **驗證**：`node --test extension/test/panel-state.test.mjs` ＋ 實機 ＋ 人工看一次。
