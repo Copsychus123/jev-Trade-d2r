@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { newMarket } from "../src/traderie/controller.js";
-import { PROPERTIES_KEY } from "../src/traderie/properties.js";
+import { ITEM_TYPES_KEY, ITEM_TYPES_TTL_MS } from "../src/traderie/item-types.js";
+import { PROPERTIES_KEY, normalizeProperties } from "../src/traderie/properties.js";
 import { TRADERIE_D2R_URL } from "../src/traderie/site.js";
 import { findAndReadStats } from "../src/traderie/stats_flow.js";
 import { StalePage, TimeoutError } from "../src/errors.js";
@@ -37,6 +38,9 @@ class FlowTab {
 
 class FakeStore {
   data = {};
+  constructor(data = {}) {
+    this.data = data;
+  }
   async get(key) {
     return key in this.data ? { [key]: this.data[key] } : {};
   }
@@ -46,6 +50,7 @@ class FakeStore {
 }
 
 const cond = (key, label, min, on = true) => ({ key, label, kind: "percent", on, min, max: null });
+const DAY_MS = 24 * 3600 * 1000;
 
 async function run(tab, input) {
   const market = newMarket();
@@ -207,4 +212,63 @@ test("a home read that fails for another reason is propagated unchanged", async 
     () => run(new BrokenHome(), { conditions: [cond("fcr", "施法速度", 10)] }),
     /cdp socket died/u,
   );
+});
+
+test("a stored Item Type list skips the home-page load and still sends the base as a site type", async () => {
+  const tab = new FlowTab();
+  const session = { tab: null };
+  const store = new FakeStore({
+    [ITEM_TYPES_KEY]: { fetchedAt: Date.now() - 3 * DAY_MS, itemTypes: ["Amulet", "Ring"] },
+    [PROPERTIES_KEY]: { fetchedAt: Date.now() - 3 * DAY_MS, properties: normalizeProperties(apiProperties) },
+  });
+  const market = newMarket();
+  let reads = 0;
+  const readSettledPage = tab.readSettledPage.bind(tab);
+  tab.readSettledPage = async (...args) => {
+    reads += 1;
+    return readSettledPage(...args);
+  };
+  const outcome = await findAndReadStats({
+    conditions: [cond("fcr", "施法速度", 10)],
+    base: "Ring",
+    quality: "any",
+    openTab: async (url) => {
+      await tab.navigate(url);
+      session.tab = tab;
+      return tab;
+    },
+    scripts: { fetchJson: "(async (path) => path)" },
+    store,
+    market,
+    session,
+  });
+  assert.equal(outcome, "ran");
+  // One navigation, straight to the filtered address: the home page was never opened, so never read either.
+  assert.deepEqual(tab.navigated, [`${TRADERIE_D2R_URL}?prop_520Min=10&tags[]=Ring`]);
+  assert.equal(reads, 1);
+  assert.equal(market.lookup.type, "Ring");
+  assert.equal(market.trading.status, "PASSED");
+});
+
+test("an expired Item Type list is read from the home page again and refreshed", async () => {
+  const store = new FakeStore({ [ITEM_TYPES_KEY]: { fetchedAt: Date.now() - ITEM_TYPES_TTL_MS - 1, itemTypes: ["Amulet"] } });
+  const { tab } = await run(new FlowTab(), { conditions: [cond("fcr", "施法速度", 10)], base: "Ring", store });
+  // "Amulet" alone has no Ring: only a fresh home read could put the base in the address as a site type.
+  assert.deepEqual(tab.navigated, [`${TRADERIE_D2R_URL}?prop_520Min=10&tags[]=Ring`]);
+  assert.deepEqual(store.data[ITEM_TYPES_KEY].itemTypes, ["Amulet", "Ring"]);
+  assert.ok(Date.now() - store.data[ITEM_TYPES_KEY].fetchedAt < 5000);
+});
+
+test("a failed home read with an expired Item Type list is an error, not the stale list", async () => {
+  class BrokenHome extends FlowTab {
+    async readSettledPage() {
+      throw new Error("cdp socket died");
+    }
+  }
+  const store = new FakeStore({ [ITEM_TYPES_KEY]: { fetchedAt: Date.now() - 9 * DAY_MS, itemTypes: ["Ring"] } });
+  await assert.rejects(
+    () => run(new BrokenHome(), { conditions: [cond("fcr", "施法速度", 10)], base: "Ring", store }),
+    /cdp socket died（上次取得：/u,
+  );
+  assert.deepEqual(store.data[ITEM_TYPES_KEY].itemTypes, ["Ring"]); // neither rewritten nor used as a fallback
 });

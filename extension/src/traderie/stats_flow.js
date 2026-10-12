@@ -2,15 +2,16 @@
 // confirmed conditions become the filters of the D2R home page ("Search All Stats"); the program opens that address
 // and reads the first page of the list. No Jev, no backend: nothing here chooses what to click.
 //
-//   1. open the home page (checks it is not a challenge page, reads its list of Item Types)
+//   1. get the home page's list of Item Types (stored for a week like the property list; a fresh copy skips the load)
 //   2. get Traderie's property list (stored for a week) and map the conditions to it
-//   3. open the home page again with the filters in its address, read the list, check the filters were kept
+//   3. open the home page with the filters in its address, read the list, check the filters were kept
 //
 // Resolves with "ran" (the list was read; the caller judges the result), "guard" (site challenge) or "unmapped"
 // (a switched-on condition has no property at Traderie; nothing was searched).
 import { TimeoutError, StalePage } from "../errors.js";
 import { readStatsView, verifyStats } from "./controller.js";
-import { loadProperties, numberConditionLabels } from "./properties.js";
+import { loadItemTypes } from "./item-types.js";
+import { ensureProperties, loadProperties, numberConditionLabels } from "./properties.js";
 import { TRADERIE_D2R_URL, detectGuard } from "./site.js";
 import { timed } from "../timeline.js";
 import {
@@ -27,8 +28,9 @@ import {
 const HOME_READS = 4;
 
 /**
- * Step 1: open the D2R home page and read its Item Type list. Returns `{ itemTypes }`, or `{ guard: true }` when the
- * site challenged the request.
+ * Step 1's real read: open the D2R home page and read its Item Type list. Returns `{ itemTypes }`, or `{ guard: true }`
+ * when the site challenged the request. `loadItemTypes` runs this only on a cache miss; a fresh stored copy skips the
+ * home-page load (and with it this guard check — the filtered page's own read still catches a challenge).
  */
 async function readHomeItemTypes({ openTab, session, onStatus }) {
   onStatus("開啟 Traderie 首頁…");
@@ -78,15 +80,15 @@ function filterNotes({ quality, chosenQuality, base, type }) {
  * what could not be filtered, and build the address of the filtered home page. Returns `{ url, mapped }`, or
  * `{ unmapped }` when a switched-on condition has no property at Traderie.
  */
-async function planStatsSearch({ conditions, base, quality, itemTypes, scripts, store, session, lookup, onStatus }) {
+async function planStatsSearch({ conditions, base, quality, itemTypes, scripts, store, session, lookup, onStatus, openTab }) {
   onStatus("取得 Traderie 的屬性清單…");
-  // loadProperties reports whether it used the stored list: one source of truth, no second storage read.
-  const loaded = await timed(
-    session,
-    "load_properties",
-    () => loadProperties({ tab: session.tab, scripts, store }),
-    (r) => ({ cache_hit: r.cacheHit }),
-  );
+  // loadProperties reports whether it used the stored list: one source of truth, no second storage read. Without a
+  // query tab (the Item Type list came from cache) a stale property list is read in a tab of its own, closed again.
+  const readProperties = () =>
+    session.tab
+      ? loadProperties({ tab: session.tab, scripts, store })
+      : ensureProperties({ openTab: () => openTab(TRADERIE_D2R_URL), scripts, store });
+  const loaded = await timed(session, "load_properties", readProperties, (r) => ({ cache_hit: r.cacheHit }));
   const properties = loaded.properties;
   lookup.stage = "apply";
   const { mapped, unmapped } = mapConditions(conditions, properties);
@@ -120,9 +122,10 @@ async function planStatsSearch({ conditions, base, quality, itemTypes, scripts, 
  * Step 3: open the filtered address, read its list, keep only the rows whose name is the base, and check the read
  * independently. Every sentence the player needs about what was read ends up in `lookup.notes`.
  */
-async function readFilteredRows({ url, mapped, base, market, session, lookup, onStatus }) {
+async function readFilteredRows({ url, mapped, base, market, session, lookup, onStatus, openedHere = false }) {
   onStatus("套用條件…");
-  await timed(session, "navigate", () => session.tab.navigate(url), (r) => r ?? {});
+  // `openTab` already navigated and settled the tab on this address; navigating again would reload the page for nothing.
+  if (!openedHere) await timed(session, "navigate", () => session.tab.navigate(url), (r) => r ?? {});
   await timed(session, "settle", () => session.tab.settle(), (r) => r ?? {});
   onStatus("讀取符合條件的掛單…");
   const shown = numberConditionLabels(mapped);
@@ -159,23 +162,35 @@ export async function findAndReadStats({
   const lookup = { mode: "stats", stage: "properties", notes: [], base, quality };
   Object.assign(market, { mode: "stats", lookup });
 
-  const home = await readHomeItemTypes({ openTab, session, onStatus });
-  if (home.guard) return "guard";
+  const types = await timed(
+    session,
+    "load_item_types",
+    () => loadItemTypes({ read: () => readHomeItemTypes({ openTab, session, onStatus }), store }),
+    (r) => ({ cache_hit: r.cacheHit }),
+  );
+  if (types.guard) return "guard";
 
   const filters = await planStatsSearch({
     conditions,
     base,
     quality,
-    itemTypes: home.itemTypes,
+    itemTypes: types.itemTypes,
     scripts,
     store,
     session,
     lookup,
     onStatus,
+    openTab,
   });
   if (filters.unmapped) return "unmapped";
   if (shouldStop()) return "ran";
 
-  await readFilteredRows({ url: filters.url, mapped: filters.mapped, base, market, session, lookup, onStatus });
+  // A stored Item Type list skipped step 1's home-page load, so there is no query tab yet: open it straight on the
+  // filtered address (one home load saved) instead of opening the home page and navigating again.
+  const openedHere = !session.tab;
+  if (openedHere) {
+    session.tab = await timed(session, "open_tab", () => openTab(filters.url), (tab) => tab?.openTiming ?? {});
+  }
+  await readFilteredRows({ url: filters.url, mapped: filters.mapped, base, market, session, lookup, onStatus, openedHere });
   return "ran";
 }
