@@ -1,8 +1,7 @@
 Marketplace
 Community
 Add Listing
-Log In
-Sign Up
+2
 All
 Uniques
 Runes
@@ -17,14 +16,10 @@ Services
 Leaderboard
 Price Check
 Play our game Galactic Getaway in Early access now!
-Trade Diablo II: Resurrected Items Instantly and Safely
-
-Discover and join the #1 moderated Diablo II: Resurrected trading community. Search trade ads to find uniques, runes, and rare items from other players. Post your own trade ad or browse real-time offers in a safe, trusted environment.
-
-22,936,525 Successful Trades
+68,702,296 Successful Trades
 Stats
 Search Stats...
-Stats
+Stats(1)
 Amount
 Amulet
 Attacker Takes Damage Of X
@@ -700,6 +695,9 @@ X To Monster Defense Per Hit
 +X To Zeal (Paladin Only)
 Weapon
 Weapon (2)
++X% Faster Cast Rate:
+ - 
+Apply Filters
 Filters
 Categories
 Uniques
@@ -852,766 +850,661 @@ Ring Variant
 Unidentified
 Upgraded
 Posted: Newest
+Active Filters
++X% Faster Cast Rate
 Apply FiltersClear Filters
-mike2025
- (48)
-1 X Blood Ring
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC • 
-Small Blue
-+10% Faster Cast Rate
-2% Life Stolen Per Hit
-+20 To Strength
-+56 To Life
-Fire Resist +15%
-Required Level 88
-
-Trading For
-
-12 X Jah Rune
-High Rune Value: 36
-25 秒前
-mike2025
- (48)
-1 X Blood Ring
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC • 
-Small Blue
-+10% Faster Cast Rate
-1% Life Stolen Per Hit
-+4 To Strength
-+53 To Life
-+16 To Mana
-Lightning Resist +30%
-Required Level 82
-
-Trading For
-
-5 X Jah Rune
-High Rune Value: 15
-26 秒前
-mike2025
- (48)
+Pro
+PedroShaw86153
+ (120)
+English, Português
 1 X Ring
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC • 
-Rare • 
-Small Blue
-+10% Faster Cast Rate
-+105 To Attack Rating
-+15 To Dexterity
-Replenish Life +8
-+80 To Mana
-+15 Maximum Stamina
-Required Level 48
-
-Trading For
-
-2 X Bear Claw Small Charm
-+20 To Life
-+5 To All Resistances
-High Rune Value: 0
-29 秒前
-mike2025
- (48)
-1 X Ring
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC • 
-Rare • 
-Small Blue
-+10% Faster Cast Rate
-+15 To Dexterity
-Replenish Life +9
-+67 To Mana
-+6 Maximum Stamina
-+1 To Mana After Each Kill
-Required Level 48
-
-Trading For
-
-1 X Bear Claw Small Charm
-+20 To Life
-+5 To All Resistances
-High Rune Value: 0
-32 秒前
-mike2025
- (48)
-1 X Ring
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC • 
-Rare • 
-Small Blue
-+10% Faster Cast Rate
-+108 To Attack Rating
-+18 To Strength
-+33 To Life
-Lightning Resist +8%
-Fire Resist +21%
-Required Level 66
-
-Trading For
-
-12 X Jah Rune
-High Rune Value: 36
-34 秒前
-mike2025
- (48)
-1 X Blood Ring
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC • 
-Small Blue
-+10% Faster Cast Rate
-3% Life Stolen Per Hit
-+1 To Strength
-+57 To Life
-+9 To All Resistances
-Half Freeze Duration
-Required Level 82
-
-Trading For
-
-10 X Jah Rune
-High Rune Value: 30
-36 秒前
-mike2025
- (48)
-1 X Ring
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC • 
-Rare • 
-Small Blue
-+10% Faster Cast Rate
-+103 To Attack Rating
-+14 To Dexterity
-+6 To Energy
-+87 To Mana
-Lightning Resist +28%
-Required Level 48
-
-Trading For
-
-1 X Bear Claw Small Charm
-+20 To Life
-+5 To All Resistances
-High Rune Value: 0
-37 秒前
-조상순31383
- (12)
-1 X Caster Amulet
-Sun • 
-Reign Of The Warlock • 
-Ladder • 
-Softcore • 
-PC
-+2 To Warlock Skills
-+18% Faster Cast Rate
-+16 To Dexterity
-+20 To Mana
-Regenerate Mana 10%
-Poison Length Reduced By 50%
-Make an Offer
-39 秒前
-MikeX
- (25)
-1 X Ring
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC • 
-Rare • 
-Big Blue
-+10% Faster Cast Rate
-+104 To Attack Rating
-6% Life Stolen Per Hit
-Cold Resist +27%
-Poison Resist +22%
-30% Extra Gold From Monsters
-Required Level 35
-
-Trading For
-
-5 X Jah Rune
-High Rune Value: 15
-40 秒前
-mike2025
- (48)
-1 X Ring
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC • 
-Rare • 
-Small Blue
-+10% Faster Cast Rate
-+80 To Attack Rating
-+14 To Dexterity
-+40 To Life
-Cold Resist +9%
-Lightning Resist +9%
-Fire Resist +33%
-Poison Resist +9%
-Required Level 60
-
-Trading For
-
-8 X Jah Rune
-High Rune Value: 24
-43 秒前
-sky2025
- (16)
-1 X Blood Ring
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC • 
-Big Blue
-+10% Faster Cast Rate
-3% Life Stolen Per Hit
-+22 To Strength
-+17 To Life
-Replenish Life +9
-Poison Resist +17%
-Required Level 88
-
-Trading For
-
-10 X Jah Rune
-High Rune Value: 30
-45 秒前
-sky2025
- (16)
-1 X Ring
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC • 
-Rare • 
-Big Blue
-+10% Faster Cast Rate
-+38 To Attack Rating
-6% Mana Stolen Per Hit
-Replenish Life +5
-+83 To Mana
-Fire Resist +21%
-Required Level 74
-
-Trading For
-
-4 X Jah Rune
-High Rune Value: 12
-46 秒前
-sky2025
- (16)
-1 X Blood Ring
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC • 
-Big Blue
-+10% Faster Cast Rate
-+11 To Attack Rating
-3% Life Stolen Per Hit
-+23 To Strength
-+53 To Life
-Required Level 88
-
-Trading For
-
-6 X Jah Rune
-High Rune Value: 18
-49 秒前
-sky2025
- (16)
-1 X Ring
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC • 
-Rare • 
-Big Blue
-+10% Faster Cast Rate
-+13 To Dexterity
-+38 To Life
-+74 To Mana
-Cold Resist +30%
-Required Level 60
-
-Trading For
-
-10 X Jah Rune
-High Rune Value: 30
-55 秒前
-MikeX
- (25)
-1 X Ring
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC • 
-Rare • 
-Coral
-+10% Faster Cast Rate
-+61 To Attack Rating
-+33 To Life
-Replenish Life +9
-+64 To Mana
-Fire Resist +17%
-Required Level 60
-
-Trading For
-
-8 X Jah Rune
-High Rune Value: 24
-57 秒前
-MikeX
- (25)
-1 X Ring
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC • 
-Rare • 
-Coral
-+10% Faster Cast Rate
-+112 To Attack Rating
-+16 To Strength
-Cold Resist +9%
-Lightning Resist +36%
-Fire Resist +9%
-Poison Resist +9%
-Half Freeze Duration
-Required Level 66
-
-Trading For
-
-1 X Bear Claw Small Charm
-+20 To Life
-+5 To All Resistances
-High Rune Value: 0
-1 分鐘前
-MikeX
- (25)
-1 X Ring
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC • 
-Rare • 
-Coral
-+10% Faster Cast Rate
-6% Mana Stolen Per Hit
-Lightning Resist +25%
-Poison Resist +22%
-Half Freeze Duration
-10% Better Chance Of Getting Magic Items
-Required Level 74
-
-Trading For
-
-10 X Jah Rune
-High Rune Value: 30
-1 分鐘前
-masterhuyn
- (1,547)
-English
-1 X Ring
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC • 
-Rare • 
-Crown
-+10% Faster Cast Rate
-+17 To Strength
-+37 To Life
-+74 To Mana
-Lightning Resist +16%
-
-Trading For
-
-18 X Jah Rune
-High Rune Value: 54
-1 分鐘前
-MikeX
- (25)
-1 X Ring
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC • 
-Rare • 
-Coral
-+10% Faster Cast Rate
-+77 To Attack Rating
-+16 To Strength
-Replenish Life +5
-+88 To Mana
-Lightning Resist +28%
-Required Level 66
-
-Trading For
-
-8 X Jah Rune
-High Rune Value: 24
-1 分鐘前
-mbbz
- (30)
-한국어
-1 X Tiara
 Reign Of The Warlock • 
 Ladder • 
 Softcore • 
 PC • 
 Rare
-+2 To Assassin Skill Levels
 +10% Faster Cast Rate
-+51 To Attack Rating
-5% Life Stolen Per Hit
-+30 To Strength
-Fire Resist +32%
-Make an Offer
-1 分鐘前
-sky2025
- (16)
-1 X Ring
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC • 
-Rare • 
-Coral
-+10% Faster Cast Rate
-+120 To Attack Rating
-5% Life Stolen Per Hit
-+17 To Strength
-+80 To Mana
-Required Level 66
-
-Trading For
-
-5 X Jah Rune
-High Rune Value: 15
-1 分鐘前
-MikeX
- (25)
-1 X Ring
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC • 
-Rare • 
-Coral
-+10% Faster Cast Rate
-+39 To Life
-Cold Resist +10%
-Lightning Resist +30%
-Fire Resist +31%
-Poison Resist +10%
-Required Level 60
-
-Trading For
-
-7 X Jah Rune
-High Rune Value: 21
-1 分鐘前
-sky2025
- (16)
-1 X Ring
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC • 
-Rare • 
-Coral
-+10% Faster Cast Rate
-+74 To Attack Rating
-+15 To Dexterity
-+36 To Life
-Fire Resist +21%
-Poison Resist +20%
-Required Level 60
-
-Trading For
-
-6 X Jah Rune
-High Rune Value: 18
-1 分鐘前
-sky2025
- (16)
-1 X Ring
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC • 
-Rare • 
-Coral
-+10% Faster Cast Rate
-+15 To Strength
-Replenish Life +7
-+37 To Mana
-Cold Resist +21%
-Lightning Resist +9%
-Fire Resist +9%
-Poison Resist +9%
++91 To Attack Rating
++10 To Dexterity
+Cold Resist +15%
+Lightning Resist +14%
+Level 4 Ice Blast (20/20 Charges)
 Required Level 48
 
 Trading For
 
-5 X Jah Rune
-High Rune Value: 15
-1 分鐘前
-MikeX
- (25)
+1 X Lo Rune
+High Rune Value: 1.25
+7 秒前
+bearbarion
+ (84)
 1 X Ring
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC • 
-Rare • 
-Coral
-+10% Faster Cast Rate
-+18 To Strength
-+38 To Life
-+76 To Mana
-+1 To Mana After Each Kill
-Required Level 66
-
-Trading For
-
-10 X Jah Rune
-High Rune Value: 30
-1 分鐘前
-sky2025
- (16)
-1 X Ring
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC • 
-Rare • 
-Coral
-+10% Faster Cast Rate
-+107 To Attack Rating
-+12 To Dexterity
-+37 To Life
-Fire Resist +17%
-Poison Resist +22%
-Required Level 60
-
-Trading For
-
-8 X Jah Rune
-High Rune Value: 24
-1 分鐘前
-sky2025
- (16)
-1 X Ring
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC • 
-Rare • 
-Coral
-+10% Faster Cast Rate
-+26 To Attack Rating
-6% Mana Stolen Per Hit
-+37 To Life
-Cold Resist +10%
-Lightning Resist +10%
-Fire Resist +10%
-Poison Resist +34%
-Required Level 74
-
-Trading For
-
-1 X Bear Claw Small Charm
-+20 To Life
-+5 To All Resistances
-High Rune Value: 0
-1 分鐘前
-MikeX
- (25)
-1 X Ring
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC • 
-Rare • 
-Small Blue
-+10% Faster Cast Rate
-+80 To Attack Rating
-+15 To Dexterity
-+72 To Mana
-Lightning Resist +20%
-Required Level 48
-
-Trading For
-
-5 X Jah Rune
-High Rune Value: 15
-1 分鐘前
-비익조31273
- (65)
-한국어
-1 X Caster Amulet
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC
-+2 To Sorceress Skill Levels
-+10% Faster Cast Rate
-+20 To Strength
-+95 To Mana
-Regenerate Mana 7%
-Lightning Resist +8%
-
-Trading For
-
-10 X Jah Rune
-  OR
-9 X Zod Rune
-  OR
-10 X Ber Rune
-High Rune Value: 30 or 8.1 or 35
-1 分鐘前
-MikeX
- (25)
-1 X Blood Ring
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC • 
-Small Blue
-+10% Faster Cast Rate
-2% Life Stolen Per Hit
-+22 To Strength
-+54 To Life
-+9 Maximum Stamina
-Required Level 88
-
-Trading For
-
-7 X Jah Rune
-High Rune Value: 21
-1 分鐘前
-MikeX
- (25)
-1 X Blood Ring
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC • 
-Small Blue
-+10% Faster Cast Rate
-3% Life Stolen Per Hit
-+23 To Strength
-+16 To Life
-Replenish Life +9
-Fire Resist +19%
-Required Level 88
-
-Trading For
-
-8 X Jah Rune
-High Rune Value: 24
-1 分鐘前
-MikeX
- (25)
-1 X Ring
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC • 
-Rare • 
-Small Blue
-+10% Faster Cast Rate
-+19 To Strength
-+86 To Mana
-Lightning Resist +23%
-Fire Resist +20%
-Required Level 66
-
-Trading For
-
-10 X Jah Rune
-High Rune Value: 30
-1 分鐘前
-xXKovaXx
- (201)
-English
-1 X Hellwarden's Will
 Reign Of The Warlock • 
 Ladder • 
-Hardcore • 
-PC
-246Defense
-+1 To All Skills
-+20% Increased Attack Speed
-+20% Faster Cast Rate
--8% To Enemy Fire Resistance
--6% To Enemy Magic Resistance
-+183% Enhanced Defense
-+5 To Mana After Each Kill
-Make an Offer
-1 分鐘前
-MikeX
- (25)
-1 X Ring
-Reign Of The Warlock • 
-Non Ladder • 
 Softcore • 
 PC • 
-Rare • 
-Small Blue
+Rare
 +10% Faster Cast Rate
-+13 To Attack Rating
-6% Life Stolen Per Hit
-+13 To Dexterity
-+71 To Mana
-Fire Resist +30%
-Required Level 48
+Replenish Life +6
++12 To Mana
++11 To All Resistances
+Fire Resist +34%
 
 Trading For
 
-5 X Jah Rune
-High Rune Value: 15
-1 分鐘前
-donggeon3285
- (285)
-English, 한국어
-1 X Ring
+1 X Ohm Rune
+High Rune Value: 0.75
+51 秒前
+Ska987
+ (5)
+1 X Caster Amulet
+Penta • 
 Reign Of The Warlock • 
-Non Ladder • 
+Ladder • 
 Softcore • 
-PC • 
-Rare • 
-Small Blue
+PC
++2 To Paladin Skill Levels
 +10% Faster Cast Rate
-6% Mana Stolen Per Hit
-+5 To All Resistances
-Fire Resist +13%
++19 To Energy
++14 To Mana
+Regenerate Mana 7%
 
 Trading For
 
 1 X Lo Rune
 High Rune Value: 1.25
 1 分鐘前
-donggeon3285
- (285)
+Amonaco631
+ (129)
+1 X Ars Dul'Mephistos
+Um Rune • 
+Reign Of The Warlock • 
+Non Ladder • 
+Softcore • 
+PC
++28% Faster Cast Rate
++30% Faster Hit Recovery
+51% Bonus To Attack Rating
++109% Enhanced Damage
+-19% To Enemy Magic Resistance
++143% Enhanced Defense
+
+Trading For
+
+5 X Jah Rune
+High Rune Value: 15
+1 分鐘前
+Amonaco631
+ (129)
+1 X Circlet
+Reign Of The Warlock • 
+Ladder • 
+Softcore • 
+PC • 
+Magic
++3 To Combat Skills (Barbarian Only)
++20% Faster Cast Rate
+
+Trading For
+
+1 X Jah Rune
+High Rune Value: 3
+1 分鐘前
+Amonaco631
+ (129)
+1 X Circlet
+Reign Of The Warlock • 
+Non Ladder • 
+Softcore • 
+PC • 
+Rare
++1 To Amazon Skill Levels
++20% Faster Cast Rate
++9 To Minimum Damage
++18 To Life
++16 To Mana
+Lightning Resist +16%
+
+Trading For
+
+1 X Jah Rune
+High Rune Value: 3
+1 分鐘前
+Amonaco631
+ (129)
+1 X Circlet
+Reign Of The Warlock • 
+Non Ladder • 
+Softcore • 
+PC • 
+Magic
++3 To Lightning Skills (Sorceress Only)
++20% Faster Cast Rate
+
+Trading For
+
+1 X Ber Rune
+High Rune Value: 3.5
+1 分鐘前
+Amonaco631
+ (129)
+1 X Circlet
+Reign Of The Warlock • 
+Non Ladder • 
+Softcore • 
+PC • 
+Rare
++2 To Amazon Skill Levels
++10% Faster Cast Rate
+5% Life Stolen Per Hit
+Cold Resist +14%
+Lightning Resist +14%
+Fire Resist +51%
+Poison Resist +14%
+
+Trading For
+
+5 X Jah Rune
+High Rune Value: 15
+1 分鐘前
+Ska987
+ (5)
+1 X Gheed's Wager 
+Reign Of The Warlock • 
+Ladder • 
+Softcore • 
+PC
+137Defense
++16% Faster Run/Walk
++14% Faster Cast Rate
++10% Faster Hit Recovery
+-3% To Enemy Magic Resistance
++105% Enhanced Defense
++9 To All Resistances
+71% Extra Gold From Monsters
+
+Trading For
+
+2 X Mal Rune
+ Additional Item(s)
+High Rune Value: 0.2
+1 分鐘前
+Amonaco631
+ (129)
+1 X Circlet
+Reign Of The Warlock • 
+Non Ladder • 
+Softcore • 
+PC • 
+Rare
++2 To Warlock Skills
++20% Faster Cast Rate
++57 To Attack Rating
++7 Poison Damage Over 2 Seconds
++118% Enhanced Defense
+Damage Reduced By 2
+
+Trading For
+
+1 X Ber Rune
+High Rune Value: 3.5
+1 分鐘前
+Amonaco631
+ (129)
+1 X Coronet
+Reign Of The Warlock • 
+Non Ladder • 
+Softcore • 
+PC • 
+Magic
++3 To Poison And Bone Skills (Necromancer Only)
++20% Faster Cast Rate
+Socketed (2)
+
+Trading For
+
+3 X Jah Rune
+High Rune Value: 9
+1 分鐘前
+Amonaco631
+ (129)
+1 X Coronet
+Reign Of The Warlock • 
+Non Ladder • 
+Softcore • 
+PC • 
+Rare
++2 To Paladin Skill Levels
++20% Faster Cast Rate
++45% Enhanced Defense
++11 To Strength
++39 To Life
++12 To All Resistances
+
+Trading For
+
+12 X Jah Rune
+High Rune Value: 36
+1 分鐘前
+Amonaco631
+ (129)
+1 X Circlet
+Reign Of The Warlock • 
+Non Ladder • 
+Softcore • 
+PC • 
+Rare
++2 To Paladin Skill Levels
++20% Faster Cast Rate
++50 To Life
+Fire Resist +11%
+Poison Resist +13%
+18% Better Chance Of Getting Magic Items
+
+Trading For
+
+5 X Jah Rune
+High Rune Value: 15
+1 分鐘前
+Amonaco631
+ (129)
+1 X Circlet
+Reign Of The Warlock • 
+Ladder • 
+Softcore • 
+PC • 
+Rare
++2 To Eldritch Skills (Warlock Only)
++10% Faster Cast Rate
+8% Life Stolen Per Hit
+Cold Resist +33%
+
+Trading For
+
+1 X Lo Rune
+High Rune Value: 1.25
+1 分鐘前
+Lacrima
+ (70)
+Deutsch, English
+1 X Amulet
+Reign Of The Warlock • 
+Ladder • 
+Softcore • 
+PC • 
+Magic
++3 To Demon Skills (Warlock Only)
++10% Faster Cast Rate
+
+Trading For
+
+1 X Ist Rune
+  OR
+5 X Random Minor Key
+  OR
+20 X Perfect Amethyst
+  OR
+45 X Random Gems
+High Rune Value: 0.16 or 0 or 0.054 or 0
+2 分鐘前
+shadE2687
+ (28)
+1 X Caster Amulet
+Sun • 
+Reign Of The Warlock • 
+Non Ladder • 
+Softcore • 
+PC
++2 To Assassin Skill Levels
++18% Faster Cast Rate
++11 To Mana
+Regenerate Mana 6%
++10% Damage Taken Goes To Mana
+Make an Offer
+2 分鐘前
+starruler1491
+ (29)
+1 X Circlet
+Reign Of The Warlock • 
+Ladder • 
+Softcore • 
+PC • 
+Rare
++2 To Paladin Skill Levels
++20% Faster Cast Rate
++11 To Dexterity
++19 To All Resistances
+Poison Resist +21%
+Damage Reduced By 4
+Make an Offer
+2 分鐘前
+HimsterR
+ (303)
+English
+1 X Amulet
+Penta • 
+Reign Of The Warlock • 
+Ladder • 
+Softcore • 
+PC • 
+Rare
++2 To Warlock Skills
++10% Faster Cast Rate
+6% Life Stolen Per Hit
++59 To Life
+
+Trading For
+
+6 X Random Minor Key
+High Rune Value: 0
+2 分鐘前
+HimsterR
+ (303)
+English
+1 X Ring
+Reign Of The Warlock • 
+Ladder • 
+Softcore • 
+PC • 
+Rare • 
+Small Blue
++10% Faster Cast Rate
++10 To Attack Rating
+Lightning Resist +23%
+13% Better Chance Of Getting Magic Items
+
+Trading For
+
+1 X Ist Rune
+  OR
+3 X Random Minor Key
+High Rune Value: 0.16 or 0
+2 分鐘前
+VaultVeteran
+ (457)
+English
+1 X Ring
+Reign Of The Warlock • 
+Ladder • 
+Softcore • 
+PC • 
+Rare
++10% Faster Cast Rate
++16 To Mana
+7% Better Chance Of Getting Magic Items
+Make an Offer
+2 分鐘前
+VaultVeteran
+ (457)
+English
+1 X Tiara
+Reign Of The Warlock • 
+Ladder • 
+Softcore • 
+PC • 
+Rare
++2 To Druid Skill Levels
++20% Faster Cast Rate
++83% Enhanced Defense
++11 To All Resistances
+Level 2 Teleport (20/20 Charges)
+Make an Offer
+2 分鐘前
+띠아블로31474
+ (150)
+한국어
+1 X Amulet 
+Dot • 
+Reign Of The Warlock • 
+Ladder • 
+Softcore • 
+PC • 
+Rare
++2 To Demon Skills (Warlock Only)
++10% Faster Cast Rate
++6 To Strength
++11 To Mana
+Regenerate Mana 5%
+Cold Resist +31%
+Fire Resist +37%
+
+Trading For
+
+1 X Vex Rune
+High Rune Value: 0.5
+4 分鐘前
+띠아블로31474
+ (150)
+한국어
+1 X Amulet
+Sun • 
+Reign Of The Warlock • 
+Ladder • 
+Softcore • 
+PC • 
+Magic
++3 To Combat Skills (Paladin Only)
++10% Faster Cast Rate
+
+Trading For
+
+1 X Mal Rune
+High Rune Value: 0.1
+4 分鐘前
+Sosnodub
+ (26)
+1 X Gheed's Wager
+Reign Of The Warlock • 
+Ladder • 
+Softcore • 
+PC
++13% Faster Run/Walk
++13% Faster Cast Rate
++13% Faster Hit Recovery
+-7% To Enemy Magic Resistance
++109% Enhanced Defense
++10 To All Resistances
+52% Extra Gold From Monsters
+
+Trading For
+
+1 X Ohm Rune
+High Rune Value: 0.75
+4 分鐘前
+Lovetrain
+ (219)
+1 X Ring
+Reign Of The Warlock • 
+Ladder • 
+Softcore • 
+PC • 
+Rare • 
+Big Blue
++10% Faster Cast Rate
++7 To Energy
+Replenish Life +4
++18 To Mana
+Fire Resist +18%
+
+Trading For
+
+1 X Pul Rune
+  OR
+1 X Random Minor Key
+  OR
+8 X Ral Rune
+  OR
+3 X Perfect Amethyst
+High Rune Value: 0.04 or 0 or 0.0064 or 0.0081
+4 分鐘前
+Lovetrain
+ (219)
+1 X Caster Amulet
+Dot • 
+Reign Of The Warlock • 
+Ladder • 
+Softcore • 
+PC
++1 To Barbarian Skill Levels
++6% Faster Cast Rate
++80 To Mana
+Regenerate Mana 6%
++19 To All Resistances
+Magic Damage Reduced By 1
+
+Trading For
+
+1 X Random Minor Key
+  OR
+1 X Um Rune
+  OR
+12 X Ral Rune
+  OR
+8 X Perfect Amethyst
+High Rune Value: 0 or 0.06 or 0.0096 or 0.0216
+4 分鐘前
+Lovetrain
+ (219)
+1 X Caster Amulet
+Sun • 
+Reign Of The Warlock • 
+Ladder • 
+Softcore • 
+PC
++1 To Sorceress Skill Levels
++7% Faster Cast Rate
+3% Mana Stolen Per Hit
++29 To Strength
++10 To Mana
+Regenerate Mana 4%
++20 To All Resistances
+
+Trading For
+
+1 X Ist Rune
+  OR
+4 X Random Minor Key
+  OR
+30 X Ral Rune
+  OR
+20 X Perfect Amethyst
+High Rune Value: 0.16 or 0 or 0.024 or 0.054
+4 分鐘前
+mINo_O
+ (0)
+1 X Ring
+Reign Of The Warlock • 
+Non Ladder • 
+Softcore • 
+PC • 
+Rare • 
+Coral
++10% Faster Cast Rate
+Cold Resist +17%
+Lightning Resist +7%
+Fire Resist +27%
+
+Trading For
+
+1 X Ist Rune
+High Rune Value: 0.16
+5 分鐘前
+mINo_O
+ (0)
+1 X Ring
+Reign Of The Warlock • 
+Non Ladder • 
+Softcore • 
+PC • 
+Magic • 
+Big Blue
++10% Faster Cast Rate
++13 To All Resistances
+
+Trading For
+
+1 X Mal Rune
+High Rune Value: 0.1
+5 分鐘前
+cropter
+ (401)
+English, 한국어
+1 X Diadem
+Defender’s Fire, Defender’s Fire, Defender’s Fire, Rainbow Facet: Fire Death, Rainbow Facet: Fire Death • 
+Reign Of The Warlock • 
+Non Ladder • 
+Softcore • 
+PC • 
+Rare
++2 To Assassin Skill Levels
++1515 To Fire Skills (Sorceress Only)
++20% Faster Cast Rate
+7% Life Stolen Per Hit
++18 To Strength
++19 To All Resistances
+28% Better Chance Of Getting Magic Items
+Socketed (2)
+
+Trading For
+
+3 X Bear Claw Small Charm
++3 To Maximum Damage
++20 To Attack Rating
++20 To Life
+High Rune Value: 0
+5 分鐘前
+cropter
+ (401)
+English, 한국어
+1 X Gheed's Wager
+Reign Of The Warlock • 
+Non Ladder • 
+Softcore • 
+PC
++19% Faster Run/Walk
++17% Faster Cast Rate
++19% Faster Hit Recovery
+-5% To Enemy Magic Resistance
++15 To All Resistances
+56% Extra Gold From Monsters
+
+Trading For
+
+8 X Jah Rune
+High Rune Value: 24
+5 分鐘前
+cropter
+ (401)
+English, 한국어
+1 X Tiara
+Reign Of The Warlock • 
+Non Ladder • 
+Softcore • 
+PC • 
+Rare
++2 To Barbarian Skill Levels
++20% Faster Cast Rate
+7% Life Stolen Per Hit
++11 To Strength
++34 To All Resistances
+Socketed (2)
+
+Trading For
+
+1 X Jewel
+Magic
++15% Increased Attack Speed
++15 To All Resistances
+1 X Protector's Stone
++30% Enhanced Damage
+-9% To Enemy Physical Damage Resistance
++4% To Experience Gained
+44% Extra Gold From Monsters
+34% Better Chance Of Getting Magic Items
+High Rune Value: 0
+5 分鐘前
+cropter
+ (401)
 English, 한국어
 1 X Ring
 Reign Of The Warlock • 
@@ -1619,278 +1512,393 @@ Non Ladder • 
 Softcore • 
 PC • 
 Rare • 
-Small Blue
+Orange
 +10% Faster Cast Rate
-6% Mana Stolen Per Hit
-+13 To Dexterity
-+27 To Mana
-+8 To All Resistances
++5 To Minimum Damage
++19 To Strength
++72 To Mana
+Lightning Resist +34%
++11 To All Resistances
 
 Trading For
 
-3 X Jah Rune
-High Rune Value: 9
-1 分鐘前
-sky2025
- (16)
-1 X Blood Ring
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC • 
-Small Blue
-+10% Faster Cast Rate
-2% Life Stolen Per Hit
-+4 To Strength
-+18 To Life
-Replenish Life +9
-Cold Resist +9%
-Lightning Resist +30%
-Fire Resist +9%
-Poison Resist +9%
-Required Level 70
-
-Trading For
-
-10 X Jah Rune
-High Rune Value: 30
-1 分鐘前
-xXKovaXx
- (201)
-English
-1 X Tiara
-Reign Of The Warlock • 
-Ladder • 
-Hardcore • 
-PC • 
-Magic
-+2 To Sorceress Skill Levels
-+10% Faster Cast Rate
-Required Level 67
-Make an Offer
-1 分鐘前
-xqleon39030
- (491)
-中文(簡體)
-1 X Caster Amulet
-Dot • 
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC
-+2 To Amazon Skill Levels
-+10% Faster Cast Rate
-+16 To Attack Rating
-+23 To Strength
-+17 To Mana
-Regenerate Mana 8%
-+19 To All Resistances
-Make an Offer
-1 分鐘前
-xqleon39030
- (491)
-中文(簡體)
-1 X Caster Amulet
-Dot • 
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC
-+2 To Sorceress Skill Levels
-+10% Faster Cast Rate
-+30 To Strength
-+23 To Mana
-Regenerate Mana 9%
-Poison Resist +12%
-Make an Offer
-1 分鐘前
-xXKovaXx
- (201)
-English
-1 X Tiara
-Reign Of The Warlock • 
-Ladder • 
-Hardcore • 
-PC • 
-Rare
-+2 To Warlock Skills
-+20% Faster Cast Rate
-+5 To Maximum Damage
-+86% Enhanced Defense
-Magic Damage Reduced By 3
-Socketed (2)
-Required Level 67
-Make an Offer
-1 分鐘前
-xqleon39030
- (491)
-中文(簡體)
-1 X Amulet
-Dot • 
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC • 
-Rare
-+2 To Paladin Skill Levels
-+10% Faster Cast Rate
-6% Mana Stolen Per Hit
-+6 To Energy
-Lightning Resist +47%
-+15 To All Resistances
-Make an Offer
-1 分鐘前
-sky2025
- (16)
+2 X Bear Claw Small Charm
++3 To Maximum Damage
++20 To Attack Rating
++20 To Life
+High Rune Value: 0
+5 分鐘前
+cropter
+ (401)
+English, 한국어
 1 X Ring
 Reign Of The Warlock • 
 Non Ladder • 
 Softcore • 
 PC • 
 Rare • 
-Small Blue
+Big Blue
 +10% Faster Cast Rate
-+104 To Attack Rating
-+37 To Life
-Replenish Life +5
-+65 To Mana
-5% Better Chance Of Getting Magic Items
-Required Level 60
+6% Mana Stolen Per Hit
++20 To Strength
++69 To Mana
+Fire Resist +21%
+Poison Resist +21%
+Make an Offer
+5 分鐘前
+cropter
+ (401)
+English, 한국어
+1 X Caster Amulet
+Reign Of The Warlock • 
+Non Ladder • 
+Softcore • 
+PC
++2 To Warlock Skills
++9% Faster Cast Rate
+7% Mana Stolen Per Hit
++88 To Mana
+Regenerate Mana 5%
++13 To All Resistances
 
 Trading For
 
-5 X Jah Rune
-High Rune Value: 15
-1 分鐘前
-xqleon39030
- (491)
-中文(簡體)
+25 X Jah Rune
+High Rune Value: 75
+5 分鐘前
+cropter
+ (401)
+English, 한국어
+1 X Amulet
+Dot • 
+Reign Of The Warlock • 
+Non Ladder • 
+Softcore • 
+PC • 
+Rare
++2 To Barbarian Skill Levels
++20% Faster Cast Rate
+6% Mana Stolen Per Hit
++19 To Mana
+Regenerate Mana 8%
+73% Extra Gold From Monsters
+
+Trading For
+
+9 X Small Charm
++3 To Maximum Damage
++20 To Attack Rating
++20 To Life
+High Rune Value: 0
+5 分鐘前
+cropter
+ (401)
+English, 한국어
+1 X Caster Amulet
+Penta • 
+Reign Of The Warlock • 
+Non Ladder • 
+Softcore • 
+PC
++2 To Sorceress Skill Levels
++20% Faster Cast Rate
++102 To Mana
+Regenerate Mana 9%
++14 To All Resistances
+
+Trading For
+
+9 X Bear Claw Small Charm
++3 To Maximum Damage
++20 To Attack Rating
++20 To Life
+High Rune Value: 0
+5 分鐘前
+cropter
+ (401)
+English, 한국어
 1 X Caster Amulet
 Dot • 
 Reign Of The Warlock • 
 Non Ladder • 
 Softcore • 
 PC
-+2 To Necromancer Skill Levels
-+15% Faster Cast Rate
-+13 To Mana
-Regenerate Mana 7%
-+12 To All Resistances
++2 To Barbarian Skill Levels
++20% Faster Cast Rate
+6% Mana Stolen Per Hit
++19 To Mana
+Regenerate Mana 8%
+73% Extra Gold From Monsters
+
+Trading For
+
+9 X Bear Claw Small Charm
++3 To Maximum Damage
++20 To Attack Rating
++20 To Life
+High Rune Value: 0
+5 分鐘前
+cropter
+ (401)
+English, 한국어
+1 X Tiara
+Rainbow Facet: Lightning Death, Rainbow Facet: Lightning Death • 
+Reign Of The Warlock • 
+Non Ladder • 
+Softcore • 
+PC • 
+Rare
++2 To Amazon Skill Levels
++15% Increased Attack Speed
++20% Faster Cast Rate
+6% Mana Stolen Per Hit
++18 To Dexterity
++86 To Mana
++15 To All Resistances
+35% Extra Gold From Monsters
+21% Better Chance Of Getting Magic Items
+Socketed (2)
+
+Trading For
+
+8 X Bear Claw Small Charm
++3 To Maximum Damage
++20 To Attack Rating
++20 To Life
+High Rune Value: 0
+5 分鐘前
+cropter
+ (401)
+English, 한국어
+1 X Tiara
+Reign Of The Warlock • 
+Non Ladder • 
+Softcore • 
+PC • 
+Rare
++2 To Warlock Skills
++20% Faster Cast Rate
++4 To Minimum Damage
++25 To Strength
+Lightning Resist +23%
+Socketed (2)
 Make an Offer
-1 分鐘前
-xqleon39030
- (491)
-中文(簡體)
+5 分鐘前
+Kevinkevre
+ (4)
+English, Español (US)
+1 X Caster Amulet 
+Penta • 
+Reign Of The Warlock • 
+Non Ladder • 
+Softcore • 
+Playstation
++2 To Sorceress Skill Levels
++9% Faster Cast Rate
++1 To Maximum Damage
++20 To Mana
+Regenerate Mana 4%
+Lightning Resist +11%
+Poison Length Reduced By 75%
+Make an Offer
+6 分鐘前
+Kevinkevre
+ (4)
+English, Español (US)
+1 X Spirit 
+Monarch • 
+Reign Of The Warlock • 
+Non Ladder • 
+Softcore • 
+Playstation
++2 To All Skills
++32% Faster Cast Rate
++55% Faster Hit Recovery
++250 Defense Vs. Missile
++22 To Vitality
++93 To Mana
+Cold Resist +35%
+Lightning Resist +35%
+Poison Resist +35%
++5 Magic Absorb
+Make an Offer
+6 分鐘前
+Kosior007
+ (4)
+1 X Sling
+Reign Of The Warlock • 
+Ladder • 
+Softcore • 
+PC
++10% Faster Cast Rate
+-5% To Enemy Magic Resistance
++1 To Town Portal
+Slows Target By 15%
+14% Better Chance Of Getting Magic Items
+
+Trading For
+
+1 X Jah Rune
+  OR
+1 X Ber Rune
+High Rune Value: 3 or 3.5
+6 分鐘前
+cropter
+ (401)
+English, 한국어
 1 X Caster Amulet
 Sun • 
 Reign Of The Warlock • 
 Non Ladder • 
 Softcore • 
 PC
-+2 To Barbarian Skill Levels
++2 To Assassin Skill Levels
 +10% Faster Cast Rate
-+5 To Dexterity
-+11 To Mana
++30 To Strength
++14 To Mana
 Regenerate Mana 8%
-+20 To All Resistances
-5% Better Chance Of Getting Magic Items
-Make an Offer
-1 分鐘前
-xqleon39030
- (491)
-中文(簡體)
-1 X Amulet
-Penta • 
++19 To All Resistances
+Fire Resist +58%
+
+Trading For
+
+1 X Bear Claw Small Charm
++3 To Maximum Damage
++20 To Attack Rating
++20 To Life
+High Rune Value: 0
+7 分鐘前
+cropter
+ (401)
+English, 한국어
+1 X Ring
+Reign Of The Warlock • 
+Non Ladder • 
+Softcore • 
+PC • 
+Rare • 
+Big Blue
++10% Faster Cast Rate
+6% Mana Stolen Per Hit
+4% Life Stolen Per Hit
++76 To Mana
++10 To All Resistances
+Fire Resist +40%
+
+Trading For
+
+12 X Bear Claw Small Charm
++3 To Maximum Damage
++20 To Attack Rating
++20 To Life
+High Rune Value: 0
+7 分鐘前
+Nikus5882
+ (718)
+English, Français
+1 X Circlet
 Reign Of The Warlock • 
 Non Ladder • 
 Softcore • 
 PC • 
 Rare
-+2 To Traps (Assassin Only)
++1 To Traps (Assassin Only)
++30% Faster Run/Walk
++20% Faster Cast Rate
++27 To Mana
+Damage Reduced By 3
+Required Level 30
+
+Trading For
+
+1 X Ist Rune
+High Rune Value: 0.16
+7 分鐘前
+AustinGravelle51444
+ (551)
+1 X Caster Amulet
+Reign Of The Warlock • 
+Ladder • 
+Softcore • 
+PC
++2 To Barbarian Skill Levels
 +10% Faster Cast Rate
-+18 To Strength
-+80 To Mana
-+14 To All Resistances
-Make an Offer
-1 分鐘前
-sky2025
- (16)
-1 X Blood Ring
++34 To Life
++18 To Mana
+Regenerate Mana 5%
++20 To All Resistances
+
+Trading For
+
+1 X Ber Rune
+High Rune Value: 3.5
+7 分鐘前
+AustinGravelle51444
+ (551)
+1 X Caster Amulet
+Dot • 
+Reign Of The Warlock • 
+Ladder • 
+Softcore • 
+PC
++2 To Warlock Skills
++10% Faster Cast Rate
++13 To Mana
+Regenerate Mana 9%
++3 To All Resistances
+20% Better Chance Of Getting Magic Items
+
+Trading For
+
+1 X Ohm Rune
+High Rune Value: 0.75
+7 分鐘前
+Pro
+LH121532
+ (2,372)
+1 X Tiara
+Reign Of The Warlock • 
+Ladder • 
+Softcore • 
+PC • 
+Rare
+49Defense
++2 To Sorceress Skill Levels
++20% Faster Cast Rate
++12 To Dexterity
+Cold Resist +57%
++19 To All Resistances
+Magic Damage Reduced By 2
+Required Level 67
+
+Trading For
+
+1 X Jah Rune
+High Rune Value: 3
+7 分鐘前
+Pro
+LH121532
+ (2,372)
+1 X Ring
 Reign Of The Warlock • 
 Non Ladder • 
 Softcore • 
 PC • 
-Small Blue
+Rare
 +10% Faster Cast Rate
-+85 To Attack Rating
-1% Life Stolen Per Hit
-+20 To Strength
-+51 To Life
-Required Level 88
+6% Life Stolen Per Hit
++21 To Life
+Lightning Resist +31%
++4 To All Resistances
+Poison Resist +20%
+Required Level 43
 
 Trading For
 
-5 X Jah Rune
-High Rune Value: 15
-1 分鐘前
-mansiljang41135
- (18)
-1 X Ars Dul'Mephistos
-Amethyst • 
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC
-+21% Faster Cast Rate
-62% Bonus To Attack Rating
-+110% Enhanced Damage
--18% To Enemy Magic Resistance
-21% Better Chance Of Getting Magic Items
-
-Trading For
-
-1 X Sur Rune
-  OR
-1 X Cham Rune
-  OR
-1 X Ber Rune
-High Rune Value: 1.75 or 0.4 or 3.5
-1 分鐘前
-xqleon39030
- (491)
-中文(簡體)
-1 X Caster Amulet
-Penta • 
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC
-+2 To Paladin Skill Levels
-+19% Faster Cast Rate
-+15 To Mana
-Regenerate Mana 9%
-+10 To All Resistances
-16% Better Chance Of Getting Magic Items
-Make an Offer
-1 分鐘前
-mansiljang41135
- (18)
-1 X Gheed's Wager
-Reign Of The Warlock • 
-Non Ladder • 
-Softcore • 
-PC
-133Defense
-+14% Faster Run/Walk
-+10% Faster Cast Rate
-+20% Faster Hit Recovery
--6% To Enemy Magic Resistance
-+99% Enhanced Defense
-+14 To All Resistances
-63% Extra Gold From Monsters
-Make an Offer
-1 分鐘前
-Log in to Load More
+3 X Jah Rune
+High Rune Value: 9
+7 分鐘前
+Load More
 Browse by Category
 Uniques
 Sets
@@ -1924,3 +1932,30 @@ Privacy Policy
 Community Guidelines
 
 Traderie is a fan-made website and is in no way affiliated with Diablo II: Resurrected or any other game on the website.
+Patch Notes Oct 12, 2026
+
+🚀 Updates
+
+Save Listings - You can now save listings to look back at later. When on a listing page, click the “save” icon, and view all your saved listings under the Marketplace tab (Note: Only you can see your own saved listings)
+
+View Your Reports - You can now view all your submitted reports/help desk tickets and their current status. You can view this page under the Community tab
+
+WFL - Made updates to the W/F/L calculator page
+
+🐛 Bug Fixes
+
+Fixed filtering by properties on recent trades
+
+Fixed issues with profile badges not updating
+
+Fixed comments duplicating on comps/outfits/etc.
+
+Fixed app notifications not making a sound
+
+Fixed Discord login on app
+
+D2R - fixed issues with Platform property not auto-adding to listings
+
+Dragon Adventures - You can now save up to 2 elements per dragon
+
+View all updates
