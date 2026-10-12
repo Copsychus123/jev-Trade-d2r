@@ -289,3 +289,239 @@ test("a user cancel is never re-attached", async () => {
   await assert.rejects(tab.send("Runtime.evaluate", {}), /canceled_by_user/);
   assert.equal(state.attaches, 0);
 });
+
+/**
+ * A virtual clock: `sleep`/timeouts still resolve, but time moves only when a timer is due and never by waiting on the
+ * wall clock. Timers fire in due-time order after the microtask queue drains (like the real event loop), so a promise
+ * that resolves first still clears its own deadline first. Restore it in a finally block.
+ */
+function fakeClock(start = 100000) {
+  const real = {
+    setTimeout: globalThis.setTimeout,
+    clearTimeout: globalThis.clearTimeout,
+    dateNow: Date.now,
+    perfNow: performance.now,
+  };
+  let now = start;
+  let seq = 0;
+  let queued = false;
+  const timers = new Map();
+
+  const fireEarliest = () => {
+    queued = false;
+    let next = null;
+    for (const timer of timers.values()) {
+      if (next === null || timer.at < next.at || (timer.at === next.at && timer.id < next.id)) next = timer;
+    }
+    if (!next) return;
+    timers.delete(next.id);
+    now = Math.max(now, next.at);
+    next.fn(...next.args);
+    queue();
+  };
+  const queue = () => {
+    if (queued) return;
+    queued = true;
+    setImmediate(fireEarliest);
+  };
+  globalThis.setTimeout = (fn, ms = 0, ...args) => {
+    const timer = { id: (seq += 1), fn, args, at: now + Math.max(Number(ms) || 0, 0) };
+    timers.set(timer.id, timer);
+    queue();
+    return timer;
+  };
+  globalThis.clearTimeout = (timer) => timers.delete(timer?.id);
+  Date.now = () => now;
+  performance.now = () => now;
+
+  return {
+    pending: () => timers.size,
+    restore() {
+      globalThis.setTimeout = real.setTimeout;
+      globalThis.clearTimeout = real.clearTimeout;
+      Date.now = real.dateNow;
+      performance.now = real.perfNow;
+    },
+  };
+}
+
+test("navigate returns the interactive-grace result only after the grace has elapsed", async () => {
+  const sent = [];
+  globalThis.chrome = {
+    debugger: {
+      ...debuggerEvents,
+      sendCommand: async (_target, method, params) => {
+        sent.push([method, params?.expression]);
+        return method === "Runtime.evaluate" ? { result: { value: "interactive" } } : { result: {} };
+      },
+    },
+  };
+  const clock = fakeClock();
+  try {
+    const tab = new Tab(1, scripts);
+    // The page sits at "interactive" forever; grace 50 ms means the 4th poll at t+60 crosses it (polls at 0/20/40/60).
+    const result = await tab.navigate("https://www.traderie.com/diablo2resurrected", 10000, 50);
+    assert.deepEqual(result, { how: "interactive_grace", ms: 60 });
+    assert.equal(
+      sent.filter(([method, expression]) => method === "Runtime.evaluate" && expression === "document.readyState").length,
+      4,
+    );
+  } finally {
+    clock.restore();
+  }
+});
+
+test("waitUntilReady keeps polling until a later poll reports the page ready", async () => {
+  let polls = 0;
+  globalThis.chrome = {
+    debugger: {
+      ...debuggerEvents,
+      sendCommand: async (_target, method) => {
+        if (method !== "Runtime.evaluate") return { result: {} };
+        polls += 1;
+        return { result: { value: polls >= 3 } };
+      },
+    },
+  };
+  const clock = fakeClock();
+  try {
+    const tab = new Tab(1, scripts);
+    assert.equal(await tab.waitUntilReady(2000, 50), true);
+    assert.equal(polls, 3);
+  } finally {
+    clock.restore();
+  }
+});
+
+test("waitUntilReady gives up at its deadline and reports the page was not ready", async () => {
+  let polls = 0;
+  globalThis.chrome = {
+    debugger: {
+      ...debuggerEvents,
+      sendCommand: async (_target, method) => {
+        if (method === "Runtime.evaluate") polls += 1;
+        return { result: { value: false } };
+      },
+    },
+  };
+  const clock = fakeClock();
+  try {
+    const tab = new Tab(1, scripts);
+    assert.equal(await tab.waitUntilReady(100, 50), false);
+    assert.equal(polls, 3); // t+0, t+50, t+100: the deadline check ends it after the third poll
+  } finally {
+    clock.restore();
+  }
+});
+
+test("observe repeats a snapshot the navigation interrupted and reports both timing fields", async () => {
+  const expressions = [];
+  globalThis.chrome = {
+    debugger: {
+      ...debuggerEvents,
+      sendCommand: async (_target, method, params) => {
+        expressions.push(params?.expression);
+        if (expressions.length === 1) throw new Error("Execution context was destroyed.");
+        return {
+          result: { value: { url: "https://www.traderie.com/diablo2resurrected", text: "hi", actions: [], scroll: 0, marker: ["m"] } },
+        };
+      },
+    },
+  };
+  const clock = fakeClock();
+  try {
+    const tab = new Tab(1, { snapshot: "SNAPSHOT" });
+    const info = await tab.observe();
+    assert.deepEqual(expressions, ["SNAPSHOT", "SNAPSHOT"]); // the interrupted read is retried exactly once
+    assert.deepEqual(info.marker, ["m"]);
+    assert.deepEqual(info.timing, { after_input_ms: null, snapshot_ms: 20 }); // the retry's 20 ms sleep is the measured cost
+    assert.match(info.fingerprint, /^[0-9a-f]{64}$/);
+  } finally {
+    clock.restore();
+  }
+});
+
+function settlingChrome() {
+  const store = {};
+  const calls = [];
+  globalThis.chrome = {
+    storage: {
+      session: {
+        get: async (key) => ({ [key]: store[key] }),
+        set: async (values) => Object.assign(store, values),
+      },
+    },
+    windows: {
+      create: async () => ({ id: 9, tabs: [{ id: 5 }] }),
+      remove: async (id) => calls.push(["remove", id]),
+    },
+    debugger: {
+      ...debuggerEvents,
+      attach: async () => calls.push(["attach"]),
+      detach: async () => calls.push(["detach"]),
+      sendCommand: async (_target, method, params) => {
+        if (method !== "Runtime.evaluate") return { result: {} };
+        if (params.expression === "document.readyState") return { result: { value: "complete" } };
+        return { result: { value: { capped: true, ms: 4321, visibility: "hidden" } } };
+      },
+    },
+  };
+  return { store, calls };
+}
+
+test("the settle measurement the tab opened with is recorded where the caller reads it", async () => {
+  settlingChrome();
+  const clock = fakeClock();
+  try {
+    const tab = await Tab.open("https://www.traderie.com/diablo2resurrected", { snapshot: "(() => ({}))()", settle: "SETTLE_SCRIPT" });
+    assert.deepEqual(Object.keys(tab.openTiming).sort(), ["navigate", "settle"]);
+    assert.deepEqual(tab.openTiming.settle, { capped: true, ms: 4321, visibility: "hidden" });
+    assert.deepEqual(tab.openTiming.navigate, { how: "complete", ms: 0 });
+  } finally {
+    clock.restore();
+  }
+});
+
+test("closing a tab releases its window bookkeeping and a second close does nothing", async () => {
+  const { store, calls } = settlingChrome();
+  const tab = await Tab.open("https://www.traderie.com/diablo2resurrected", { snapshot: "(() => ({}))()", settle: "SETTLE_SCRIPT" });
+  assert.deepEqual(store.jevWindows, [9]);
+  assert.equal(tab.windowId, 9);
+  await tab.close();
+  assert.equal(tab.windowId, null);
+  assert.deepEqual(store.jevWindows, []);
+  await tab.close(); // the debugger and the window are already released; nothing is sent again
+  assert.deepEqual(calls.filter(([kind]) => kind !== "attach"), [["detach"], ["remove", 9]]);
+  assert.deepEqual(store.jevWindows, []);
+});
+
+test("a command in flight when the tab is aborted fails with AbortedError and its deadline is retired", async () => {
+  const store = {};
+  const calls = [];
+  globalThis.chrome = {
+    storage: {
+      session: {
+        get: async (key) => ({ [key]: store[key] }),
+        set: async (values) => Object.assign(store, values),
+      },
+    },
+    windows: { remove: async (id) => calls.push(["remove", id]) },
+    debugger: { ...debuggerEvents, detach: async () => calls.push(["detach"]), sendCommand: () => new Promise(() => {}) },
+  };
+  const clock = fakeClock();
+  try {
+    const tab = new Tab(1, scripts);
+    tab.windowId = 9;
+    const failure = tab.send("Input.dispatchMouseEvent", {}).then(() => null, (error) => error);
+    await tab.abort();
+    const error = await failure;
+    assert.ok(error instanceof AbortedError);
+    assert.equal(error.message, "查詢已停止");
+    assert.deepEqual(calls, [["detach"], ["remove", 9]]);
+    assert.equal(clock.pending(), 0); // the command's 30 s deadline was cleared, so nothing fires later
+    await assert.rejects(tab.send("Runtime.evaluate", {}), AbortedError);
+    assert.equal(calls.length, 2); // and after Stop nothing more is sent
+  } finally {
+    clock.restore();
+  }
+});

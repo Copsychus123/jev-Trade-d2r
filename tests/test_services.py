@@ -762,3 +762,105 @@ def test_a_successful_step_hands_back_its_spare_call_and_records_the_usage(store
     assert store.run("GET", "run:c") == "1"  # the reservation still settles even for an old token
     # ...but its totals are skipped: neither the calls nor the tokens of that step are added.
     assert (store.run("HGET", record, "calls"), store.run("HGET", record, "input_tokens")) == ("2", "123")
+
+
+# --- the route branches the earlier rounds left unpinned: replay memory, call counting, a bad base and usage ---
+
+
+def test_a_start_whose_remembered_answer_cannot_be_read_starts_again():
+    """A client repeats a start it never got an answer for; if the stored answer is garbage the route must neither
+    replay it nor crash. Every unreadable shape falls back to a fresh, counted answer that is then remembered."""
+    unreadable = ("not json", "[]", "[1, 2]", '["a", "b", "c"]', "{}")
+    for saved in unreadable:
+        store = MemoryStore()
+        its_code = invites.add(store, "amy")
+        key = f"start:{invites.code_hash(its_code)}:abcdefgh"
+        store.run("SET", key, saved)
+        status, body = app.run_start(
+            {"invite": its_code, "item_name": "Shako", "request_id": "abcdefgh"}, "1.1.1.1", store, SECRET, NOW
+        )
+        assert (status, body["used"]) == (200, 1), saved
+        assert json.loads(store.run("GET", key))[1] == 1  # the fresh answer replaced the unreadable one
+
+
+def test_a_non_string_invite_is_treated_as_no_invite_and_counts_a_failure(store):
+    """The invite field is client input: an object, a number or a list must read as no code at all, be refused as
+    invalid (never granted), and cost one of the ten wrong guesses like any other bad code."""
+    with pytest.raises(invites.InviteError) as err:
+        app.run_start({"invite": 1234, "item_name": "Shako"}, "1.1.1.1", store, SECRET, NOW)
+    assert (err.value.status, err.value.message, err.value.code) == (401, "邀請碼無效或已停用", "invite_invalid")
+    assert store.run("GET", "fail:1.1.1.1") == "1"
+
+
+def test_a_step_that_re_asks_keeps_two_calls_and_a_single_answer_hands_one_back(store, code):
+    """Two calls are reserved up front for every step: a re-ask (`model_calls` 2) spends both, a single answer hands
+    the spare back, and a count that is over the reservation, zero or missing is clamped to what was reserved."""
+    token = token_for(store, code)
+    rid = tokens.verify(SECRET, token, NOW.timestamp())["rid"]
+    run_key = f"run:{rid}"
+    record = invites.record_key(invites.code_hash(code))
+
+    def step(model_calls):
+        decision = {"operation": "CLICK", "usage": {}}
+        if model_calls is not None:
+            decision["model_calls"] = model_calls
+        body = {"run_token": token, "phase": "trading", "page": PAGE, "history": []}
+        return app.choose_step(body, store, SECRET, NOW, lambda *a, **k: decision)
+
+    assert step(2)[0] == 200 and store.run("GET", run_key) == "2"  # a re-ask spent both reserved calls
+    assert step(1)[0] == 200 and store.run("GET", run_key) == "3"  # a single answer handed the spare back
+    assert step(9)[0] == 200 and store.run("GET", run_key) == "5"  # over the reservation: clamped to two, no spare
+    assert step(0)[0] == 200 and store.run("GET", run_key) == "6"  # zero counts as one call, spare handed back
+    assert step(None)[0] == 200 and store.run("GET", run_key) == "7"  # a missing count is one call too
+    assert store.run("HGET", record, "calls") == "7"  # 2 + 1 + 2 + 1 + 1
+
+
+def test_a_given_base_that_is_not_a_string_is_refused_without_a_model_call(store, code):
+    """The self-matched base shortcut keys off `base` being a name on the list: any non-string is a bad base and must
+    be refused before a run call is reserved or the model is reached."""
+    token = token_for(store, code)
+    rid = tokens.verify(SECRET, token, NOW.timestamp())["rid"]
+
+    def never(*args, **kw):
+        raise AssertionError("the model must not be asked for a given base")
+
+    for bad in (5, True, [], 3.5):
+        status, reply = app.pick_base_step({"run_token": token, "base": bad}, store, SECRET, NOW, never)
+        assert (status, reply) == (400, {"error": "底材不在清單裡", "code": "bad_base"}), bad
+    assert store.data.get(f"run:{rid}") is None  # a refused base reserves nothing
+
+
+def test_several_answered_steps_accumulate_in_the_invite_record(store, code):
+    """The person's totals are the sum of their answered steps, not of one: each step's calls and input tokens add to
+    the running counters the record carries, while `used` stays at the one start use."""
+    digest = invites.code_hash(code)
+    record = invites.record_key(digest)
+    token = token_for(store, code)
+    rid = tokens.verify(SECRET, token, NOW.timestamp())["rid"]
+
+    def step(usage, model_calls):
+        body = {"run_token": token, "phase": "trading", "page": PAGE, "history": []}
+        decision = {"operation": "CLICK", "usage": usage, "model_calls": model_calls}
+        return app.choose_step(body, store, SECRET, NOW, lambda *a, **k: decision)
+
+    assert step({"input_tokens": 100, "output_tokens": 5}, 1)[0] == 200
+    assert step({"input_tokens": 50}, 2)[0] == 200
+    assert store.run("GET", f"run:{rid}") == "3"  # 2 reserved, 1 handed back, then 2 reserved and spent
+    assert (
+        store.run("HGET", record, "used"),
+        store.run("HGET", record, "calls"),
+        store.run("HGET", record, "input_tokens"),
+    ) == ("1", "3", "150")
+
+
+def test_history_that_is_not_a_list_of_shaped_entries_is_a_bad_page(store, code):
+    """`history` is bounded and typed field by field: a non-list, an over-long list, an entry that is not an object,
+    or a field of the wrong type is the client's error. An absent history is an empty one, an all-None entry is fine."""
+    token = token_for(store, code)
+    ok = lambda *a, **k: {"operation": "CLICK", "usage": {}, "model_calls": 1}  # noqa: E731
+    for bad in ([1], "nope", [{"action": 5}], [{"page_changed": "yes"}], [{"text": 5}], [{}] * (app.MAX_HISTORY + 1)):
+        body = {"run_token": token, "phase": "trading", "page": PAGE, "history": bad}
+        assert app.choose_step(body, store, SECRET, NOW, ok) == (400, {"error": app.BAD_PAGE, "code": "bad_page"}), bad
+    assert app.choose_step({"run_token": token, "phase": "trading", "page": PAGE}, store, SECRET, NOW, ok)[0] == 200
+    body = {"run_token": token, "phase": "trading", "page": PAGE, "history": [{"action": None}]}
+    assert app.choose_step(body, store, SECRET, NOW, ok)[0] == 200
