@@ -130,10 +130,10 @@
 
 ## 七、我確認過的事實（含位置）
 
-- `stats-form-state.js:32-42` 預填一律 `min/max = null`；`:89-96` 底材空→「請輸入底材名稱」、勾了非 bool 沒值→「有勾選的條件還沒填數值」；`emptyStatsForm().base === ""`。
-- `scan-panel.js:124` 已算出完整候選（只取 `[0]`）；`:132` 紀錄存的是讀取當下的 `conditions`，而表單每次從 `record.text` 重算（兩個真相來源）。
-- `sidepanel.js:505-511` 精準只填名稱；`:514-520` 模糊只在 `kind === "base"` 時預填底材。
-- `sidepanel.js` 與 `stats-query.js` 匯入**建置產物** `config.js`，離線測試無法直接 import（`ocr_e2e`／`scan_e2e` 是它們的守衛）。
+- `stats-form-state.js:46-47` 預填的條件不帶數值（`carryValues` 時才沿用讀到的 `min/max`）；`:60` 手動新增的列一律 `min/max = null`；`:93-95` 底材空→「請輸入底材名稱」、勾了非 bool 沒值→「有勾選的條件還沒填數值」；`emptyStatsForm().base === ""`。
+- `scan-panel.js:37` 已算出完整候選（只取 `[0]`）；`:46-47` 紀錄存的是讀取當下的 `base`／`conditions`，而表單每次從 `record.text` 重算（兩個真相來源）。
+- `sidepanel.js:549-556` 精準只填名稱；`:558-566` 模糊預填底材（紀錄自己是 base 就用它的名稱，其餘用同一次讀取的底材候選）。
+- `sidepanel.js` 匯入**建置產物** `config.js`：離線測試要先用註冊的 resolve hook（`extension/test/support/stubs.mjs`）才 import 得到，真瀏覽器裡的路徑仍由 `ocr_e2e`／`scan_e2e` 守著。
 
 ## 八、風險與對策
 
