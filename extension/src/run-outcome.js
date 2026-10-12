@@ -1,6 +1,6 @@
 // How a finished (or failed) name query is judged, away from the panel's own state and its DOM.
 //
-// The panel decides its screen from four facts (`panel-state.js`); this module decides what those facts should be after a
+// The panel decides its screen from five facts (`panel-state.js`); this module decides what those facts should be after a
 // run: whether the query ended with data, with a problem and which banner, or with the player's stop. Pure: no DOM, no
 // chrome.*, no module state — the caller passes what it knows and applies the two things the result names.
 

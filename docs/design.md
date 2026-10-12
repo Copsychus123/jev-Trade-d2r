@@ -12,13 +12,13 @@ TYPE_TEXT types the text the caller gave to `Agent(text=...)`; no model writes f
 
 One browser-side DOM snapshot supplies common HTML/ARIA roles, names, values, visible text, and executable targets. A WeakMap gives each actual node a code-owned identity; a Map keeps the live references used for execution. Replaced elements receive new identities, disconnected references are pruned, and navigation starts a new cache. These IDs are not CDP backend node IDs. Geometry is always read again immediately before input.
 
-The model sees visible text. Background focus emulation keeps animation frames running in the owned tab. Screenshots are optional and disabled in library calls by default; `screenshots=True` or `record_dir=...` enables them. The inspector (`demo.py`) passes `screenshots=True`. A continuous screencast can record a run separately.
+The model sees visible text. Background focus emulation keeps animation frames running in the owned tab. Screenshots are optional and disabled in library calls by default; `screenshots=True` enables them. The inspector (`demo.py`) passes `screenshots=True`.
 
 Freshness compares semantic state instead of counting DOM mutations. Before a click/select, guards compare the document, full URL, viewport, safe form values/states, selected target, and nearby form/dialog/row context. Text generation, typing, scrolling, waiting, and completion use a full semantic comparison. The executor rechecks target visibility, enabled state, geometry, and click occlusion. Scoped guards intentionally permit unrelated visible content to change; this is a practical heuristic, not proof that arbitrary page changes are irrelevant to the goal.
 
 Browser mutations are not retried by transport recovery. Completed execution is logged before the next observation, including when that observation encounters a navigation. An interrupted native-select evaluation stops because its change event may already have fired. Typing uses a browser select-all command followed by CDP text insertion, so existing input contents are replaced.
 
-The next observation waits for up to two animation frames or 50 ms after an interaction. Editable ARIA comboboxes instead wait for visible options, capped at 200 ms. This avoids paying for a prediction before autocomplete suggestions arrive. An explicit WAIT remains 100 ms; network loading is never fast-forwarded in the recording.
+The next observation waits for up to two animation frames or 50 ms after an interaction. Editable ARIA comboboxes instead wait for visible options, capped at 200 ms. This avoids paying for a prediction before autocomplete suggestions arrive. An explicit WAIT remains 4.0 s; network loading is never fast-forwarded in the recording.
 
 ## What changed after the first demo
 
@@ -54,7 +54,7 @@ The affix dictionary keeps 40 entries; `unmappedKeys` (tested against the saved 
 ## The side panel's screens and state (extension)
 
 One module decides which screen is up: `extension/src/panel-state.js` (pure, no DOM, tested). Everything else renders what
-it says. Its inputs are four facts about the panel, and nothing else may decide a screen:
+it says. Its inputs are five facts about the panel, and nothing else may decide a screen:
 
 | fact | meaning |
 |---|---|

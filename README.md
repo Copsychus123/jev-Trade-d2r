@@ -120,7 +120,7 @@ Agent 說「完成」不等於成功；是否成功只看上面的獨立檢查�
 | `src/jev_ultrafast/traderie/site.py` | 網址、Agent 目標文字（`build_goal`）、`LOAD_MORE_LIMIT`、防護頁偵測 |
 | `src/jev_ultrafast/traderie/controller.py` | 每個視圖讀一次、檢查、存檔（`read_view`、`verify_views`、`advance`、`run_agent`、`save_report`） |
 | `src/jev_ultrafast/traderie/parsing.py` | 固定規則的掛單／成交文字解析 |
-| `src/jev_ultrafast/traderie/verification.py` | 獨立檢查（`verify_market`、`read_settled_page`） |
+| `src/jev_ultrafast/traderie/verification.py` | 字詞比對與頁面讀取工具（`words`、`title_has_words`、`matches_item`、`page_matches_item`、`read_settled_page`）；各項獨立檢查在 `controller.verify_views` |
 | `src/jev_ultrafast/traderie/auth.py` | 憑證與 cookie 處理 |
 | `extension/`、`services/` | Chrome 擴充功能與後端（見各自的 README） |
 | `scripts/traderie.py` | 命令列入口 |
@@ -185,6 +185,8 @@ Agent 說「完成」不等於成功；是否成功只看上面的獨立檢查�
 | `scripts/extension_e2e.py`（e2e） | 擴充功能端對端，跑一次真實查詢 | 1 次 Jev 查詢；先關閉專用 Chrome |
 | `scripts/extension_batch.py`（e2e） | 批次跑 `scripts/e2e_cases.json` 的案例 | 每案例至少 1 次查詢；要加 `--yes`，邀請碼用環境變數 `JEV_INVITE` |
 | `scripts/ocr_e2e.py`（e2e） | 截圖辨識端對端與準確度 | 下載辨識模型；準確度不得低於上次通過的結果 |
+| `scripts/scan_e2e.py`（e2e，僅 Windows） | 裝備掃描端對端，跑在替代頁面 `scripts/data/scan_sim.html` 上 | 啟動專用 Chrome；完全不呼叫 Jev、不扣額度 |
+| `scripts/demo_e2e.py`（e2e） | demo 頁端對端，用替代伺服器回應 `/api/state` | 啟動 demo 自己的 Chrome；不需要額度、不需登入 |
 | `scripts/probe_stats.py`（e2e） | 量測 Traderie 首頁「Search All Stats」的行為（模糊搜尋查法的依據），並更新兩份測試資料 | 開專用 Chrome 對 Traderie 做唯讀請求；不下單、不呼叫 Jev；需要先登入 |
 | `scripts/_cdp.py` | 上面幾支共用的 Chrome 連線小工具 | — |
 

@@ -465,10 +465,9 @@ function collectTrades(lines) {
   return trades;
 }
 
-export function parseRecentTrades(textContent, observeJson = null) {
-  const text = (textContent || "") + " " + (observeJson ? (observeJson.text ?? "") : "");
-  const url =
-    (observeJson ? observeJson.url : "") || `${TRADERIE_D2R_URL}/product/harlequin-crest/recent`;
+export function parseRecentTrades(textContent) {
+  const text = (textContent || "") + " ";
+  const url = `${TRADERIE_D2R_URL}/product/harlequin-crest/recent`;
   const textLower = text.toLowerCase();
 
   if (textLower.includes(SIGN_IN_PROMPT.toLowerCase()) || textLower.includes("please sign in")) {

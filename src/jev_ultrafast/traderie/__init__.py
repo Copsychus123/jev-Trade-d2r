@@ -1,4 +1,4 @@
-"""Traderie D2R domain package (site, auth, parsing, verification, pipeline)."""
+"""Traderie D2R domain package (site, auth, parsing, verification, controller)."""
 
 from jev_ultrafast.traderie.controller import (
     advance,

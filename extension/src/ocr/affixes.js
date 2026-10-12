@@ -38,11 +38,11 @@ function wordLength(entry, cjk, lower) {
   return best;
 }
 
-function bestByWords(line, cjk, dictionary) {
+function bestByWords(line, cjk) {
   const lower = line.toLowerCase();
   let best = null;
   let bestLength = 0;
-  for (const entry of dictionary) {
+  for (const entry of AFFIXES) {
     const length = wordLength(entry, cjk, lower);
     if (length > bestLength) {
       best = entry;
@@ -53,13 +53,13 @@ function bestByWords(line, cjk, dictionary) {
 }
 
 /** The entry whose abbreviation the line shows, allowing one wrong letter; null when none or when two are as close. */
-function bestByAbbreviation(line, dictionary) {
+function bestByAbbreviation(line) {
   const found = ABBREVIATION.exec(line);
   if (!found) return null;
   const shown = found[1].toUpperCase();
   let best = [];
   let bestDistance = 2;
-  for (const entry of dictionary) {
+  for (const entry of AFFIXES) {
     if (!entry.abbr) continue;
     const distance = levenshtein(shown, entry.abbr.toUpperCase(), 1);
     if (distance > 1) continue;
@@ -180,7 +180,7 @@ function isNameLine(cjk) {
  * on: false }; the first line of an affix wins when the same affix is printed twice. `unmapped` holds lines that look
  * like an affix but are not in the dictionary.
  */
-export function parseAffixLines(text, dictionary = AFFIXES) {
+export function parseAffixLines(text) {
   const conditions = [];
   const unmapped = [];
   const seen = new Set();
@@ -189,7 +189,7 @@ export function parseAffixLines(text, dictionary = AFFIXES) {
     if (!line) continue;
     const cjk = line.replace(CJK_GAP, "");
     if (NOT_AN_AFFIX.test(cjk) || REQUIREMENT.test(cjk)) continue;
-    const entry = bestByWords(line, cjk, dictionary) ?? bestByAbbreviation(line, dictionary);
+    const entry = bestByWords(line, cjk) ?? bestByAbbreviation(line);
     if (!entry) {
       if (!isNameLine(cjk)) unmapped.push(line);
       continue;

@@ -199,7 +199,7 @@ def advance(agent, item_name: str, market: dict[str, Any]) -> None:
 
 
 def step(agent, item_name: str, market: dict[str, Any]) -> dict[str, Any]:
-    """One loop step shared by the demo, the CLI and `run_agent`: finish controller work left over from an earlier step,
+    """One loop step shared by the CLI and `run_agent`: finish controller work left over from an earlier step,
     tick the Agent, then do the controller work that tick made due. The controller work also runs when the tick
     raised (the Agent may have reached DONE or a handoff before the error), and the tick's error is the one raised.
     Returns the Agent snapshot taken after the controller work."""

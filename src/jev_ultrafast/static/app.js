@@ -44,7 +44,6 @@ const percent = (value) => `${(value * 100).toFixed(value < 0.01 ? 1 : 0)}%`;
 const statusDot = $("status-dot");
 const dash = (value) =>
   value === null || value === undefined || value === "" ? "—" : String(value);
-// Trigger a browser download for a generated file.
 function saveText(filename, text, type) {
   const url = URL.createObjectURL(new Blob([text], { type }));
   const a = document.createElement("a");

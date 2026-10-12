@@ -1,7 +1,7 @@
 // Turns the conditions a player confirmed into the address of Traderie's home page with its "Search All Stats" filters
 // switched on, and checks the page really kept them. Pure functions: no chrome.*, no I/O. Property ids and names come
-// from Traderie's own list (properties.js); nothing about a particular property is written down here except the
-// dictionary of what the screenshot reader knows (ocr/affix_dictionary.js).
+// from Traderie's own list (properties.js); apart from the quality property ("Rarity"), nothing about a particular
+// property is written down here except the dictionary of what the screenshot reader knows (ocr/affix_dictionary.js).
 import { AFFIXES } from "../ocr/affix_dictionary.js";
 import { TRADERIE_D2R_URL } from "./site.js";
 
@@ -35,8 +35,8 @@ function propertyFor(entry, properties) {
 }
 
 /** Keys of the dictionary that Traderie has no single property for (shown greyed out in the form). */
-export function unmappedKeys(properties, dictionary = AFFIXES) {
-  return dictionary.filter((entry) => !propertyFor(entry, properties)).map((entry) => entry.key);
+export function unmappedKeys(properties) {
+  return AFFIXES.filter((entry) => !propertyFor(entry, properties)).map((entry) => entry.key);
 }
 
 /**
@@ -47,11 +47,11 @@ export function unmappedKeys(properties, dictionary = AFFIXES) {
  * switched-on condition Traderie has no property for is always reported in `unmapped`, value or not. The returned
  * list is what the address, the summary and the page checks all use, so this is the one place that decides.
  */
-export function mapConditions(conditions, properties, dictionary = AFFIXES) {
+export function mapConditions(conditions, properties) {
   const mapped = [];
   const unmapped = [];
   for (const condition of conditions.filter((c) => c.on === true)) {
-    const entry = dictionary.find((e) => e.key === condition.key);
+    const entry = AFFIXES.find((e) => e.key === condition.key);
     const property = entry ? propertyFor(entry, properties) : null;
     if (!property) {
       unmapped.push(condition.key);

@@ -22,13 +22,13 @@ DEFAULT_API = "https://jev-trade-d2r.vercel.app"
 SECRET_NAMES = ("TYPESAFE_API_KEY", "RUN_TOKEN_SECRET", "KV_REST_API_TOKEN")
 SECRET_PATTERN = re.compile(r"TYPESAFE_API_KEY|RUN_TOKEN_SECRET|KV_REST_API_TOKEN|Bearer\s+[A-Za-z0-9._-]{20,}")
 PAGE_SCRIPTS = ("snapshot.js", "after_input.js", "resolve_target.js", "covered_overlay.js", "settle.js")
-# What extension/src/traderie/lookup.js (indexTables, productUrl) reads; the audit-only fields stay in the source table.
+# What extension/src/traderie/lookup.js (indexTables, productUrlFor) reads; audit-only fields stay in the source table.
 SHIPPED_TABLE_KEYS = ("generated_at", "version", "products", "zh", "bases", "game_only")
 SHIPPED_PRODUCT_KEYS = ("name", "slug")
 
 
 def ship_table(table: dict) -> dict:
-    """The committed table reduced to what the extension reads at runtime (`lookup.js` indexTables/productUrl)."""
+    """The committed table reduced to what the extension reads at runtime (`lookup.js` indexTables/productUrlFor)."""
     shipped = {key: table[key] for key in SHIPPED_TABLE_KEYS}
     shipped["products"] = [{key: product[key] for key in SHIPPED_PRODUCT_KEYS} for product in table["products"]]
     return shipped

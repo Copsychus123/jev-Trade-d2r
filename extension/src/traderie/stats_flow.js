@@ -75,7 +75,7 @@ function filterNotes({ quality, chosenQuality, base, type }) {
 
 /**
  * Step 2: map the conditions the player confirmed onto Traderie's own property list (kept for a week), write down
- * what could not be filtered, and build the address of the filtered home page. Returns `{ url, conditions }`, or
+ * what could not be filtered, and build the address of the filtered home page. Returns `{ url, mapped }`, or
  * `{ unmapped }` when a switched-on condition has no property at Traderie.
  */
 async function planStatsSearch({ conditions, base, quality, itemTypes, scripts, store, session, lookup, onStatus }) {
@@ -113,19 +113,19 @@ async function planStatsSearch({ conditions, base, quality, itemTypes, scripts, 
     type,
     url,
   });
-  return { url, conditions: mapped };
+  return { url, mapped };
 }
 
 /**
  * Step 3: open the filtered address, read its list, keep only the rows whose name is the base, and check the read
  * independently. Every sentence the player needs about what was read ends up in `lookup.notes`.
  */
-async function readFilteredRows({ url, conditions, base, market, session, lookup, onStatus }) {
+async function readFilteredRows({ url, mapped, base, market, session, lookup, onStatus }) {
   onStatus("套用條件…");
   await timed(session, "navigate", () => session.tab.navigate(url), (r) => r ?? {});
   await timed(session, "settle", () => session.tab.settle(), (r) => r ?? {});
   onStatus("讀取符合條件的掛單…");
-  const shown = numberConditionLabels(conditions);
+  const shown = numberConditionLabels(mapped);
   market.trading = await readStatsView(session.tab, url, { expectText: shown, session });
 
   if (base && market.trading.status === "PASSED") {
@@ -176,6 +176,6 @@ export async function findAndReadStats({
   if (filters.unmapped) return "unmapped";
   if (shouldStop()) return "ran";
 
-  await readFilteredRows({ url: filters.url, conditions: filters.conditions, base, market, session, lookup, onStatus });
+  await readFilteredRows({ url: filters.url, mapped: filters.mapped, base, market, session, lookup, onStatus });
   return "ran";
 }

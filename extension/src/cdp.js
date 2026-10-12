@@ -263,7 +263,7 @@ export class Tab {
     return response?.result?.value;
   }
 
-  /** Resolves { capped, ms } (settle.js): whether the cap ended the wait, and how long it took. */
+  /** Resolves { capped, ms, visibility } (settle.js): whether the cap ended the wait, how long it took, and the document's visibility state. */
   async settle(quietMs = 600, timeoutMs = 15000, minChars = 100) {
     return this.evaluate(`${this.scripts.settle}(${quietMs}, ${timeoutMs}, ${minChars})`, {
       awaitPromise: true,

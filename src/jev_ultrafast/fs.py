@@ -24,5 +24,4 @@ def _atomic_write(path: Path | str, write: Callable[[Path], None]) -> None:
 
 
 def write_text(path: Path | str, text: str) -> None:
-    """Atomically write text via temporary sibling replacement."""
     _atomic_write(path, lambda temp: temp.write_text(text, encoding="utf-8"))

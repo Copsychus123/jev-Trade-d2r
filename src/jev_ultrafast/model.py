@@ -1,4 +1,4 @@
-"""TypeSafe makes choices; an optional small OpenAI-compatible model writes field values."""
+"""Build the TypeSafe request for a decision and validate the answers it returns."""
 
 import json
 import logging
