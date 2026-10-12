@@ -235,6 +235,93 @@ def test_cookie_pairs_skip_the_attributes_a_set_cookie_string_carries():
         parse_cookie_pairs("path=/; secure")
 
 
+def test_cookie_pairs_split_trim_and_drop_what_is_not_a_pair():
+    """`;` separates cookies and the whitespace a browser puts around a segment or a value is packaging, not data; an
+    empty segment (or a trailing `;`) and a chunk without `=` are not cookies, and a blank name is skipped too."""
+    from jev_ultrafast.traderie.auth import parse_cookie_pairs
+
+    assert parse_cookie_pairs("  a=1 ; b=2 ") == [("a", "1"), ("b", "2")]
+    assert parse_cookie_pairs("name = value") == [("name", "value")]  # space around `=` is trimmed off both halves
+    assert parse_cookie_pairs("a=1;;b=2;") == [("a", "1"), ("b", "2")]
+    assert parse_cookie_pairs("a=1; junk; b=2") == [("a", "1"), ("b", "2")]
+    assert parse_cookie_pairs("=novalue; a=1") == [("a", "1")]
+    assert parse_cookie_pairs("Path=/; a=1") == [("a", "1")]  # attribute names are matched case-insensitively
+
+
+def test_cookie_pairs_keep_a_value_with_equals_and_every_duplicate_name():
+    """The split stops at the first `=`, so a base64 session survives whole; a repeated name is not deduplicated - both
+    cookies are handed to CDP in the order they were pasted."""
+    from jev_ultrafast.traderie.auth import parse_cookie_pairs
+
+    assert parse_cookie_pairs("token=a=b=c") == [("token", "a=b=c")]
+    assert parse_cookie_pairs("dup=1; dup=2") == [("dup", "1"), ("dup", "2")]
+
+
+@pytest.mark.parametrize(
+    ("env", "expected"),
+    [
+        ({}, []),
+        (
+            {"TRADERIE_COOKIE": "name=value; other=two"},
+            [
+                {"url": "https://www.traderie.com/", "name": "name", "value": "value"},
+                {"url": "https://www.traderie.com/", "name": "other", "value": "two"},
+            ],
+        ),
+        (
+            {"TRADERIE_SESSION_TOKEN": "token-value"},
+            [{"url": "https://www.traderie.com/", "name": "session", "value": "token-value"}],
+        ),
+        (
+            {"TRADERIE_SESSION_TOKEN": "token-value", "TRADERIE_SESSION_COOKIE_NAME": "authed"},
+            [{"url": "https://www.traderie.com/", "name": "authed", "value": "token-value"}],
+        ),
+        (
+            {
+                "TRADERIE_COOKIE": "a=1",
+                "TRADERIE_SESSION_TOKEN": "token-value",
+                "TRADERIE_SESSION_COOKIE_NAME": "authed",
+            },
+            [
+                {"url": "https://www.traderie.com/", "name": "a", "value": "1"},
+                {"url": "https://www.traderie.com/", "name": "authed", "value": "token-value"},
+            ],
+        ),
+    ],
+)
+def test_cookie_specs_inject_the_pasted_cookies_then_the_session_cookie_over_the_env(env, expected):
+    """The exact `Network.setCookie` specs, built from the real env-var names: the pasted pairs first, then the session
+    token appended under its configured name (default `session`) - and nothing at all when neither is set."""
+    from jev_ultrafast.config import get_settings
+    from jev_ultrafast.traderie.auth import cookie_specs
+
+    assert cookie_specs(get_settings(env)) == expected
+
+
+def test_cookie_specs_carry_only_url_name_value_for_the_traderie_origin():
+    """Each spec is a `Network.setCookie` argument: pinned to Traderie's origin and carrying exactly `url`/`name`/
+    `value` - no cookie attribute keys, which would silently inject a differently scoped cookie."""
+    from jev_ultrafast.config import get_settings
+    from jev_ultrafast.traderie.auth import COOKIE_ATTRS, COOKIE_ORIGIN, cookie_specs
+
+    assert COOKIE_ORIGIN == "https://www.traderie.com/"
+    specs = cookie_specs(get_settings({"TRADERIE_COOKIE": "name=value", "TRADERIE_SESSION_TOKEN": "token-value"}))
+    assert specs
+    assert all(set(spec) == {"url", "name", "value"} for spec in specs)
+    assert all(spec["url"] == COOKIE_ORIGIN for spec in specs)
+    assert not any(COOKIE_ATTRS & set(spec) for spec in specs)
+    assert {"domain", "path", "secure", "samesite", "httponly"} <= COOKIE_ATTRS
+
+
+def test_cookie_specs_falls_back_to_the_session_name_when_it_is_blank():
+    """A `Settings` whose cookie name is blank still gets a name: the session cookie is never injected nameless."""
+    from jev_ultrafast.config import Settings
+    from jev_ultrafast.traderie.auth import COOKIE_ORIGIN, cookie_specs
+
+    specs = cookie_specs(Settings(traderie_session_token="token-value", traderie_session_cookie_name=""))
+    assert specs == [{"url": COOKIE_ORIGIN, "name": "session", "value": "token-value"}]
+
+
 def test_settled_page_read_refuses_an_answer_that_is_not_a_page():
     """`read_settled_page` is the evidence that a view was read: an answer without a url has to fail here and now,
     not travel on as a settled page with nothing in it."""
