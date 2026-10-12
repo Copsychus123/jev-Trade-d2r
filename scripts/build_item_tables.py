@@ -582,7 +582,7 @@ def load_pairs() -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
 
 
 async def main_async(
-    out: Path, reuse_products: bool, add_translations: bool = False, from_cache: bool = False, force: bool = False
+    out: Path, reuse_products: bool, *, add_translations: bool = False, from_cache: bool = False, force: bool = False
 ) -> bool:
     if add_translations:
         existing = read_json(out)
@@ -640,7 +640,15 @@ def main() -> None:
     )
     args = parser.parse_args()
     try:
-        ok = asyncio.run(main_async(args.out, args.reuse_products, args.add_translations, args.from_cache, args.force))
+        ok = asyncio.run(
+            main_async(
+                args.out,
+                args.reuse_products,
+                add_translations=args.add_translations,
+                from_cache=args.from_cache,
+                force=args.force,
+            )
+        )
     except KeyboardInterrupt:
         sys.exit(130)
     finally:

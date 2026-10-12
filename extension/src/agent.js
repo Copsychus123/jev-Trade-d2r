@@ -19,6 +19,9 @@ const countStale = (state, reason) => {
   state.stale_events[reason] = (state.stale_events[reason] ?? 0) + 1;
 };
 
+/** The observed action with this id, or null when the page changed under the decision. */
+const actionById = (actions, id) => actions.find((a) => a.id === id) ?? null;
+
 export class Agent {
   constructor({ tab, phases, text, finishPhaseAfter, choose, vetoBlocked, callBudget }) {
     this.tab = tab;
@@ -109,20 +112,33 @@ export class Agent {
     }
   }
 
+  /** Stop the run: blocked status, no pending handoff, elapsed time updated. Callers record their own reason. */
+  _block(state) {
+    state.status = "blocked";
+    state.awaiting_handoff = false;
+    state.elapsed_ms = this._elapsedMs();
+  }
+
+  /** The last phase is over: done status, no pending handoff, elapsed time updated. */
+  _finishRun(state) {
+    state.status = "done";
+    state.plan_index = state.plan.length - 1;
+    state.awaiting_handoff = false;
+    state.elapsed_ms = this._elapsedMs();
+  }
+
   /** End a run whose target keeps failing on an unchanged page, with a reason the panel shows and logs. */
   async _stopAfterStale(state, count) {
     const target = state.last_attempt?.choice ?? "";
-    const action = state.page.actions.find((a) => a.id === target) ?? null;
+    const action = actionById(state.page.actions, target);
     const label = action?.label ?? target;
     const reason = (await this._coveredByOverlay(action))
       ? `有彈出視窗蓋住頁面，無法操作「${label}」；請關掉那個視窗（Traderie 的公告視窗請按右上角 ×，關一次之後會記住）再重新查詢`
       : `連續 ${count} 次都無法操作「${label}」（畫面沒有變化），查詢已停止`;
-    state.status = "blocked";
-    state.awaiting_handoff = false;
+    this._block(state);
     state.scope_blocked_reason = reason;
     state.rule_events.push({ step: state.history.length, phase: state.phase, label, stale: true, count });
     countStale(state, reason);
-    state.elapsed_ms = this._elapsedMs();
   }
 
   /** this.choose plus its round trip as the client saw it (`choose_ms`, next to Jev's own `latency_ms`). */
@@ -186,7 +202,7 @@ export class Agent {
     const label = rule[0].toLowerCase();
     const last = phaseHistory[phaseHistory.length - 1];
     const actions = state.page.actions;
-    if (last.action.toLowerCase() === label) return actions.find((a) => a.id === "scroll_bottom") ?? null;
+    if (last.action.toLowerCase() === label) return actionById(actions, "scroll_bottom");
     if (last.choice === "scroll_bottom") {
       return actions.find((a) => a.kind === "click" && a.label.toLowerCase() === label) ?? null;
     }
@@ -221,12 +237,7 @@ export class Agent {
       .filter((h) => h.action.toLowerCase() === label.toLowerCase()).length;
     if (done < limit) return;
     state.rule_events.push({ step: state.history.length, phase: state.phase, label, count: limit });
-    if (!this._advancePhase(state)) {
-      state.status = "done";
-      state.plan_index = state.plan.length - 1;
-      state.awaiting_handoff = false;
-      state.elapsed_ms = this._elapsedMs();
-    }
+    if (!this._advancePhase(state)) this._finishRun(state);
   }
 
   snapshot() {
@@ -240,7 +251,7 @@ export class Agent {
     if (choice === "DONE") label = "完成";
     else if (choice === "BLOCKED") label = "受阻";
     else {
-      const action = state.page.actions.find((a) => a.id === choice);
+      const action = actionById(state.page.actions, choice);
       label = (action ? action.label : choice).split(" → ")[0].slice(0, 60);
     }
     const others = Object.entries(decision.operation_probabilities)
@@ -393,17 +404,15 @@ export class Agent {
       throw new StalePage("Page changed since the decision. Choose again.");
     }
     if (selected === "DONE" && this._advancePhase(state)) return this.snapshot();
-    state.status = selected === "DONE" ? "done" : "blocked";
-    if (selected === "DONE") state.plan_index = state.plan.length - 1;
-    state.awaiting_handoff = false;
-    state.elapsed_ms = this._elapsedMs();
+    if (selected === "DONE") this._finishRun(state);
+    else this._block(state);
     return this.snapshot();
   }
 
   /** The element the decision chose (still on the page, and within the step budget) plus the text to type into it. */
   async _prepareAction(selected, page) {
     const state = this.state;
-    const action = page.actions.find((a) => a.id === selected);
+    const action = actionById(page.actions, selected);
     if (!action) {
       await this._refreshForRetry(state);
       throw new StalePage("Chosen element is no longer available. Choose again.");

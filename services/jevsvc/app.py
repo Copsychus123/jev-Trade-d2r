@@ -244,7 +244,7 @@ def _reserve(store, run_key, slots) -> bool:
     return True
 
 
-def _after_success(store, claims, run_key, spare, calls, usage):
+def _after_success(store, claims, run_key, *, spare, calls, usage):
     """Hand back the reserved call(s) that were not needed, add to the person's totals and mark the run as answered.
     The answer is already in hand, so a store failure here is logged and never turned into an error response."""
     tokens_in = usage.get("input_tokens")
@@ -351,7 +351,7 @@ def choose_step(body, store, secret, now, chooser=None):
         return _error(502, "Jev 暫時無法回應，這一步沒有執行，請重新開始查詢", "model_unavailable")
     calls = min(2, max(1, int(decision.get("model_calls") or 1)))
     usage = decision.get("usage") or {}
-    _after_success(store, claims, run_key, 2 - calls, calls, usage)
+    _after_success(store, claims, run_key, spare=2 - calls, calls=calls, usage=usage)
     _log_usage("choose", claims, usage, f" calls={calls}")
     return 200, {k: v for k, v in decision.items() if k not in ("request", "raw_answers")}
 
@@ -396,7 +396,7 @@ def pick_base_step(body, store, secret, now, picker=None):
     if base not in BASES:
         base = None
     usage = picked.get("usage") or {}
-    _after_success(store, claims, run_key, 0, 1, usage)
+    _after_success(store, claims, run_key, spare=0, calls=1, usage=usage)
     _log_usage("base", claims, usage, f" picked={base is not None}")
     return 200, _base_reply(secret, claims, base, picked.get("probability"), usage)
 

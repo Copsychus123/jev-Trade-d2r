@@ -163,8 +163,8 @@ function cardStats(midLines, defense) {
  * What a listing asks for (its text and its High Rune Value line, when it has one).
  * @returns {{ask: string, highRuneValue: string|null}}
  */
-function askFields(cleanPrefix, tradeIdx, card) {
-  const askLines = tradeIdx !== -1 ? cleanPrefix.slice(tradeIdx, -1) : [];
+function askFields(cleanPrefix, markerIdx, card) {
+  const askLines = markerIdx !== -1 ? cleanPrefix.slice(markerIdx, -1) : [];
   let highRuneValue = null;
   const cleanedAsk = [];
   for (const entry of askLines) {
@@ -197,6 +197,14 @@ function cardAffixes(midLines) {
     }
   }
   return affixes;
+}
+
+/** The index of the card line ("Trading For" or "Make an Offer") that ends its item section; -1 when absent. */
+function tradeIdx(cleanPrefix) {
+  for (let i = 0; i < cleanPrefix.length; i += 1) {
+    if (TRADING_MARKERS.includes(cleanPrefix[i])) return i;
+  }
+  return -1;
 }
 
 /**
@@ -239,14 +247,8 @@ function cardData(card, itemName) {
   if (!sellerRating) return null;
   const { seller, rating } = sellerRating;
 
-  let tradeIdx = -1;
-  for (let i = 0; i < cleanPrefix.length; i += 1) {
-    if (TRADING_MARKERS.includes(cleanPrefix[i])) {
-      tradeIdx = i;
-      break;
-    }
-  }
-  const midLines = itemIdx !== -1 && tradeIdx !== -1 ? cleanPrefix.slice(itemIdx + 1, tradeIdx) : [];
+  const markerIdx = tradeIdx(cleanPrefix);
+  const midLines = itemIdx !== -1 && markerIdx !== -1 ? cleanPrefix.slice(itemIdx + 1, markerIdx) : [];
   const midText = midLines.join(" ");
   const midLower = midText.toLowerCase();
 
@@ -260,7 +262,7 @@ function cardData(card, itemName) {
   const defense = defenseMatch ? parseInt(defenseMatch[1].replace(/^\++/, ""), 10) : null;
 
   const stats = cardStats(midLines, defense);
-  const { ask, highRuneValue } = askFields(cleanPrefix, tradeIdx, card);
+  const { ask, highRuneValue } = askFields(cleanPrefix, markerIdx, card);
   const affixes = cardAffixes(midLines);
 
   return {

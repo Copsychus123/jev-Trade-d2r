@@ -18,12 +18,13 @@ from jevsvc.store import MemoryStore  # noqa: E402
 HOST, PORT = "127.0.0.1", 8788
 
 
-def make_server(store, routes=ROUTES) -> ThreadingHTTPServer:
+def make_server(store, routes=None) -> ThreadingHTTPServer:
     """The same routes and request pipeline as Vercel, over a plain HTTP server.
 
     `routes` defaults to the real table; the stub backend in scripts/stub_backend.py passes its own, with a chooser
     injected behind /api/choose, so the handler below is the single place the request pipeline is built.
     """
+    routes = ROUTES if routes is None else routes
 
     class Handler(BaseHTTPRequestHandler):
         def _serve(self):

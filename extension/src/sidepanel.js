@@ -107,7 +107,7 @@ function renderMarket(key) {
   if (total) config.draw(body, pageRows(rows, page));
 }
 
-function selectTab(key, focus = false) {
+function selectTab(key, { focus = false } = {}) {
   activeTab = key;
   for (const [k, config] of Object.entries(marketViews)) {
     const tab = $(`${config.prefix}-tab`);
@@ -671,7 +671,7 @@ function registerListeners() {
       const next = nextTab(tabKeysFor(market), activeTab, event.key);
       if (!next) return;
       event.preventDefault();
-      selectTab(next, true);
+      selectTab(next, { focus: true });
     });
     on("result-csv", () => resultActions.download(activeTab));
     on("result-copy", () => resultActions.copy(activeTab));
