@@ -13,42 +13,14 @@ import {
   recordCells,
 } from "../src/scan/session.js";
 import { boxKey, downscale, findTooltip } from "../src/scan/tooltip.js";
+import { fill, noise } from "./support/images.mjs";
 
 const WIDTH = 480;
 const HEIGHT = 270;
 
-function noise(width = WIDTH, height = HEIGHT, { seed = 12345 } = {}) {
-  const data = new Uint8ClampedArray(width * height * 4);
-  let s = seed >>> 0;
-  const rand = () => {
-    s = (s * 1103515245 + 12345) & 0x7fffffff;
-    return s / 0x7fffffff;
-  };
-  for (let i = 0; i < width * height; i++) {
-    const v = 70 + Math.floor(rand() * 91);
-    data[i * 4] = v;
-    data[i * 4 + 1] = v;
-    data[i * 4 + 2] = v;
-    data[i * 4 + 3] = 255;
-  }
-  return { width, height, data };
-}
-
-function fill(img, x, y, w, h, value) {
-  for (let yy = y; yy < y + h; yy++) {
-    for (let xx = x; xx < x + w; xx++) {
-      const i = (yy * img.width + xx) * 4;
-      img.data[i] = value;
-      img.data[i + 1] = value;
-      img.data[i + 2] = value;
-      img.data[i + 3] = 255;
-    }
-  }
-}
-
 // `stripes` says how much of the panel the text lines cover, so two calls can build two different-looking panels.
 function frame(box, stripes = 0.6) {
-  const img = noise();
+  const img = noise(WIDTH, HEIGHT);
   if (!box) return img;
   const { x, y, width, height } = box;
   fill(img, x, y, width, height, 20);

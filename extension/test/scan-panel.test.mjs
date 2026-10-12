@@ -22,6 +22,7 @@ installStubResolver();
 
 import { indexTables } from "../src/traderie/lookup.js";
 import { downscale } from "../src/scan/tooltip.js";
+import { fill, noise } from "./support/images.mjs";
 
 const { initScanPanel } = await import("../src/scan/scan-panel.js");
 
@@ -29,35 +30,6 @@ const { initScanPanel } = await import("../src/scan/scan-panel.js");
 
 const WIDTH = 960;
 const HEIGHT = 540;
-
-function noise(width, height, { seed = 12345 } = {}) {
-  const data = new Uint8ClampedArray(width * height * 4);
-  let s = seed >>> 0;
-  const rand = () => {
-    s = (s * 1103515245 + 12345) & 0x7fffffff;
-    return s / 0x7fffffff;
-  };
-  for (let i = 0; i < width * height; i++) {
-    const v = 70 + Math.floor(rand() * 91);
-    data[i * 4] = v;
-    data[i * 4 + 1] = v;
-    data[i * 4 + 2] = v;
-    data[i * 4 + 3] = 255;
-  }
-  return { width, height, data };
-}
-
-function fill(img, x, y, w, h, value) {
-  for (let yy = y; yy < y + h; yy++) {
-    for (let xx = x; xx < x + w; xx++) {
-      const i = (yy * img.width + xx) * 4;
-      img.data[i] = value;
-      img.data[i + 1] = value;
-      img.data[i + 2] = value;
-      img.data[i + 3] = 255;
-    }
-  }
-}
 
 /**
  * One frame of the shared window as the real screenshots render a tooltip: a dark panel with antialiased text lines

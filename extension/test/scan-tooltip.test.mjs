@@ -3,38 +3,10 @@ import test from "node:test";
 
 import { DETECT_WIDTH, boxHash, boxKey, downscale, findTooltip } from "../src/scan/tooltip.js";
 import { keyDistance } from "../src/scan/session.js";
+import { fill, noise } from "./support/images.mjs";
 
 // A reproducible mid-grey noise background, exactly the kind scripts/data/scan_sim.html paints: values in 70..160, so
 // the background is neither dark nor smooth and the detector must not bite on it.
-function noise(width, height, { min = 70, max = 160, seed = 12345 } = {}) {
-  const data = new Uint8ClampedArray(width * height * 4);
-  let s = seed >>> 0;
-  const rand = () => {
-    s = (s * 1103515245 + 12345) & 0x7fffffff;
-    return s / 0x7fffffff;
-  };
-  for (let i = 0; i < width * height; i++) {
-    const v = min + Math.floor(rand() * (max - min + 1));
-    data[i * 4] = v;
-    data[i * 4 + 1] = v;
-    data[i * 4 + 2] = v;
-    data[i * 4 + 3] = 255;
-  }
-  return { width, height, data };
-}
-
-function fill(img, x, y, w, h, value) {
-  for (let yy = y; yy < y + h; yy++) {
-    for (let xx = x; xx < x + w; xx++) {
-      const i = (yy * img.width + xx) * 4;
-      img.data[i] = value;
-      img.data[i + 1] = value;
-      img.data[i + 2] = value;
-      img.data[i + 3] = 255;
-    }
-  }
-}
-
 // A dark panel with bright text lines 60 % of the panel wide, 4 px tall every 14 px: the clean case.
 // `stripeOffset` slides the lines sideways so a test can move them inside a fixed panel.
 function drawPanel(img, { x, y, width, height }, stripeOffset = 0) {
