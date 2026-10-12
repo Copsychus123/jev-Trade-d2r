@@ -136,7 +136,6 @@ class MemoryStore:
         raise StoreError(f"unsupported command {name}")  # the router's tuple and this method must agree
 
     def _hash(self, name, args) -> Any:
-        """The hash commands: HSET/HSETNX writes, HGET/HEXISTS reads, HINCRBY, HDEL and HGETALL."""
         data = self.data
         if name == "HSET":
             table = data.setdefault(args[0], {})
@@ -169,7 +168,6 @@ class MemoryStore:
         raise StoreError(f"unsupported command {name}")
 
     def _keyspace(self, name, args) -> Any:
-        """DEL, EXPIRE and SCAN: whole keys, their lifetimes, and key listing."""
         data = self.data
         if name == "DEL":
             for key in args:

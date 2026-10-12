@@ -197,6 +197,13 @@ class Handler(BaseHTTPRequestHandler):
         content = (ROOT / "static" / name).read_text(encoding="utf-8").replace("__TOKEN__", TOKEN)
         self.send(200, content, mime + "; charset=utf-8")
 
+    def _send_locked(self, getter, mime, missing):
+        with LOCK:
+            value = getter()
+        if value:
+            return self.send(200, value, mime)
+        return self.send(404, json.dumps({"error": missing}))
+
     def do_GET(self):
         if self.forbidden():
             return self.send(403, "只接受本機的示範頁面", "text/plain")
@@ -205,24 +212,20 @@ class Handler(BaseHTTPRequestHandler):
             with LOCK:
                 return self.send(200, json.dumps(response_state()))
         if path == "/api/screenshot":
-            with LOCK:
-                shot = ((AGENT.state["page"] or {}).get("screenshot")) if AGENT else None
-            if shot:
-                return self.send(200, base64.b64decode(shot), "image/jpeg")
-            return self.send(404, json.dumps({"error": "尚無畫面"}))
+            return self._send_locked(
+                lambda: base64.b64decode((AGENT.state["page"] or {}).get("screenshot") or "") if AGENT else None,
+                "image/jpeg",
+                "尚無畫面",
+            )
         if path == "/api/raw":
             view = parse_qs(urlparse(self.path).query).get("view", [""])[0]
-            with LOCK:
-                text = (RUN.get("market", {}).get(view) or {}).get("text") if view in VIEW_NAMES else None
-            if text:
-                return self.send(200, text, "text/plain; charset=utf-8")
-            return self.send(404, json.dumps({"error": "尚未讀取"}))
+            return self._send_locked(
+                lambda: (RUN.get("market", {}).get(view) or {}).get("text") if view in VIEW_NAMES else None,
+                "text/plain; charset=utf-8",
+                "尚未讀取",
+            )
         if path == "/api/report":
-            with LOCK:
-                report = RUN.get("report_md")
-            if report:
-                return self.send(200, report, "text/markdown; charset=utf-8")
-            return self.send(404, json.dumps({"error": "尚未產生報告"}))
+            return self._send_locked(lambda: RUN.get("report_md"), "text/markdown; charset=utf-8", "尚未產生報告")
         self._serve_static(path)
 
     def do_POST(self):
