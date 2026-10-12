@@ -90,7 +90,7 @@ def wait_seconds():
     try:
         return max(float(raw), 0.0)
     except ValueError:
-        print(f"JEV_LOGIN_WAIT_SECONDS={raw} 不是數字，改用預設 {DEFAULT_WAIT_SECONDS} 秒。")
+        print(f"JEV_LOGIN_WAIT_SECONDS={raw} 不是數字，改用預設 {DEFAULT_WAIT_SECONDS} 秒。", flush=True)
         return float(DEFAULT_WAIT_SECONDS)
 
 
@@ -122,7 +122,7 @@ def wait_for_login(browser):
     deadline = _clock() + wait_seconds()
     while True:
         if _logged_in(browser):
-            print("已偵測到登入，正在關閉視窗…")
+            print("已偵測到登入，正在關閉視窗…", flush=True)
             return True
         if entered.is_set():
             return True
@@ -135,17 +135,21 @@ def main():
     os.environ["JEV_CHROME"] = "window"
     started = ensure_chrome()
     if started != "started":
-        print("專用 Chrome 已在背景執行，請先關閉它再登入：結束使用 .tmp-jev-chrome 的 chrome.exe 後重新執行本指令。")
+        print(
+            "專用 Chrome 已在背景執行，請先關閉它再登入：結束使用 .tmp-jev-chrome 的 chrome.exe 後重新執行本指令。",
+            flush=True,
+        )
         raise SystemExit(1)
     with _tab(LOGIN_URL) as browser:
         browser.call("Page.addScriptToEvaluateOnNewDocument", source=BANNER_JS)
         browser.evaluate(BANNER_JS)
-        print("請在剛開啟的視窗登入 Traderie（視窗上方有操作說明）。登入完成後回到這裡按 Enter")
+        print("請在剛開啟的視窗登入 Traderie（視窗上方有操作說明）。登入完成後回到這裡按 Enter", flush=True)
         if not wait_for_login(browser):
             print(
                 f"沒偵測到登入（已等待約 {int(wait_seconds())} 秒），這個視窗會自動關閉。"
                 "請重新執行 uv run python scripts/login.py，並在視窗開啟後完成 Traderie 登入；"
-                "登入成功後視窗會自己關閉，不需要按鍵。"
+                "登入成功後視窗會自己關閉，不需要按鍵。",
+                flush=True,
             )
             raise SystemExit(1)
 
