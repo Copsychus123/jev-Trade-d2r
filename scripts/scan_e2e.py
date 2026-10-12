@@ -1,4 +1,9 @@
-"""Real-Chrome end-to-end check of the gear scanner: uv run --group e2e python scripts/scan_e2e.py [--headed].
+"""Real-Chrome end-to-end check of the gear scanner: uv run --group e2e python scripts/scan_e2e.py [--headed]
+[--page PATH].
+
+`--page` runs the same drive against another sim page (default scripts/data/scan_sim.html); a page only has to keep
+the "D2R-SIM" title so Chrome's auto-select still finds it. It exists for measurements such as the same tooltips at
+their native size on a bigger stage.
 
 Windows-only tool (Windows Chrome paths). Builds the extension into extension/dist-e2e, loads it into the dedicated
 Chrome, opens scripts/data/scan_sim.html as a tab and drives the side panel:
@@ -112,9 +117,9 @@ class Panel(CdpPanel):
     READY_JS = "document.readyState === 'complete' && !!document.getElementById('choose-scan')"
 
 
-def open_sim() -> str:
+def open_sim(page: Path = SIM) -> str:
     """Opens the sim page as its own tab and returns the tab's debugger websocket URL."""
-    url = SIM.resolve().as_uri()
+    url = page.resolve().as_uri()
     return new_tab(DEBUG_PORT, urllib.parse.quote(url, safe=":/"))["webSocketDebuggerUrl"]
 
 
@@ -380,6 +385,7 @@ def verdict(report: dict) -> list[str]:
 def main() -> int:
     parser = argparse.ArgumentParser(description="裝備掃描真實 Chrome 端對端測試")
     parser.add_argument("--headed", action="store_true", help="顯示 Chrome 視窗（預設無視窗）")
+    parser.add_argument("--page", type=Path, help="改跑另一個模擬頁（預設 scripts/data/scan_sim.html）")
     args = parser.parse_args()
     truth = json.loads(TRUTH.read_text(encoding="utf-8"))
     by_file = {entry["file"]: entry for entry in truth}
@@ -392,7 +398,7 @@ def main() -> int:
         chrome = start_chrome(args.headed, EXTRA_ARGS)
         ext_id = load_extension()
         say(f"擴充功能已載入（{ext_id}）")
-        report = asyncio.run(drive(open_panel(ext_id), open_sim(), expects, item_name, base_name))
+        report = asyncio.run(drive(open_panel(ext_id), open_sim(args.page or SIM), expects, item_name, base_name))
     except (Environment, subprocess.CalledProcessError) as error:
         return environment_failure(error)
     finally:
