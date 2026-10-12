@@ -26,7 +26,6 @@ import json
 import re
 import sys
 import time
-from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -34,10 +33,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _cdp import Panel, open_tab  # noqa: E402
+from _cdp import Panel, open_dedicated_tab  # noqa: E402
 from audit_item_tables import BASE_CATEGORIES, GENERIC_WORDS, audit, duplicate_keys, normalize  # noqa: E402
 
-from jev_ultrafast.chrome import CHROME_PORT, chrome_mode, close_chrome, ensure_chrome  # noqa: E402
+from jev_ultrafast.chrome import close_chrome  # noqa: E402
 from jev_ultrafast.fs import write_text  # noqa: E402
 
 OUT = ROOT / "extension" / "src" / "traderie" / "data" / "items.json"
@@ -286,17 +285,6 @@ class Tab(Panel):
         if stable and allow_empty:
             return value
         raise TimeoutError(f"頁面 {seconds} 秒內沒有穩定：{expression[:60]!r}，最後讀到 {str(value)[:60]!r}")
-
-
-@asynccontextmanager
-async def browse():
-    """A new tab in the dedicated Chrome (started headless when it is not running), closed again afterwards."""
-    if chrome_mode() == "existing":
-        raise SystemExit("這個工具要用專用 Chrome：請不要設 JEV_CHROME=existing")
-    ensure_chrome()
-    async with open_tab(CHROME_PORT, Tab) as tab:
-        await tab.hide_headless_label()
-        yield tab
 
 
 async def read_traderie(tab: Tab) -> list[dict]:
@@ -586,7 +574,7 @@ async def main_async(
 ) -> bool:
     if add_translations:
         existing = read_json(out)
-        async with browse() as tab:
+        async with open_dedicated_tab(Tab) as tab:
             pairs = await read_translations(tab)
         added, _ = combine(existing["products"], pairs)
         fresh = {k: v for k, v in added.items() if k not in existing["zh"]}
@@ -597,7 +585,7 @@ async def main_async(
         pairs, trusted = load_pairs()
         products = read_json(out)["products"]
     else:
-        async with browse() as tab:
+        async with open_dedicated_tab(Tab) as tab:
             if reuse_products:
                 products = read_json(out)["products"]
             else:

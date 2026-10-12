@@ -1,6 +1,6 @@
 """Minimal Chrome DevTools Protocol client shared by the Chrome scripts (extension_e2e, extension_batch, ocr_e2e,
-scan_e2e, build_item_tables, probe_stats). One websocket, one command at a time. Needs `websockets`
-(uv run --group e2e ...)."""
+scan_e2e, build_item_tables, probe_stats). One websocket, one command at a time. Needs `websockets` and this project's
+own package importable (uv run --group e2e ...)."""
 
 import asyncio
 import json
@@ -9,6 +9,8 @@ from contextlib import asynccontextmanager
 
 import httpx
 import websockets
+
+from jev_ultrafast.chrome import CHROME_PORT, chrome_mode, ensure_chrome
 
 
 class Environment(Exception):
@@ -119,3 +121,17 @@ async def open_tab(port: int, panel_class=Panel, **options):
             yield panel_class(ws, **options)
     finally:
         httpx.get(f"http://127.0.0.1:{port}/json/close/{target['id']}", timeout=10)
+
+
+@asynccontextmanager
+async def open_dedicated_tab(panel_class=Panel, **options):
+    """A new tab in the dedicated Chrome, with the headless label hidden; the tab is closed on exit.
+
+    Refuses a Chrome the user started by hand (JEV_CHROME=existing), and starts the headless one when it is not
+    already running. The port is the dedicated Chrome's own, so a caller cannot point it at a different browser."""
+    if chrome_mode() == "existing":
+        raise SystemExit("這個工具要用專用 Chrome：請不要設 JEV_CHROME=existing")
+    ensure_chrome()
+    async with open_tab(CHROME_PORT, panel_class, **options) as tab:
+        await tab.hide_headless_label()
+        yield tab

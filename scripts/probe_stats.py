@@ -31,9 +31,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _cdp import Panel, open_tab  # noqa: E402
+from _cdp import Panel, open_dedicated_tab  # noqa: E402
 
-from jev_ultrafast.chrome import CHROME_PORT, chrome_mode, close_chrome, ensure_chrome  # noqa: E402
+from jev_ultrafast.chrome import close_chrome  # noqa: E402
 from jev_ultrafast.traderie.parsing import SIGN_IN_PROMPT, TRADE_MARKERS  # noqa: E402
 from jev_ultrafast.traderie.site import TRADING_MARKERS as LISTING_MARKERS  # noqa: E402
 from login import LOGGED_OUT_JS  # noqa: E402
@@ -322,12 +322,8 @@ def _decisions(report: dict, rarity: dict | None, quality_values: dict[str, str]
 
 async def probe(redact: str | None) -> int:
     OUT.mkdir(parents=True, exist_ok=True)
-    if chrome_mode() == "existing":
-        raise SystemExit("這個工具要用專用 Chrome：請不要設 JEV_CHROME=existing")
-    ensure_chrome()
     try:
-        async with open_tab(CHROME_PORT, Tab) as tab:
-            await tab.hide_headless_label()
+        async with open_dedicated_tab(Tab) as tab:
             await tab.goto(HOME)
             url, text = await tab.settled_text()
             (OUT / "home.txt").write_text(text, encoding="utf-8")
