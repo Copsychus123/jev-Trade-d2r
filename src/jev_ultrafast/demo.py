@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, urlparse
 from jev_ultrafast.agent import Agent
 from jev_ultrafast.chrome import close_chrome, ensure_chrome
 from jev_ultrafast.config import DEMO_HOST, MAX_STEPS, TRADERIE_LATEST_DIR, Settings, get_settings, load_dotenv
+from jev_ultrafast.model import action_space
 from jev_ultrafast.traderie import TRADERIE_D2R_URL, advance, build_goal, clean_item_name, new_market, save_report
 from jev_ultrafast.traderie.site import LOAD_MORE_LIMIT, VIEW_NAMES, phase_finish_rule, validate_load_more
 from jev_ultrafast.usage import usage_summary
@@ -20,7 +21,7 @@ from jev_ultrafast.usage import usage_summary
 ROOT = Path(__file__).parent
 PORT = Settings.demo_port  # replaced in main() once .env is loaded
 ORIGIN = f"http://127.0.0.1:{PORT}"
-PAGE_FIELDS = ("url", "title", "text", "actions", "scroll", "omitted_actions", "fingerprint", "w", "h")
+PAGE_FIELDS = ("url", "title", "text", "actions", "node_indices", "scroll", "omitted_actions", "fingerprint", "w", "h")
 TOKEN = secrets.token_urlsafe(32)
 LOCK = threading.Lock()
 AGENT = None
@@ -36,6 +37,17 @@ def _pick(source, keys):
 def _omit(source, keys):
     """A copy of the mapping without the named keys."""
     return {key: value for key, value in source.items() if key not in keys}
+
+
+def _node_indices(actions):
+    """Each observed node and the element index `model.action_space` gave it, for the overlay's labels.
+
+    `action_space` numbers its elements with the same indices the choice list shows (it skips nodes after
+    `MAX_SAME_NAME_ELEMENTS` repeats), so the overlay can label each box with the number Jev actually chose.
+    A select's options carry the index before the `:`.
+    """
+    _elements, targets, _controls = action_space(actions)
+    return {action["node"]: target.split(":")[0] for group in targets.values() for target, action in group.items()}
 
 
 def _trim_decisions(decisions):
@@ -76,7 +88,7 @@ def response_state():
     page = state.get("page")
     if page:
         shot = page.get("screenshot")
-        page = _pick(page, PAGE_FIELDS)
+        page = _pick({**page, "node_indices": _node_indices(page.get("actions") or [])}, PAGE_FIELDS)
         page["screenshot_id"] = format(hash(shot) & 0xFFFFFFFF, "x") if shot else None
         state["page"] = page
     run = _omit(RUN, ("report_md",))

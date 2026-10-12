@@ -670,6 +670,10 @@ def demo_report() -> dict:
         "merged": ["高符文價值", "Vex", "—", "Pul"],
         "csv": 2,
         "details": 5,
+        # The choice list's element indices and the overlay boxes' numbers: `action_space` skipped the fourth raw
+        # action (the third same-name button), so the third index is 3 and no box carries a 4.
+        "choices": ["1", "2", "3"],
+        "targets": ["1", "2", "3"],
     }
 
 
@@ -718,6 +722,12 @@ def _demo_no_verification_line(report):
     report["status"] = "準備開始探索"
 
 
+def _demo_overlay_position_numbered(report):
+    # The overlay numbered every rect-bearing node, not just the choice list's elements: the skipped fourth action got
+    # a box of its own, so there are four boxes 1, 2, 3, 4 against the choice list's three (1, 2, 3).
+    report["targets"] = ["1", "2", "3", "4"]
+
+
 @pytest.mark.parametrize(
     ("mutation", "needle"),
     [
@@ -731,6 +741,7 @@ def _demo_no_verification_line(report):
         pytest.param(_demo_one_csv, "匯出 CSV", id="one-csv"),
         pytest.param(_demo_one_details, "網頁原文", id="one-details"),
         pytest.param(_demo_no_verification_line, "通過檢查", id="no-verification-line"),
+        pytest.param(_demo_overlay_position_numbered, "覆蓋框的編號", id="overlay-position-numbered"),
     ],
 )
 def test_demo_verdict_reports_exactly_the_single_broken_assertion(mutation, needle):

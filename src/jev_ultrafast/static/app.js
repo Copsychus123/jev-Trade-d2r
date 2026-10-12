@@ -564,16 +564,22 @@ function renderChoices(elements, d) {
   return selectedIndex;
 }
 
-// Overlay boxes for the clickable elements; the decision's selected target is marked.
+// Overlay boxes for the clickable elements; each is labelled with the element index the choice list shows, and the
+// decision's selected target is marked. A node `action_space` left out (a same-name repeat it skipped) has no index
+// and gets no box, so the overlay never shows a number the choice list does not have.
 function renderTargets(pageActions, page, selectedIndex) {
-  const targets = new Map();
-  for (const a of pageActions) if (a.rect && !targets.has(a.node)) targets.set(a.node, a);
+  const indices = page.node_indices || {};
+  const seen = new Set();
   const pw = page.w || 1;
   const ph = page.h || 1;
-  $("targets").innerHTML = [...targets.values()].map((a,i) => {
-    const index=String(i+1);
-    return `<div class="target ${index === selectedIndex ? 'selected' : ''}" data-action="${index}" style="left:${100*a.rect.x/pw}%;top:${100*a.rect.y/ph}%;width:${100*a.rect.w/pw}%;height:${100*a.rect.h/ph}%"><span>${index}</span></div>`;
-  }).join('');
+  const boxes = [];
+  for (const a of pageActions) {
+    const index = indices[a.node];
+    if (!a.rect || index === undefined || seen.has(a.node)) continue;
+    seen.add(a.node);
+    boxes.push(`<div class="target ${index === selectedIndex ? 'selected' : ''}" data-action="${escape(index)}" style="left:${100*a.rect.x/pw}%;top:${100*a.rect.y/ph}%;width:${100*a.rect.w/pw}%;height:${100*a.rect.h/ph}%"><span>${escape(index)}</span></div>`);
+  }
+  $("targets").innerHTML = boxes.join('');
   $("targets").hidden = !$("overlays").checked;
 }
 

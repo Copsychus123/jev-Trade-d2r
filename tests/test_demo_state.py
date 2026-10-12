@@ -34,10 +34,28 @@ class _StubAgent:
             for i in range(40)
         ]
         self.state = {"plan": ["full goal text " * 40, "full goal text " * 40]}
+        # One persistent page object, handed back on every `snapshot()`: `response_state` must copy it, never write
+        # the overlay's `node_indices` onto the agent's own page (it is page-only and never part of Jev's state).
+        self.page = {
+            "url": "u",
+            "screenshot": "A" * 60_000,
+            # Three same-name buttons: `model.action_space` keeps the first two and skips the third, so the element
+            # indices (1, 2, then 3 for the select) are not the raw positions in `actions`. `node_indices` carries
+            # them to the page's overlay.
+            "actions": [
+                {"kind": "click", "id": "a", "node": 11, "label": "Min", "role": "button",
+                 "rect": {"x": 1, "y": 2, "w": 3, "h": 4}},
+                {"kind": "click", "id": "b", "node": 12, "label": "Min", "role": "button",
+                 "rect": {"x": 1, "y": 2, "w": 3, "h": 4}},
+                {"kind": "click", "id": "c", "node": 13, "label": "Min", "role": "button",
+                 "rect": {"x": 1, "y": 2, "w": 3, "h": 4}},
+                {"kind": "select", "id": "s", "node": 14, "label": "Rune → Ist", "role": "combobox",
+                 "value": "Ist", "current_value": "Ist", "rect": {"x": 1, "y": 2, "w": 3, "h": 4}},
+            ],
+        }
 
     def snapshot(self):
-        page = {"url": "u", "screenshot": "A" * 60_000}
-        return {"page": page, "status": "ready", "history": [], "decision": None, "decisions": self.decisions}
+        return {"page": self.page, "status": "ready", "history": [], "decision": None, "decisions": self.decisions}
 
 
 def test_response_state_stays_small_and_keeps_what_the_panels_need(monkeypatch):
@@ -65,6 +83,22 @@ def test_response_state_stays_small_and_keeps_what_the_panels_need(monkeypatch):
     assert "text" not in state["market"]["trading"]
     assert "text" in market["trading"]  # the stored run is not changed
     assert "request" in stub.decisions[0]  # the Agent state is not changed
+
+
+def test_response_state_gives_the_overlay_each_node_s_element_index(monkeypatch):
+    """The overlay's numbers must be the choice list's element indices, not raw positions in `actions`."""
+    stub = _StubAgent()
+    monkeypatch.setattr(demo, "AGENT", stub)
+    monkeypatch.setattr(demo, "RUN", {"item_name": "Shako", "market": {}})
+
+    state = demo.response_state()
+
+    # Node 13 is the third "Min" button: `action_space` skipped it, so it has no element index and no overlay box.
+    # The select's node maps to its element index (3), without the `:option` suffix.
+    assert state["page"]["node_indices"] == {11: "1", 12: "2", 14: "3"}
+    # Page-only: the mapping is for the overlay, so it is never written back onto the agent's own page (and so never
+    # reaches Jev, whose state holds only what it decides on).
+    assert "node_indices" not in stub.page
 
 
 def test_response_state_reports_usage_and_decision_labels_for_every_decision(monkeypatch):

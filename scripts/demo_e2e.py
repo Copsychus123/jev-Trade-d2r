@@ -31,6 +31,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from jev_ultrafast.model import action_space  # noqa: E402
+
 TEXT = "Trading For\n1 X Vex Rune\n3 days ago\n"
 OUT = ROOT / "artifacts" / "demo-e2e"
 
@@ -66,9 +68,23 @@ MARKET = {
     },
 }
 
+# Three same-name buttons and a select: `action_space` skips the third button, so the element indices are 1, 2 and 3
+# while the raw positions are 1, 2, 3 and 4. The overlay must show the element indices, not the positions.
+ACTIONS = [
+    {"kind": "click", "id": "a", "node": 11, "label": "Min", "role": "button",
+     "rect": {"x": 10, "y": 20, "w": 30, "h": 40}},
+    {"kind": "click", "id": "b", "node": 12, "label": "Min", "role": "button",
+     "rect": {"x": 50, "y": 20, "w": 30, "h": 40}},
+    {"kind": "click", "id": "c", "node": 13, "label": "Min", "role": "button",
+     "rect": {"x": 90, "y": 20, "w": 30, "h": 40}},
+    {"kind": "select", "id": "s", "node": 14, "label": "Rune → Ist", "role": "combobox",
+     "value": "Ist", "current_value": "Ist", "rect": {"x": 10, "y": 100, "w": 200, "h": 30}},
+]
+
 STATE = {
     "browser": None, "goal": "Find Harlequin Crest", "page": {"url": "https://traderie.com/x", "title": "t",
-    "text": "", "scroll": {"y": 0}, "actions": []},
+    "text": "", "scroll": {"y": 0}, "w": 1000, "h": 800, "actions": ACTIONS},
+    "elements": action_space(ACTIONS)[0],
     "decision": None, "history": [], "status": "done", "plan": ["Find Harlequin Crest"], "plan_index": 0,
     "phase": "recent_trades", "phase_start": 0, "rule_events": [], "decisions": [], "usage": {},
     "awaiting_handoff": False, "elapsed_ms": 42000, "started_at": 0, "attempts": 0, "stale_events": {},
@@ -84,6 +100,8 @@ PROBE = """
     rows: [...t.querySelectorAll('tr')].map((r) => [...r.children].map((c) => c.textContent)),
   })),
   merged: [...document.querySelectorAll('.col-merge')].map((el) => el.textContent),
+  choices: [...document.querySelectorAll('#choices .choice')].map((c) => c.dataset.action),
+  targets: [...document.querySelectorAll('#targets .target')].map((t) => t.dataset.action),
   csv: document.querySelectorAll('button[id$="-csv"], .csv').length,
   details: document.querySelectorAll('details').length,
   status: document.getElementById('status')?.textContent?.trim() ?? null,
@@ -207,6 +225,14 @@ def verdict(report: dict) -> list[str]:
     merged = report.get("merged") or []
     if not any("Vex" in entry for entry in merged):
         failures.append(f"寬版要把高符文價值以小字併在要價下，實際 {merged!r}")
+    # The overlay boxes must carry the same element indices as the choice list, and the node `action_space` skipped
+    # (the third same-name button) must have no box: the numbers agree, and there are three of them, not four.
+    choices = report.get("choices") or []
+    targets = report.get("targets") or []
+    if sorted(choices) != ["1", "2", "3"]:
+        failures.append(f"選擇清單應列出元素索引 1、2、3，實際 {choices!r}")
+    if sorted(targets) != sorted(choices) or len(targets) != 3:
+        failures.append(f"覆蓋框的編號應與選擇清單一致（1、2、3，略過第三個同名按鈕），實際 {targets!r}")
     if (report.get("csv") or 0) < 2:
         failures.append(f"兩張表各自要有匯出 CSV 的按鈕，實際 {report.get('csv')!r} 個")
     if (report.get("details") or 0) < 2:
