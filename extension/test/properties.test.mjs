@@ -71,7 +71,7 @@ test("an old or missing copy is read once from Traderie and stored with its time
   assert.equal(properties[0].id, 520);
   assert.equal(cacheHit, false);
   assert.equal(tab.calls.length, 1);
-  assert.match(tab.calls[0].expression, /^\(async \(path\) => path\)\("\/api\/diablo2resurrected\/properties\?global=true"\)$/u);
+  assert.equal(await runInNewContext(tab.calls[0].expression), "/api/diablo2resurrected/properties?global=true");
   assert.equal(tab.calls[0].options.awaitPromise, true);
   assert.equal(store.data[PROPERTIES_KEY].fetchedAt, NOW);
   assert.equal(store.writes, 1);

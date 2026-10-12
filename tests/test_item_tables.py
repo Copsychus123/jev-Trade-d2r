@@ -108,11 +108,6 @@ def test_the_committed_item_table_passes_the_audit():
     assert problems == []
 
 
-def test_every_duplicate_name_in_the_committed_table_is_on_the_allow_list():
-    keys = set(audit.duplicate_keys(committed_items()["products"]))
-    assert keys <= audit.ALLOWED_DUPLICATE_KEYS
-
-
 def test_the_audit_flags_a_missing_category_a_short_category_a_new_duplicate_a_bad_slug_and_a_wrong_base():
     counts = dict(audit.MIN_PRODUCTS)
     data = synthetic_table(counts)

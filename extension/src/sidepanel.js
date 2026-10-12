@@ -301,7 +301,7 @@ function backToForm() {
 let tables = null;
 const tableStats = { jumps: 0, misses: 0 }; // table jumps and misses since the panel opened (shown in the miss note)
 
-export async function loadTables() {
+async function loadTables() {
   if (!tables) {
     const response = await fetch(chrome.runtime.getURL("traderie/data/items.json"));
     tables = indexTables(await response.json());
@@ -469,7 +469,7 @@ async function start() {
 /** The second search: yellow, blue and white items by their affixes (stats-query.js). */
 async function runStatsQuery() {
   await runSession({ tab: null, outcome: null, timeline: newTimeline() }, async (session) => {
-    const hooks = { begin: beginQuery, setStatus, render, shouldStop: () => stopRequested };
+    const hooks = { begin: beginQuery, setStatus, render, shouldStop: () => stopRequested, loadTables };
     itemName = await runStatsFlow(statsForm.get(), session, hooks);
     return judgeStats(session, { market, statsForm, stopped: stopRequested, guardProblem });
   });

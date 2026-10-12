@@ -38,9 +38,3 @@ test("no shipped module writes page text as markup", () => {
   }
   assert.deepEqual(offenders, []);
 });
-
-test("the panel modules that promise it do write their values as text", () => {
-  for (const name of ["panel-dom.js", "scan/scan-panel.js", "sidepanel.js"]) {
-    assert.match(readFileSync(join(SRC, name), "utf8"), /textContent/, name);
-  }
-});

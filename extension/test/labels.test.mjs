@@ -174,17 +174,6 @@ test("progressSteps with recent_trades PASSED marks recent_trades done", () => {
   assert.equal(result[3].state, "active"); // both views PASSED, running is true -> verify is active
 });
 
-test("progressSteps with both views PASSED and running activates verify", () => {
-  const market = {
-    trading: { status: "PASSED", reason: null },
-    recent_trades: { status: "PASSED", reason: null },
-    verification: null,
-    lookup: null,
-  };
-  const result = progressSteps({ market, phase: "recent_trades", running: true });
-  assert.equal(result[3].state, "active");
-});
-
 test("progressSteps with verification passed marks verify done", () => {
   const market = {
     trading: { status: "PASSED", reason: null },

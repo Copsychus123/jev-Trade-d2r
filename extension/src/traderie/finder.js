@@ -22,8 +22,6 @@ import { timed } from "../timeline.js";
 /** What Tab.open measured (navigate, settle, visibility), for the timeline entry of an open. */
 const openDetails = (tab) => tab?.openTiming ?? {};
 
-export const LAYER_LABELS = { table: "查表直接開啟", search: "站內搜尋", base: "底材清單" };
-
 const NAME_NOTES = {
   game_only: "遊戲裡有這個物品，但 Traderie 目錄沒有收錄，或名稱寫法不同",
   unknown: "兩份名稱表都沒有這個名稱，可能是打錯字，或是表還沒收錄的新物品",

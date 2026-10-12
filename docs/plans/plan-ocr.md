@@ -80,5 +80,5 @@
 1. 繁中必做：已做，且下載量只有約 1.7 MB（使用整數版 best，不是 fast）。
 2. 種類行比對：已做。
 3. 手機翻拍列入驗收：已列入，命中率較低（約 4 成）。
-4. 標準答案：`scripts/data/ocr_truth.json`、`ocr_truth_new.json`。
+4. 標準答案：`scripts/data/ocr_truth.json`、`ocr_truth_holdout.json`。
 5. 與本計畫不同之處：不做「自動裁切上方 30%」（提示框位置不固定）；最後語言改為可選 8 種、每種首次使用才下載。

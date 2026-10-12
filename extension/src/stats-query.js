@@ -5,7 +5,6 @@ import { loadPageScripts, Tab } from "./cdp.js";
 import { resolveBase } from "./traderie/lookup.js";
 import { QUALITIES } from "./traderie/stats.js";
 import { findAndReadStats } from "./traderie/stats_flow.js";
-import { loadTables } from "./sidepanel.js";
 
 /**
  * How a stats query ended: { after, banner? }. A condition Traderie has no property for ends it before anything was
@@ -32,7 +31,7 @@ export function judgeStats(session, { market, statsForm, stopped, guardProblem }
  * resolves with the name the downloads use. Errors are the panel's to describe. `begin(text)` clears the last query,
  * shows the running screen and returns the fresh market; `setStatus(text)`, `render()` and `shouldStop()` are the panel's.
  */
-export async function runStatsFlow(input, session, { begin, setStatus, render, shouldStop }) {
+export async function runStatsFlow(input, session, { begin, setStatus, render, shouldStop, loadTables }) {
   const rawBase = (input.base ?? "").trim();
   const tables = await loadTables();
   const englishBase = resolveBase(rawBase, tables);

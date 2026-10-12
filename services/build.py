@@ -33,7 +33,7 @@ def build(target: Path = BUILD) -> None:
     for name in ("config.py", "model.py", "questions.py"):
         shutil.copy2(PKG / name, package / name)
     shutil.copy2(PKG / "traderie" / "site.py", package / "traderie" / "site.py")
-    # The real package __init__ imports agent/browser, which would pull browser_harness.
+    # The real __init__ re-exports Agent/Browser; the backend needs neither, so this stub keeps the staged tree light.
     (package / "__init__.py").write_text('"""Slim copy of jev_ultrafast for the backend."""\n', encoding="utf-8")
     (package / "traderie" / "__init__.py").write_text('"""Traderie site rules."""\n', encoding="utf-8")
 

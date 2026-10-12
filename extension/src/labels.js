@@ -1,7 +1,7 @@
 // Pure-logic module: turns internal codes into plain Traditional Chinese labels.
 // No DOM, no chrome.* APIs. Suitable for testing with node --test.
 
-import { LAYER_LABELS } from "./traderie/finder.js";
+export const LAYER_LABELS = { table: "查表直接開啟", search: "站內搜尋", base: "底材清單" };
 
 export const STATUS_LABELS = {
   NOT_RUN: "未讀取",

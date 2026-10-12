@@ -1,7 +1,7 @@
 // DOM drawing helpers for the side panel. Page text is untrusted: every value is written with textContent, never
 // innerHTML. The data (cells, rows, steps) is worked out elsewhere; nothing here decides what is true.
 import { $, element } from "./dom.js";
-import { progressSteps, verificationSummary } from "./labels.js";
+import { LAYER_LABELS, progressSteps, verificationSummary } from "./labels.js";
 import { listingRow, recentRow, statsRow } from "./rows.js";
 import {
   RECENT_COLUMNS,
@@ -11,7 +11,6 @@ import {
   statsCells,
   tradingCells,
 } from "./traderie/controller.js";
-import { LAYER_LABELS } from "./traderie/finder.js";
 
 export const clock = (iso) =>
   iso ? new Date(iso).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }) : "";

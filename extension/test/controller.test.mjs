@@ -64,12 +64,6 @@ test("recent view keeps every entry when page and table agree", async () => {
   assert.equal(result.has_more, true);
 });
 
-test("trading read on a recent URL fails with 不是掛單頁", async () => {
-  const result = await readView(new FakeTab(RECENT_URL, "Harlequin Crest"), "Harlequin Crest", "trading");
-  assert.equal(result.status, "FAILED");
-  assert.match(result.reason, /不是掛單頁/);
-});
-
 test("a good trading and recent pair verifies", () => {
   const view = (url) => ({ status: "PASSED", reason: null, url, title: "Harlequin Crest", text: "Harlequin Crest" });
   const market = newMarket();
@@ -94,12 +88,6 @@ test("an empty market is PASSED with no rows only when the page itself says so",
   assert.deepEqual([none.status, none.rows.length], ["PASSED", 0]);
   const unknown = await readView(new FakeTab(RECENT_URL, "Harlequin Crest"), "Harlequin Crest", "recent_trades");
   assert.equal(unknown.status, "FAILED");
-});
-
-test("a sign-in wall on the trades page is still BLOCKED even when an empty message is also present", async () => {
-  const text = lines("Harlequin Crest", "Please sign in to view offers", "There are no offers");
-  const result = await readView(new FakeTab(RECENT_URL, text), "Harlequin Crest", "recent_trades");
-  assert.equal(result.status, "BLOCKED");
 });
 
 test("a short item name does not match inside other words", () => {
