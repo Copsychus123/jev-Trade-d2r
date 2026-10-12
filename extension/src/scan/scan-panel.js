@@ -93,6 +93,17 @@ function statsLine(stats, fps) {
   return `每秒畫面 ${fps}、偵測 ${detected}、略過 ${skipped}、丟棄 ${dropped}、平均辨識 ${average} 秒`;
 }
 
+/** The mean grey of a downscaled frame, sampled every 17th pixel: the black-run check only needs the average. */
+function meanGrey(img) {
+  let sum = 0;
+  let count = 0;
+  for (let i = 0; i < img.data.length; i += 4 * 17) {
+    sum += (img.data[i] + img.data[i + 1] + img.data[i + 2]) / 3;
+    count += 1;
+  }
+  return count ? sum / count : 0;
+}
+
 export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
   const session = createScanSession();
   let capture = null;
@@ -124,16 +135,6 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
     const ctx = detect.getContext("2d", { willReadFrequently: true });
     ctx.drawImage(bitmap, 0, 0, width, height);
     return ctx.getImageData(0, 0, width, height);
-  }
-
-  function meanGrey(img) {
-    let sum = 0;
-    let count = 0;
-    for (let i = 0; i < img.data.length; i += 4 * 17) {
-      sum += (img.data[i] + img.data[i + 1] + img.data[i + 2]) / 3;
-      count += 1;
-    }
-    return count ? sum / count : 0;
   }
 
   /** A stable box came back from the session: cut it out of the full-resolution bitmap and queue it for OCR. */
