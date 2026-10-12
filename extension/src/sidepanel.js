@@ -722,6 +722,44 @@ function registerListeners() {
   wireSubPanels();
 }
 
+/**
+ * Start the screenshot reader (its table download included). A picked name goes into the name field, or into the affix
+ * form's base when the picture was taken for that form; reading text ticks the affix form's conditions and fills in the
+ * numbers it read, marked as coming from the capture. Either way the player confirms it: nothing here starts a query.
+ */
+async function startReader() {
+  return initOcrPanel({
+    tables: await loadTables(),
+    isBusy: () => running,
+    onPick: (name, kind) => {
+      if (running) return false; // never change the name under a query that is already running
+      // A unique or set item has its own name search, so a picture of one leaves the affix form for it.
+      if (queryMode === "stats" && kind === "item") setMode("name");
+      if (modeFromPicture && kind === "base") setMode("stats");
+      backToForm();
+      if (queryMode === "stats") statsForm.setBaseFromScreenshot(name);
+      else $("item").value = name; // the player reads it, then decides to press 開始查詢
+      return true;
+    },
+    onText: (text) => {
+      if (running) return;
+      runSource = { kind: "picture" };
+      // The reader ticks what it recognised and fills in the numbers it read, marked for confirmation; the player
+      // still presses start.
+      if (queryMode === "stats") statsForm.fillFromText(text, { carryValues: true });
+      else statsForm.rememberScreenshot(text);
+    },
+    onImage: () => {
+      statsForm.forgetScreenshot();
+      if (!running && !queryMode) {
+        modeFromPicture = true;
+        setMode("name");
+      }
+      if (!running) backToForm();
+    },
+  });
+}
+
 async function init() {
   loadMore = 0; // the browser may restore an old form value; always start at the default
   // Every button works from here on, whatever fails below.
@@ -745,36 +783,7 @@ async function init() {
     .catch(() => {});
   // The screenshot reader loads last: its table download must not hold the rest of the panel back.
   try {
-    ocr = initOcrPanel({
-      tables: await loadTables(),
-      isBusy: () => running,
-      onPick: (name, kind) => {
-        if (running) return false; // never change the name under a query that is already running
-        // A unique or set item has its own name search, so a picture of one leaves the affix form for it.
-        if (queryMode === "stats" && kind === "item") setMode("name");
-        if (modeFromPicture && kind === "base") setMode("stats");
-        backToForm();
-        if (queryMode === "stats") statsForm.setBaseFromScreenshot(name);
-        else $("item").value = name; // the player reads it, then decides to press 開始查詢
-        return true;
-      },
-      onText: (text) => {
-        if (running) return;
-        runSource = { kind: "picture" };
-        // The reader ticks what it recognised and fills in the numbers it read, marked for confirmation; the player
-        // still presses start.
-        if (queryMode === "stats") statsForm.fillFromText(text, { carryValues: true });
-        else statsForm.rememberScreenshot(text);
-      },
-      onImage: () => {
-        statsForm.forgetScreenshot();
-        if (!running && !queryMode) {
-          modeFromPicture = true;
-          setMode("name");
-        }
-        if (!running) backToForm();
-      },
-    });
+    ocr = await startReader();
   } catch (error) {
     showInitProblem("截圖辨識無法啟動，其他功能不受影響", error);
   }
