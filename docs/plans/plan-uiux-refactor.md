@@ -36,15 +36,15 @@
 
 ## 四、分階段計畫
 
-### Phase 0：契約與量測（S，先做，1 天內）— **部分完成**
+### Phase 0：契約與量測（S，先做，1 天內）— **已完成（0.1 依 D1 收束；0.2 不做；0.3 完成）**
 
-- **任務 0.1 — 部分完成**：`affixHandoff(shown, source, ended)` 已從 DOM 碼抽成 `panel-state.js` 的純函式（7 案例）；`deriveView`／`visibleSections` 本來就是純的。**面板那組 flat `let`（`market`/`after`/`banner`/`runSource`/`quota`/分頁…）的收斂要等 D1**——沒有 D1 就不該先動狀態形狀。
-- **任務 0.2（單一 problem 形狀）— 延後**：它會動到被多個測試斷言的 reason 文字（`judgeStats`／`judge`／`explainFailedChecks`），屬於「有改動風險的中等重構」，應與 D1／D2 一起決定。
+- **任務 0.1 — 部分完成**：`affixHandoff(shown, source, ended)` 已從 DOM 碼抽成 `panel-state.js` 的純函式（7 案例）；`deriveView`／`visibleSections` 本來就是純的。**面板那組 flat `let`（`market`/`after`/`banner`/`runSource`/`quota`/分頁…）的收斂要等 D1**——沒有 D1 就不該先動狀態形狀。**結果（D1 定案後）：不再收斂**——狀態形狀維持現狀；它的行為現在由 `extension/test/sidepanel.test.mjs` 的 23 個離線案例釘住，收斂形狀沒有換到任何可測性。
+- **任務 0.2（單一 problem 形狀）— 延後**：它會動到被多個測試斷言的 reason 文字（`judgeStats`／`judge`／`explainFailedChecks`），屬於「有改動風險的中等重構」，應與 D1／D2 一起決定。**結果（D1／D2 定案後）：不做**——理由不變（會動到被多條測試釘住的 reason 文字），而 D1 已定為只做切片 1、D2 已定為①，後續階段沒有任何一項需要它；面板現在的四種問題呈現（`banner`／`state`／`judge`／`judgeStats`）都由測試釘住其文字。
 - **任務 0.3 — 已完成**：面板契約寫進 `docs/design.md` 的「The side panel's screens and state (extension)」小節（四個事實 → `VIEWS`／`SECTIONS`、兩個純決策、cells 以欄位名稱取值、以及「唯一 import `config.js` 的模組」這道可測性牆）。
 
 ### Phase 1：兩條搜尋的核心改善（＝既有計畫，進行中）
 
-照 `docs/plans/plan-scan-search-paths.md`：功能 2 已完成；接下來 功能 1（屬性清單先取得）、3（價格摘要）、4（底材來源，待決策 D5）、5–7（掃描加值）、8a（近期成交探測）。
+照 `docs/plans/plan-scan-search-paths.md`（以該份為準）：**功能 1–7 全數完成**（1 `1f75022`、2 `7cc08c3`／`cfc272a`／`cbeb900`、3 `7282391`、4 `0889788`、5 `b2c6b64`、6／7 `a8a9029`），D5 已定案（選項 ②），8a 探測結論為**不可行、8b／8c 取消**（`da28156`）；該計畫唯一待辦（重跑實機 `ocr_e2e` 確認標記粒度）已於 2026-10-13 通過（調校組 top-3 22/22、保留組 29/30）。
 檢查點 A/B/C 依該計畫。
 
 ### Phase 2：`sidepanel.js` 解耦（M）— **切片 1 完成；切片 2／3 查證後不建議，停在這裡**
@@ -79,7 +79,7 @@
 
 - **任務 4.2（資料／文字規則）— 部分完成**（`0bb2057`）：查證發現兩邊**真的漂移**——demo 的掛單表 6 欄、成交 3 欄，面板（與其 CSV）是 7 欄與 5 欄；同一份 `market.json` 用 demo 匯出會**少掉 `遊戲版本`（兩個視圖）與成交的環境欄**。已把 demo 的 `head`／`cells` 對齊面板的 `TRADING_COLUMNS`／`tradingCells`、`RECENT_COLUMNS`／`recentCells`，並用 `extension/test/columns-parity.test.mjs` 釘住（兩檔無法共用程式碼 → 測試當契約，與 `tests/test_run_budgets.py` 同型）。變異驗證：拿掉一欄測試立刻紅。**限制**：只比標籤與順序，不比 cell 值（demo 的 cells 是行內 lambda；寫在測試 docstring 裡）。
 - **任務 4.2 續 — 已完成**（`c8aaf11`）：demo 原本把 **`failed_checks` 的原始 id** 印給玩家（「檢查未通過：…；same_product、recent_rows_ok」），違反 repo 自己「白話繁中、不要術語」的規則。現在改用與面板相同的句子（各說一次、依失敗順序），句子由 demo **自帶一份**（兩邊無法共用程式碼），並用 `extension/test/check-reasons-parity.test.mjs` 釘住（變異驗證：改一句立刻紅並列出兩邊）。
-- **任務 4.1（視覺 token）— 詞彙已完成（`bce1fa3`），配色仍待你決定**：查出面板**本來就有**語意 token（`--accent`／`--ok`／`--bad`／`--line`／`--muted` ＋跟隨系統主題），demo 則是 1,143 行、**86 個不同色值散在 119 處**、強制淺色。已做：`src/jev_ultrafast/static/tokens.css` 成為唯一色票來源（值＝面板的，因為它是出貨介面），`extension/build.py` 像複製頁面腳本那樣複製它，面板 17 處字面值全改成名字、`:root` 只剩 `color-scheme` 與字型，深色覆寫也移進 token 檔，順手刪掉死的 `var(--warn, #b8860b)` fallback。**外觀零變化是量出來的**：用 `scripts/scan_e2e.py --headed` 在改前改後各截一張面板，兩張 JPEG **位元完全相同**（42943 bytes、sha256 `c9782a0a75486fbd`），e2e 全流程也仍通過。守衛：`tests/test_ui_tokens.py`（面板不得再出現色值字面值、用到名字必須有定義、demo 的 119 處只能減不能增）＋ `tests/test_extension_build.py` 檢查出貨的 `tokens.css`。**剩下的是美學**：要不要讓 demo 也用面板的配色（或反之）——現在是「一個角色改一行」，你要哪一套說一聲即可。
+- **任務 4.1（視覺 token）— 詞彙已完成（`bce1fa3`），配色已於 2026-10-10 定為維持現狀**：查出面板**本來就有**語意 token（`--accent`／`--ok`／`--bad`／`--line`／`--muted` ＋跟隨系統主題），demo 則是 1,143 行、**86 個不同色值散在 119 處**、強制淺色。已做：`src/jev_ultrafast/static/tokens.css` 成為唯一色票來源（值＝面板的，因為它是出貨介面），`extension/build.py` 像複製頁面腳本那樣複製它，面板 17 處字面值全改成名字、`:root` 只剩 `color-scheme` 與字型，深色覆寫也移進 token 檔，順手刪掉死的 `var(--warn, #b8860b)` fallback。**外觀零變化是量出來的**：用 `scripts/scan_e2e.py --headed` 在改前改後各截一張面板，兩張 JPEG **位元完全相同**（42943 bytes、sha256 `c9782a0a75486fbd`），e2e 全流程也仍通過。守衛：`tests/test_ui_tokens.py`（面板不得再出現色值字面值、用到名字必須有定義、demo 的 119 處只能減不能增）＋ `tests/test_extension_build.py` 檢查出貨的 `tokens.css`。**剩下的是美學**：要不要讓 demo 也用面板的配色（或反之）——現在是「一個角色改一行」，你要哪一套說一聲即可。
 - **任務 4.2（資料／文字規則）**：見上面兩條，皆已完成。
 
 ### Phase 5：收尾（S）
