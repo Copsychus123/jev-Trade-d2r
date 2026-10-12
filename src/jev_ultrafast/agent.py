@@ -92,7 +92,7 @@ class Agent:
         waiter = getattr(state["browser"], "wait_until_ready", None)
         if callable(waiter):
             try:
-                waiter(timeout=2.0)
+                waiter(timeout_seconds=2.0)
             except Exception:
                 pass
 

@@ -114,14 +114,14 @@ class Browser:
             raise evaluation_error(response["exceptionDetails"])
         return response.get("result", {}).get("value")
 
-    def navigate(self, url, *, timeout=30, interactive_grace=1.5):
+    def navigate(self, url, *, timeout_seconds=30, interactive_grace_seconds=1.5):
         """Wait for load. A page that is interactive but never reaches `complete` (a hung ad or
-        tracker request) is accepted after `interactive_grace` seconds; `settle()` covers the rest.
+        tracker request) is accepted after `interactive_grace_seconds` seconds; `settle()` covers the rest.
 
         The extension measured its own grace separately (500 ms, `extension/src/cdp.js`); do not transfer that number
         here without measuring this Chrome path itself."""
         self.call("Page.navigate", url=url)
-        deadline = time.monotonic() + timeout
+        deadline = time.monotonic() + timeout_seconds
         interactive_since = None
         while time.monotonic() < deadline:
             state = self.evaluate("document.readyState")
@@ -130,14 +130,14 @@ class Browser:
             if state == "interactive":
                 if interactive_since is None:
                     interactive_since = time.monotonic()
-                if time.monotonic() - interactive_since >= interactive_grace:
+                if time.monotonic() - interactive_since >= interactive_grace_seconds:
                     return
             time.sleep(0.02)
         raise TimeoutError(f"Navigation to {url} did not finish")
 
-    def wait_until_ready(self, *, timeout=2.0, interval=0.05):
+    def wait_until_ready(self, *, timeout_seconds=2.0, interval_seconds=0.05):
         """Poll document readiness before stale-page recovery observation."""
-        deadline = time.monotonic() + max(timeout, 0)
+        deadline = time.monotonic() + max(timeout_seconds, 0)
         while True:
             try:
                 if self.evaluate("document.readyState === 'complete' && !!document.body"):
@@ -146,7 +146,7 @@ class Browser:
                 pass
             if time.monotonic() >= deadline:
                 return False
-            time.sleep(interval)
+            time.sleep(interval_seconds)
 
     def observe(self, screenshot=True):
         if getattr(self, "after_input", None):

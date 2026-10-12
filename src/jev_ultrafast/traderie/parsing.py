@@ -325,12 +325,12 @@ def _split_cards(listing_lines: list[str]) -> list[list[str]]:
     return cards_raw
 
 
-def parse_trading_txt(txt_content: str, *, item_name: str = "Harlequin Crest") -> list[ListingCard]:
+def parse_trading_txt(text_content: str, *, item_name: str = "Harlequin Crest") -> list[ListingCard]:
     """Parse listing cards from Traderie trading page innerText."""
-    if not txt_content:
+    if not text_content:
         return []
 
-    lines = [line.replace("\xa0", " ") for line in _text_lines(txt_content)]
+    lines = [line.replace("\xa0", " ") for line in _text_lines(text_content)]
 
     start, end = _listing_bounds(lines)
     cards_raw = _split_cards(lines[start:end])

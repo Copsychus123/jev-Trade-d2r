@@ -18,6 +18,7 @@ from jev_ultrafast.traderie import (  # noqa: E402
     read_view,
 )
 from jev_ultrafast.traderie.controller import verify_views  # noqa: E402
+from jev_ultrafast.traderie.parsing import parse_trading_txt  # noqa: E402
 from jev_ultrafast.traderie.site import LOAD_MORE_LIMIT, phase_finish_rule, traderie_scope_reason  # noqa: E402
 
 LOGIN_REASON = "需要登入：請先執行 uv run python scripts/login.py 登入一次"
@@ -295,20 +296,25 @@ def test_browser_blocks_ad_hosts_only_in_the_dedicated_chrome(monkeypatch, mode,
     assert bool(sent) is blocks
 
 
-@pytest.mark.parametrize("malformed_price", [
-    "NaN",
-    "Infinity",
-    "-Infinity",
-    "1.7976931348623157e+308",  # Very large float overflow
-    "",
-    "   ",
-    "abc",
+@pytest.mark.parametrize(("price_line", "expected_ask", "expected_high_rune"), [
+    ("NaN", "NaN", "High Rune Value: NaN"),
+    ("Infinity", "Infinity", "High Rune Value: Infinity"),
+    ("-Infinity", "-Infinity", "High Rune Value: -Infinity"),
+    ("1.7976931348623157e+308", "1.7976931348623157e+308", "High Rune Value: 1.7976931348623157e+308"),
+    ("abc", "abc", "High Rune Value: abc"),
+    ("", "Unknown", "High Rune Value:"),        # an empty line is dropped; no wanted text is left
+    ("   ", "Unknown", "High Rune Value:"),      # whitespace is stripped away too
 ])
-def test_traderie_parsing_handles_malformed_price_strings(monkeypatch, malformed_price):
-    """Malformed price strings (NaN, Infinity, overflow) -> parsing returns None or default."""
-    # Price parsing should not crash on malformed input
-    # This tests the robustness of the parser
-    assert isinstance(malformed_price, str)
+def test_traderie_keeps_a_malformed_price_line_verbatim(price_line, expected_ask, expected_high_rune):
+    """There is no numeric price parser: a listing's wanted line is kept as raw text, so a malformed price
+    (NaN, Infinity, overflow, junk) survives verbatim as the row's `ask` and `high_rune_value` line."""
+    text = "\n".join([
+        "TestSeller", " (11)", "1 X Harlequin Crest", "Softcore -", "PC -", "Ladder",
+        "Trading For", price_line, f"High Rune Value: {price_line}", "1 minute ago",
+    ])
+    rows = parse_trading_txt(text)
+    assert len(rows) == 1
+    assert (rows[0].ask, rows[0].high_rune_value) == (expected_ask, expected_high_rune)
 
 
 
@@ -439,7 +445,7 @@ def test_browser_navigate_accepts_page_stuck_in_interactive_after_grace(monkeypa
     monkeypatch.setattr(browser_module.time, "sleep", lambda s: clock.__setitem__(0, clock[0] + max(s, 0.5)))
     browser.call = lambda *_a, **_k: {}
     browser.evaluate = lambda _expression: "interactive"
-    browser.navigate("https://example.test/slow", timeout=30, interactive_grace=8)
+    browser.navigate("https://example.test/slow", timeout_seconds=30, interactive_grace_seconds=8)
     assert 8 <= clock[0] < 30
 
 
@@ -451,7 +457,7 @@ def test_browser_navigate_times_out_while_page_is_still_loading(monkeypatch):
     browser.call = lambda *_a, **_k: {}
     browser.evaluate = lambda _expression: "loading"
     with pytest.raises(TimeoutError):
-        browser.navigate("https://example.test/never", timeout=30)
+        browser.navigate("https://example.test/never", timeout_seconds=30)
 
 
 def test_browser_without_screenshots_also_blocks_picture_urls(monkeypatch):

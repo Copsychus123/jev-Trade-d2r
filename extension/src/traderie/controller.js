@@ -157,7 +157,7 @@ const VIEW_READERS = {
  * The rows of one view from its page text, with the page's own row-marker count and the parsed recent-trades answer.
  * @returns {{rows: object[], markers: number, parsed: object|null}}
  */
-function viewRows(reader, lines, text, itemName) {
+function parseView(reader, lines, text, itemName) {
   const { rows, parsed } = reader.parse(text, itemName);
   return { rows, markers: reader.markers(lines), parsed };
 }
@@ -167,7 +167,7 @@ function viewRows(reader, lines, text, itemName) {
  */
 async function readRows(reader, result, text, itemName, tab) {
   const lines = splitLines(text).map((line) => line.trim());
-  const read = viewRows(reader, lines, text, itemName);
+  const read = parseView(reader, lines, text, itemName);
   if (read.parsed?.code === "login_required" || read.parsed?.code === "login_or_no_data") {
     return fail(result, "login_required", read.parsed.reason, "BLOCKED");
   }

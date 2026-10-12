@@ -22,7 +22,7 @@
         </button>
         <div class="tabs-status">
           <div class="status-chip">
-            <span class="dot" id="status-dot"></span>
+            <span id="status-dot"></span>
             <span id="status" role="status">準備開始探索</span>
           </div>
           <button type="button" id="stop" hidden>停止</button>
@@ -156,12 +156,12 @@
               <p class="eyebrow">下一步動作</p>
               <h2 id="choice-title">等候頁面中</h2>
             </div>
-            <span class="header-meta"><span id="action-count">0 個選項</span> · 決策耗時 <span id="latency">—</span></span>
+            <span><span id="action-count">0 個選項</span> · 決策耗時 <span id="latency">—</span></span>
           </div>
           <div id="usage" class="metrics usage" hidden></div>
           <section class="trace">
             <h3 class="decision-heading">Jev 決策紀錄</h3>
-            <div id="decision-log" class="decision-log"></div>
+            <div id="decision-log"></div>
           </section>
           <details id="ranking-details" class="ranking-details" hidden>
             <summary>這一步的動作機率與元素排名</summary>

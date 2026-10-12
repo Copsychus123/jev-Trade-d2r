@@ -832,7 +832,6 @@ export class OcrPipeline {
   }
 
   async recognizeImage(bgr) {
-    const tPre = performance.now();
     const pre = resizeWithinBounds(bgr, CFG.min_side_len, CFG.max_side_len);
     let img = pre.img;
     let padTop = 0;
@@ -841,32 +840,18 @@ export class OcrPipeline {
       img = padded.img;
       padTop = padded.top;
     }
-    const tDet0 = performance.now();
     const boxes = await this.detect(img);
-    const tDet1 = performance.now();
     const crops = boxes.map((b) => getRotateCropImage(img, b));
-    const tCls0 = performance.now();
     const clsCrops = await this.classify(crops);
-    const tCls1 = performance.now();
     const recOut = await this.recognize(clsCrops);
-    const tRec1 = performance.now();
 
     const lines = finalLines(recOut);
     return {
       lines,
-      preMs: tDet0 - tPre,
-      detMs: tDet1 - tDet0,
-      clsMs: tCls1 - tCls0,
-      recMs: tRec1 - tCls1,
       detBoxes: boxes.length,
       crops: crops.length,
       paddedTop: padTop,
       inputSize: [img.w, img.h],
-      debug: {
-        boxes,
-        cropSizes: crops.map((c) => [c.w, c.h]),
-        recRaw: recOut.map((r) => [r?.text ?? null, r?.score ?? null]),
-      },
     };
   }
 }

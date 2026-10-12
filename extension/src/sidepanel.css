@@ -91,10 +91,6 @@ summary {
   color: var(--muted);
   margin: 6px 0 0;
 }
-.muted.stale {
-  color: var(--bad);
-  font-weight: 600;
-}
 .small {
   font-size: 12px;
 }

@@ -81,16 +81,14 @@ def test_load_dotenv_precedence_and_utf8(tmp_path: Path):
     assert missing is False
 
 
-@pytest.mark.parametrize("empty_key,empty_val", [
-    ("TYPESAFE_DEMO_PORT", ""),
-    ("TYPESAFE_API_KEY", ""),
+@pytest.mark.parametrize(("empty_key", "field", "expected"), [
+    ("TYPESAFE_DEMO_PORT", "demo_port", 8766),   # an empty numeric value falls back to the field default
+    ("TYPESAFE_API_KEY", "typesafe_api_key", None),
 ])
-def test_get_settings_handles_empty_null_values(empty_key, empty_val):
-    """Empty/null settings values -> handled gracefully or validated with error."""
-    env = {empty_key: empty_val}
-    # Empty values should either use defaults or raise validation error
-    settings = get_settings(env)
-    assert settings is not None
+def test_get_settings_handles_empty_null_values(empty_key, field, expected):
+    """An empty value resolves to the field default: `get_clean` turns "" into its default."""
+    settings = get_settings({empty_key: ""})
+    assert getattr(settings, field) == expected
 
 
 @pytest.mark.parametrize("invalid_key,invalid_val,expected_err", [

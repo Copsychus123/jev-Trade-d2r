@@ -272,7 +272,7 @@ def test_json_decode_error_with_unicode_content_preserves_encoding(monkeypatch):
         model.post_json("https://api.example.com", "fake-key", {"prompt": "test"})
 
     err_msg = str(exc_info.value)
-    assert "emoji" in err_msg or "中文" in err_msg or "Invalid JSON" in err_msg
+    assert unicode_text in err_msg  # the provider's body is echoed verbatim, unicode included
 
 
 def _response(status, text="", payload=None):

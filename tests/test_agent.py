@@ -309,7 +309,7 @@ def test_stale_recovery_checks_readiness_before_reobserve(runner):
     call_order = []
     runner.state["browser"].fresh.side_effect = StalePage("Document navigating")
     runner.state["browser"].wait_until_ready = Mock(
-        side_effect=lambda timeout=2.0: call_order.append(("ready", timeout))
+        side_effect=lambda timeout_seconds=2.0: call_order.append(("ready", timeout_seconds))
     )
     runner.state["browser"].observe = Mock(
         side_effect=lambda screenshot=False: call_order.append(("observe", screenshot)) or page()
@@ -595,7 +595,7 @@ def test_the_action_is_in_history_as_started_before_the_browser_acts(runner):
     runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
     assert seen[0]["outcome"] == "started" and seen[0]["page_changed"] is None
     assert runner.state["history"][-1]["outcome"] == "executed"
-    assert runner.state["history"][-1]["page_changed"] is not None
+    assert runner.state["history"][-1]["page_changed"] is False  # observing the same page is no change
 
 
 def test_an_unconfirmed_mutation_stays_in_history_and_is_never_replayed(runner):
@@ -820,7 +820,7 @@ def test_a_single_traderie_goal_becomes_the_planned_views(monkeypatch):
     assert a.state["goal"] == plan[0] and a.state["phase"] == names[0]
     assert (a.state["status"], a.state["plan_index"], a.state["history"]) == ("ready", 0, [])
     assert browser.observe.call_args.kwargs["screenshot"] is False  # no pictures unless asked for
-    assert a.scope_guard is not None  # a Traderie run is guarded
+    assert a.scope_guard is loop.traderie_scope_reason  # a Traderie run is guarded by Traderie's own reason rule
 
 
 def test_a_traderie_goal_that_opens_on_another_site_is_blocked_at_once(monkeypatch):
@@ -940,14 +940,15 @@ def test_predict_without_a_browser_asks_for_a_demo_first(runner):
 
 def test_the_first_prediction_starts_the_clock(runner, monkeypatch):
     monkeypatch.setattr(loop, "choose", lambda *_a, **_k: _jev_answer("e3", "CLICK", {"CLICK": 1.0}))
+    monkeypatch.setattr(loop.time, "perf_counter", lambda: 4321.0)  # a known clock reading
     runner.state["started_at"] = None
     runner.state["decision"] = None
     runner.state["status"] = "ready"
 
     runner.command("predict")
 
-    assert isinstance(runner.state["started_at"], float)
-    assert runner.state["decisions"][-1]["elapsed_ms"] >= 0
+    assert runner.state["started_at"] == 4321.0  # the first prediction stamps the clock
+    assert runner.state["decisions"][-1]["elapsed_ms"] == 0  # and the same reading measures the step
 
 
 def test_predict_during_a_pending_handoff_is_refused(runner):
@@ -1011,7 +1012,8 @@ def test_act_with_a_stale_fingerprint_is_refused(runner):
         runner.command("act", {"fingerprint": "outdated"})
 
     runner.state["browser"].act.assert_not_called()
-    assert runner.state["decision"] is not None  # a refused act never consumes the decision
+    # a refused act never consumes the decision
+    assert (runner.state["decision"]["choice"], runner.state["decision"]["operation"]) == ("e1", "TYPE_TEXT")
 
 
 def test_a_choice_that_left_the_page_is_stale_and_never_an_input(runner):
@@ -1063,7 +1065,7 @@ def test_wait_until_ready_polls_past_a_navigation_and_returns_true(monkeypatch):
     b.evaluate = Mock(side_effect=[False, StalePage("navigating"), True])
     monkeypatch.setattr(browser.time, "sleep", lambda _s: None)
 
-    assert b.wait_until_ready(timeout=1.0) is True
+    assert b.wait_until_ready(timeout_seconds=1.0) is True
     assert b.evaluate.call_count == 3
 
 
@@ -1074,7 +1076,7 @@ def test_wait_until_ready_gives_up_at_its_deadline(monkeypatch):
     b.evaluate = Mock(return_value=False)
     monkeypatch.setattr(browser.time, "sleep", lambda _s: None)
 
-    assert b.wait_until_ready(timeout=0) is False
+    assert b.wait_until_ready(timeout_seconds=0) is False
     assert b.evaluate.call_count == 1
 
 
