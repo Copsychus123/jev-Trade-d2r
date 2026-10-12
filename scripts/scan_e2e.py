@@ -3,7 +3,9 @@
 
 `--page` runs the same drive against another sim page (default scripts/data/scan_sim.html); a page only has to keep
 the "D2R-SIM" title so Chrome's auto-select still finds it. It exists for measurements such as the same tooltips at
-their native size on a bigger stage.
+their native size on a bigger stage. `--minimize-after SECONDS` minimizes the browser window that many seconds into
+the sweep, i.e. makes the side-panel page invisible the way it is when the game covers Chrome - the condition the
+capture path is built for (measured 2026-10-13: all four records still land).
 
 Windows-only tool (Windows Chrome paths). Builds the extension into extension/dist-e2e, loads it into the dedicated
 Chrome, opens scripts/data/scan_sim.html as a tab and drives the side panel:
@@ -279,7 +281,17 @@ async def _clear_records(panel: Panel, report: dict) -> None:
     say(f"  清除紀錄：{len(before['records'])} 筆 -> {len(after['records'])} 筆（CSV 可用 {after['csv']}）")
 
 
-async def drive(panel_ws: str, sim_ws: str, expects: list[str], item_name: str, base_name: str) -> dict:
+async def _minimize_window(panel: Panel) -> None:
+    """Minimizes the browser window: its side-panel page stops being visible, the way it is when the game covers
+    Chrome - the condition `MediaStreamTrackProcessor` is chosen for instead of a timer or requestVideoFrameCallback."""
+    window = await panel.send("Browser.getWindowForTarget", {})
+    await panel.send(
+        "Browser.setWindowBounds", {"windowId": window["windowId"], "bounds": {"windowState": "minimized"}}
+    )
+
+
+async def drive(panel_ws: str, sim_ws: str, expects: list[str], item_name: str, base_name: str,
+                minimize_after: float = 0.0) -> dict:
     report: dict = {"started": time.strftime("%Y-%m-%d %H:%M:%S"), "expects": expects, "base_name": base_name}
     async with attach(panel_ws, Panel, collect_events=False) as panel, attach(sim_ws) as sim:
         await panel.send("Page.enable")
@@ -301,7 +313,14 @@ async def drive(panel_ws: str, sim_ws: str, expects: list[str], item_name: str, 
         await sim_ready(sim)
         await sim.evaluate("window.D2R_SIM.restart()")
 
-        await _run_scan(panel, sim, report)
+        if minimize_after:
+            sweep = asyncio.ensure_future(_run_scan(panel, sim, report))
+            await asyncio.sleep(minimize_after)
+            await _minimize_window(panel)
+            say("已把視窗最小化（模擬遊戲蓋住 Chrome），繼續等待掃描結果…")
+            await sweep
+        else:
+            await _run_scan(panel, sim, report)
         await _collect_record_clicks(panel, expects, item_name, base_name, report)
         await _clear_records(panel, report)
     return report
@@ -386,6 +405,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="裝備掃描真實 Chrome 端對端測試")
     parser.add_argument("--headed", action="store_true", help="顯示 Chrome 視窗（預設無視窗）")
     parser.add_argument("--page", type=Path, help="改跑另一個模擬頁（預設 scripts/data/scan_sim.html）")
+    parser.add_argument("--minimize-after", type=float, default=0.0, metavar="SECONDS",
+                        help="掃描開始後幾秒把瀏覽器視窗最小化（模擬遊戲蓋住 Chrome；預設 0 不最小化）")
     args = parser.parse_args()
     truth = json.loads(TRUTH.read_text(encoding="utf-8"))
     by_file = {entry["file"]: entry for entry in truth}
@@ -398,7 +419,10 @@ def main() -> int:
         chrome = start_chrome(args.headed, EXTRA_ARGS)
         ext_id = load_extension()
         say(f"擴充功能已載入（{ext_id}）")
-        report = asyncio.run(drive(open_panel(ext_id), open_sim(args.page or SIM), expects, item_name, base_name))
+        report = asyncio.run(
+            drive(open_panel(ext_id), open_sim(args.page or SIM), expects, item_name, base_name,
+                  minimize_after=args.minimize_after)
+        )
     except (Environment, subprocess.CalledProcessError) as error:
         return environment_failure(error)
     finally:
