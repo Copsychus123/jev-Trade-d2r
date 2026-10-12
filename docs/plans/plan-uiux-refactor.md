@@ -1,6 +1,6 @@
 # 計劃：業務邏輯與 UI/UX 重構（專案層級）
 
-狀態：**待你確認。** 與 `docs/plans/plan-scan-search-paths.md`（兩條搜尋的核心改善）並存——那份是**本計劃的 Phase 1**，進行中（功能 2 已完成並提交 `7cc08c3`／`cfc272a`），本計劃不覆蓋它。
+狀態：**Phase 0–5 已執行完畢（2026-10-13 覆核）。** Phase 1（＝`docs/plans/plan-scan-search-paths.md`）的七項功能全數完成、第八項經探測後取消；Phase 2 依查證停在切片 1（切片 2／3 取消，見下）；Phase 4 的資料／文字已收斂，唯一的美學項（demo 配色）已於 2026-10-10 定為維持現狀。
 
 ## 一、為什麼要重構（量到的現況）
 
@@ -59,11 +59,15 @@
 
 - **任務 2.1**：抽出 `run-name-flow.js`（名稱查詢的流程：開始 → 讀 views → 驗證 → 收尾），純函式收 `{ agent, market }` 與回呼，**不摸 DOM**。
   - 驗收：新模組離線可測；`sidepanel.js` 只剩呼叫與渲染。
+  - **結果：取消**——查證後就是下文「切片 3」那一刀，依「重構要讓分支消失、不是搬家」停在切片 1；名稱查詢的**判斷樹**已在切片 1 搬進 `run-outcome.js`。
 - **任務 2.2**：抽出 `run-stats-flow.js`（`stats-query.js` 已是雛形，收斂進去並補測試）。
+  - **結果：已完成**——`runStatsFlow` 與 `judgeStats` 本來就在 `stats-query.js`（171 行），面板那段只是 6 行轉接（見下文「切片 2」）。
 - **任務 2.3**：把「渲染」集中到 `panel-dom.js`／`result-views.js`，`sidepanel.js` 只做 wiring（事件 → 呼叫 → 渲染）。
   - 驗收：`sidepanel.js` ≤ 300 行；`node --check`、全套測試、實機 e2e 通過。
+  - **結果：目標修正**——行數是任意指標，判準改成**概念數**；剩下的 `render*`／初始化／事件綁定本來就屬面板（見下文「目標修正」）。
 - **任務 2.4**：`config.js` 依賴只留在一個入口（例如 `api.js`），讓其餘模組離線可測。
   - 驗收：`grep -l "config.js" extension/src` 只剩 1 支；新拆出的模組都能被 `node --test` 直接 import。
+  - **結果：已滿足**——`grep -l 'config.js' extension/src` 只有 `sidepanel.js` 一支；而面板本身現在也離線可測（`extension/test/sidepanel.test.mjs` 用註冊的 resolve hook 直接 import 真的面板，23 個案例）。
 
 ### Phase 3：結果層（S～M）
 
@@ -78,10 +82,6 @@
 - **任務 4.1（視覺 token）— 詞彙已完成（`bce1fa3`），配色仍待你決定**：查出面板**本來就有**語意 token（`--accent`／`--ok`／`--bad`／`--line`／`--muted` ＋跟隨系統主題），demo 則是 1,143 行、**86 個不同色值散在 119 處**、強制淺色。已做：`src/jev_ultrafast/static/tokens.css` 成為唯一色票來源（值＝面板的，因為它是出貨介面），`extension/build.py` 像複製頁面腳本那樣複製它，面板 17 處字面值全改成名字、`:root` 只剩 `color-scheme` 與字型，深色覆寫也移進 token 檔，順手刪掉死的 `var(--warn, #b8860b)` fallback。**外觀零變化是量出來的**：用 `scripts/scan_e2e.py --headed` 在改前改後各截一張面板，兩張 JPEG **位元完全相同**（42943 bytes、sha256 `c9782a0a75486fbd`），e2e 全流程也仍通過。守衛：`tests/test_ui_tokens.py`（面板不得再出現色值字面值、用到名字必須有定義、demo 的 119 處只能減不能增）＋ `tests/test_extension_build.py` 檢查出貨的 `tokens.css`。**剩下的是美學**：要不要讓 demo 也用面板的配色（或反之）——現在是「一個角色改一行」，你要哪一套說一聲即可。
 - **任務 4.2（資料／文字規則）**：見上面兩條，皆已完成。
 
-- **任務 4.1**：抽出共用視覺（顏色 token、表格、信任線、badge）到單一 CSS 來源，demo 與面板都吃它（demo 目前 `style.css` 1,143 行與面板的樣式各自長）。
-- **任務 4.2**：demo 的渲染規則改吃同一組 cells/`verificationSummary`（目前 demo 有自己的一套），讓「同一份資料在任何 UI 都長一樣」。
-  - 驗收：兩邊對同一份 market 產生相同的欄位與文字；`tests/test_ui_static.py` 與新測試通過。
-
 ### Phase 5：收尾（S）
 
 - 更新 `docs/design.md`（模組圖、契約、錯誤形狀）、`AGENTS.md` 對應段落；跑一次完整驗證（`pytest`／`node`／`ruff`／`build.py`／實機 `ocr_e2e`＋`scan_e2e`）。
@@ -93,16 +93,16 @@
 |---|---|
 | 0 後 | 狀態機與問題形狀的測試綠；`docs/design.md` 有「面板介面」小節 |
 | 1 後 | ＝既有計畫的檢查點 A/B |
-| 2 後 | `sidepanel.js` ≤ 300 行；新模組有單元測試；`config.js` 只有 1 個入口；實機 `extension_e2e`＋`scan_e2e` 綠 |
+| 2 後 | **判準已改成概念數（見 Phase 2 的「目標修正」）**：業務規則都在可測模組（`run-outcome.js`、`stats-query.js`）、`config.js` 只有 1 個入口（`sidepanel.js`），而且面板本身已可離線測（`extension/test/sidepanel.test.mjs`，23 個案例）；實機 `extension_e2e`／`scan_e2e` 綠 |
 | 3 後 | 摘要／來源／分頁在實機看得到；CSV 與畫面一致 |
 | 4 後 | demo 與面板同一份資料同一個樣子：**資料與文字 ✓**（`columns-parity`／`check-reasons-parity`／視圖標籤三條 parity 測試，同一份 `market` 產生相同欄位與相同句子）；**外觀**：色票詞彙已共用（`tokens.css`＋`tests/test_ui_tokens.py`），但 demo 的配色仍是自己的 86 色——要不要跟面板一致（或反之）是唯一還沒決定的美學項，實作成本＝一個角色改一行 |
 
 ## 六、需要你決定
 
-1. **D1**：Phase 2 要不要做？（這是最大的一刀：741 行的解耦。價值＝可測試與可維護；成本＝要動實機驗證）
+1. **D1**：Phase 2 要不要做？——**已由本計畫自己的查證回答：只做切片 1（已完成 `a1d7a01`）**。切片 2 查證後沒有東西可收斂；切片 3 評估後「概念數不變、只是搬家」而不建議。所以不需要再動 741 行那一刀。
 2. **D2**：**兩套 UI 收斂**（Phase 4）要到什麼程度？（①只共用視覺 token；②共用 cells/文字規則；③只留一套 UI）
    - **你 2026-10-10 的決定：①，而且配色維持現狀。** 資料／文字已收斂（三條 parity 測試、任務 4.2 完成）；色票詞彙已共用（`tokens.css`＋`tests/test_ui_tokens.py`），但 demo 的 86 色與面板的 22 色**各自保留**——之後若想統一，仍是一個角色改一行。
-3. **D3**（沿用）：唯一物品的底材來源（`plan-scan-search-paths` 的 D5）。
+3. **D3**（沿用）：唯一物品的底材來源（`plan-scan-search-paths` 的 D5）——**已定案並實作：選項 ②（底材建議清單），`0889788`**。
 
 ## 七、風險
 
