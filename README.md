@@ -188,6 +188,7 @@ Agent 說「完成」不等於成功；是否成功只看上面的獨立檢查�
 | `scripts/scan_e2e.py`（e2e，僅 Windows） | 裝備掃描端對端，跑在替代頁面 `scripts/data/scan_sim.html` 上 | 啟動專用 Chrome；完全不呼叫 Jev、不扣額度 |
 | `scripts/demo_e2e.py`（e2e） | demo 頁端對端，用替代伺服器回應 `/api/state` | 啟動 demo 自己的 Chrome；不需要額度、不需登入 |
 | `scripts/probe_stats.py`（e2e） | 量測 Traderie 首頁「Search All Stats」的行為（模糊搜尋查法的依據），並更新兩份測試資料 | 開專用 Chrome 對 Traderie 做唯讀請求；不下單、不呼叫 Jev；需要先登入 |
+| `scripts/probe_blocking.py`（e2e） | 量測「封鎖廣告/追蹤主機」對模糊搜尋頁 settle 的影響（同一位址 ON/OFF 交替） | 唯讀、不呼叫 Jev、不扣額度；只寫 `artifacts/blocking/`；需要專用 Chrome（會切換它的封鎖清單） |
 | `scripts/_cdp.py` | 上面幾支共用的 Chrome 連線小工具 | — |
 
 ## 測試
