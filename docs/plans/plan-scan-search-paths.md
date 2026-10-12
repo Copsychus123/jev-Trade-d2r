@@ -57,7 +57,7 @@
 **檔案**：`extension/src/stats-form-state.js`（`fillFromScreenshot` 的 `{ carryValues }`）、`extension/src/stats-form.js`、`extension/src/sidepanel.css`（`.from-capture`）、`scripts/ocr_e2e.py`（詞綴組改量測新行為）、`tests/test_e2e_scripts.py`。
 **驗收（已達成）**：只預填擷取到的數字；只有**真的有值**的那一格加上 `.from-capture` 與「從擷取讀到，請確認」；玩家自己打過的數字不會被後續讀取覆蓋；**仍需玩家按開始查詢**。
 **實機證據**（`artifacts/ocr-e2e/report.json`，19:29，exit 0）：`values_filled: true`（`min: "11"`）、`values_marked: true`、`start_gate_after_capture: {disabled:false}`（擷取到的值就開了閘門）、把每一格透過頁面清空後 `start_gate_after_clearing: {disabled:true, whyVisible:true}` 且理由為「有勾選的條件還沒填數值：冰寒抗性」、補回一個值後 `start_enabled_after_value: {disabled:false}`。`scan_e2e.py` 19:34 exit 0（`fuzzy_item.ticks 1`、`fuzzy_base.ticks 3`）。準確度未受影響（22/21/22、30/22/29）。
-**待辦**：`cbeb900` 的標記粒度修正在那次實機之後，下一個實機檢查點要重跑 `ocr_e2e` 確認（離線測試已綠）。
+**已完成（2026-10-13 重跑確認，實機）**：`uv run --group e2e python scripts/ocr_e2e.py` **exit 0**（615 秒）。標記粒度在實機成立：詞綴組 `values_filled: true`、`values_marked: true`（只有真的帶值的那一格被標記）、開始閘門有值時開（`disabled: false`）、清空後關並顯示理由（`whyVisible: true`）、補值後再開（`disabled: false`）且全程 `no_query_started: true`。準確度與門檻一致：調校組 top-3 **22/22**、保留組 **29/30**；下載組 13 項與自動辨識組 4 項全 True。報告寫入 `artifacts/ocr-e2e/report.json`（通過才會覆蓋基準）。
 
 #### 功能 3：模糊搜尋結果的價格摘要（S）— **已完成**（`7282391`）
 `traderie/price-summary.js`（純）：High Rune Value 的最低／中位數／四分位（nearest-rank；`priced < 4` 不給四分位）＋未標價計數，不改動 rows；`labels.priceSummaryLine` 產出單句，`renderChrome` 把它放在結果註記行最前面（模式為 stats 時）。**注意**：parser 寫的是 `high_rune_value`（snake_case），模組兩種都讀。
@@ -147,5 +147,5 @@
 
 ## 九、未解問題
 
-1. **D5**：唯一物品的模糊搜尋底材怎麼來？（我建議 **②底材建議清單**：最不動規則、任何入口都適用；①品質代替要改規則，③只在精準先跑過才有用）
-2. 功能 8 要不要做？（先看 8a 事實）
+1. **D5 已定案**：唯一物品的模糊搜尋底材＝**②底材建議清單**（最不動規則、任何入口都適用：①品質代替要改規則、③只在精準先跑過才有用），已實作於功能 4（`0889788`）。
+2. **功能 8 已定案**：探測（`da28156`）證實模糊搜尋的詞綴篩選頁沒有近期成交視圖，**不可行 → 8b／8c 取消**。
