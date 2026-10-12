@@ -37,9 +37,10 @@ from extension_e2e import (  # noqa: E402
     build_extension,
     cleanup,
     environment_failure,
+    load_extension,
     open_panel,
     say,
-    start_chrome_with_extension,
+    start_chrome,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -391,7 +392,9 @@ def main() -> int:
     chrome = None
     try:
         build_extension(LOCAL_API)
-        chrome, ext_id = start_chrome_with_extension(args.headed, EXTRA_ARGS)
+        chrome = start_chrome(args.headed, EXTRA_ARGS)
+        ext_id = load_extension()
+        say(f"擴充功能已載入（{ext_id}）")
         report = asyncio.run(drive(open_panel(ext_id), open_sim(), expects, item_name, base_name))
     except (Environment, subprocess.CalledProcessError) as error:
         return environment_failure(error)

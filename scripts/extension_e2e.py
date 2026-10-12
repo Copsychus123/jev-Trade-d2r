@@ -244,13 +244,11 @@ def open_panel(ext_id: str) -> str:
     return httpx.put(f"http://127.0.0.1:{DEBUG_PORT}/json/new?{url}").json()["webSocketDebuggerUrl"]
 
 
-def start_chrome_with_extension(headed: bool, extra_args: tuple[str, ...] = ()) -> tuple[subprocess.Popen, str]:
-    """Free the dedicated profile, start Chrome on it and load the extension just built; returns both."""
+def start_chrome(headed: bool, extra_args: tuple[str, ...] = ()) -> subprocess.Popen:
+    """Free the dedicated profile and start Chrome on it. The caller loads the extension next, so its `chrome`
+    handle is already bound when loading can fail (a lost handle would leave Chrome running on the profile)."""
     free_profile()
-    chrome = launch_chrome(headed, extra_args)
-    ext_id = load_extension()
-    say(f"擴充功能已載入（{ext_id}）")
-    return chrome, ext_id
+    return launch_chrome(headed, extra_args)
 
 
 HOOKS = """(() => {
@@ -648,7 +646,9 @@ def main() -> int:
             raise Environment("--stub-chooser 只適用本機後端，不能和 --api 一起用")
         build_extension(args.api or LOCAL_API)
         backend, code, backend_log = (None, args.invite, None) if args.api else start_backend(args.stub_chooser)
-        chrome, ext_id = start_chrome_with_extension(args.headed)
+        chrome = start_chrome(args.headed)
+        ext_id = load_extension()
+        say(f"擴充功能已載入（{ext_id}）")
         result = asyncio.run(drive(open_panel(ext_id), code, args.item, args.load_more, args.timeout))
         if args.hold:
             say(f"查詢結束，視窗保留 {args.hold} 秒…")

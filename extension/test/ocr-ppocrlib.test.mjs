@@ -80,6 +80,27 @@ test("getRotateCropImage swaps sides when the crop is at least 1.5x taller than 
   assert.equal(out.data.length, 40 * 10 * 3);
 });
 
+test("getRotateCropImage keeps every pixel of a tall crop through the counter-clockwise rotation", () => {
+  // A 4x4 source whose red channel is a unique value per pixel: an axis-aligned quad makes the warp a
+  // lossless copy, so the rotated output must be exactly the crop's pixels re-ordered (a wrong index would
+  // drop them all and leave a blank crop, which is what a vertical text line would then be read from).
+  const src = { data: new Uint8Array(4 * 4 * 3), w: 4, h: 4 };
+  for (let y = 0; y < 4; y++) {
+    for (let x = 0; x < 4; x++) src.data[(y * 4 + x) * 3] = y * 4 + x + 1;
+  }
+  const out = getRotateCropImage(src, [[1, 0], [3, 0], [3, 4], [1, 4]]);
+  assert.equal(out.w, 4);
+  assert.equal(out.h, 2);
+  const red = [];
+  for (let i = 0; i < out.data.length; i += 3) red.push(out.data[i]);
+  // The crop is source columns 1..2 (crop[y][0] = src[y][1]); np.rot90 sends crop[y][x] to out[x][w - 1 - y].
+  const expected = [];
+  for (let ny = 0; ny < 2; ny++) {
+    for (let nx = 0; nx < 4; nx++) expected.push(nx * 4 + 3 - ny);
+  }
+  assert.deepEqual(red, expected);
+});
+
 test("ctcDecode drops repeats and blanks and averages the kept probabilities", () => {
   const pipeline = new OcrPipeline(null, null, ["blank", "a", "b", " "]);
   const T = 4;

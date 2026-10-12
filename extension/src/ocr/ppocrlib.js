@@ -588,14 +588,14 @@ export function getRotateCropImage(img, points) {
   return res;
 }
 
-// np.rot90 (counter-clockwise): (h, w) -> (w, h) with (x, y) -> (y, h - 1 - x).
+// np.rot90 (counter-clockwise): (h, w) -> (w, h) with (x, y) -> (y, w - 1 - x).
 function rotate90(img) {
   const { data, w, h } = img;
   const out = new Uint8Array(w * h * 3);
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const nx = y;
-      const ny = h - 1 - x;
+      const ny = w - 1 - x;
       const si = (y * w + x) * 3;
       const di = (ny * h + nx) * 3;
       out[di] = data[si];
