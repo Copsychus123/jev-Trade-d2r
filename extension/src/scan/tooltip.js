@@ -75,7 +75,7 @@ function maxChannel(data, i) {
   const r = data[i];
   const g = data[i + 1];
   const b = data[i + 2];
-  return r > g ? (r > b ? r : b) : g > b ? g : b;
+  return Math.max(r, g, b);
 }
 
 // The longest stretch [start, end] of 0..n-1 where `ok` holds, or null.

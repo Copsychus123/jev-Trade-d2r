@@ -118,7 +118,10 @@ function statsProgressSteps({ market, running }) {
   ];
   if (stage === "properties") steps[0].state = running ? "active" : "pending";
   if (stage === "apply" || stage === "read" || read) steps[0].state = "done";
-  if (stage === "apply") steps[1].state = lookup?.unmapped?.length ? "failed" : running ? "active" : "pending";
+  if (stage === "apply") {
+    if (lookup?.unmapped?.length) steps[1].state = "failed";
+    else steps[1].state = running ? "active" : "pending";
+  }
   if (lookup?.unmapped?.length) steps[1].detail = "有條件 Traderie 沒有對應的屬性";
   if (stage === "read" || read) steps[1].state = "done";
   viewStep(steps[2], view, running && stage === "read");

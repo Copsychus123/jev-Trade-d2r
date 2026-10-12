@@ -28,7 +28,10 @@ export function deriveView({ settingsOpen, hasInvite, running, after, mode }) {
   if (settingsOpen) return "settings";
   if (!hasInvite) return "welcome";
   if (running) return "running";
-  return after ?? (mode === "scan" ? "scan" : mode ? "ready" : "choose");
+  if (after != null) return after;
+  if (mode === "scan") return "scan";
+  if (mode) return "ready";
+  return "choose";
 }
 
 /** The sections to show in `view`; the results only once at least one table has rows. */

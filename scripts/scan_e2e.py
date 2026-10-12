@@ -279,7 +279,7 @@ async def _clear_records(panel: Panel, report: dict) -> None:
 
 async def drive(panel_ws: str, sim_ws: str, expects: list[str], item_name: str, base_name: str) -> dict:
     report: dict = {"started": time.strftime("%Y-%m-%d %H:%M:%S"), "expects": expects, "base_name": base_name}
-    async with attach(panel_ws, Panel, collect_events=True) as panel, attach(sim_ws) as sim:
+    async with attach(panel_ws, Panel, collect_events=False) as panel, attach(sim_ws) as sim:
         await panel.send("Page.enable")
         await panel.send("Runtime.enable")
         await panel.wait_ready("側邊欄頁面沒有載入（掃描畫面還不存在？）")

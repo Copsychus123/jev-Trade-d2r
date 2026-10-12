@@ -6,6 +6,9 @@ import re
 from urllib.parse import urlparse
 
 TRADERIE_D2R_URL = "https://www.traderie.com/diablo2resurrected"
+# One of them ends the "what they want" part of every listing. The card split in parsing.py and the controller's
+# line-counting cross-check both use this tuple, so it lives with the site vocabulary.
+TRADING_MARKERS = ("Trading For", "Make an Offer")
 TRADERIE_HOSTS = {"traderie.com", "www.traderie.com"}
 PRODUCT_PATH = re.compile(
     r"^/diablo2resurrected/product/(?P<slug>[^/?#]+)(?:/(?P<section>buying|recent|wiki|recipes))?/?$"

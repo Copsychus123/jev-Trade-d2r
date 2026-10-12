@@ -20,14 +20,13 @@ from typing import Any
 from jev_ultrafast import fs
 from jev_ultrafast.errors import StalePage
 from jev_ultrafast.traderie.parsing import parse_recent_trades, parse_trading_txt
-from jev_ultrafast.traderie.site import detect_guard, product_root_url, product_section
+from jev_ultrafast.traderie.site import TRADING_MARKERS, detect_guard, product_root_url, product_section
 from jev_ultrafast.traderie.verification import page_matches_item, read_settled_page
 
 TRADING_COLUMNS = ("賣家", "要價", "高符文價值", "刊登時間", "平台 / 模式 / 天梯", "防禦")
 RECENT_COLUMNS = ("成交物品", "成交價格", "成交時間")
 VIEW_LABELS = {"trading": "目前掛單", "recent_trades": "近期成交"}
 VIEW_SECTIONS = {"trading": None, "recent_trades": "recent"}
-TRADING_MARKERS = ("Trading For", "Make an Offer")  # one of them ends the "what they want" part of every listing
 EMPTY_TRADING = "there are no listings"
 EMPTY_RECENT = "there are no offers"
 

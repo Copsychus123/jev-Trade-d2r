@@ -63,8 +63,10 @@ export function levenshtein(a, b, limit = Infinity) {
  * up to 2 characters none, 3 to 4 one, longer two. The second (base) pass allows one more, only for long names.
  */
 export function allowedEdits(length, { cjk, wide = false }) {
-  if (cjk) return length <= 2 ? 0 : length <= 4 ? 1 : 2 + (wide && length >= 6 ? 1 : 0);
-  return (length <= 5 ? 1 : 2) + (wide ? 1 : 0);
+  if (!cjk) return (length <= 5 ? 1 : 2) + (wide ? 1 : 0);
+  if (length <= 2) return 0;
+  if (length <= 4) return 1;
+  return wide && length >= 6 ? 3 : 2;
 }
 
 /** Index of every name we can match, built once from the item tables (see indexTables in lookup.js). */

@@ -5,7 +5,7 @@
 export const newTimeline = (now = () => performance.now()) => ({ origin: now(), now, entries: [] });
 
 /** Adds one entry ({ stage, start_ms, ms, ...extra }) to the session's timeline, if it has one. */
-export function mark(session, stage, startedAt, extra = {}) {
+function mark(session, stage, startedAt, extra = {}) {
   const timeline = session?.timeline;
   if (!timeline) return;
   const end = timeline.now();

@@ -206,7 +206,7 @@ def _target_question(goal, operation, candidates):
     }
 
 
-def _request(state, goal, history, elements, targets, controls, allow_blocked=True):
+def _build_request(state, goal, history, elements, targets, controls, allow_blocked=True):
     labels = {
         "CLICK": "Click an element, button, menu option, autocomplete suggestion, or calendar day.",
         "TYPE_TEXT": "Enter or replace text in an editable field. A small LLM will supply the value from the goal.",
@@ -278,7 +278,7 @@ def _answers(body: dict, *, key: str, limits: dict) -> dict:
 
 def _ask_once(state, goal, history, elements, targets, controls, allow_blocked, *, key, limits):
     """One request to Jev: build it, send it, resolve the answer. Returns (body, result, decision)."""
-    body, operations = _request(state, goal, history, elements, targets, controls, allow_blocked)
+    body, operations = _build_request(state, goal, history, elements, targets, controls, allow_blocked)
     result = _answers(body, key=key, limits=limits)
     return body, result, _resolve(result, operations, targets, controls)
 

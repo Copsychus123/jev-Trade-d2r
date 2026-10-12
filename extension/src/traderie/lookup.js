@@ -108,9 +108,15 @@ export function suggestNames(raw, tables, limit = 5) {
   if (!typed) return [];
   if (hasChinese(typed)) {
     const k = chineseKey(typed);
-    const matched = tables.zhNames
-      .map((entry) => ({ entry, rank: entry.key.startsWith(k) ? 0 : entry.key.includes(k) ? 1 : -1 }))
-      .filter((m) => m.rank >= 0 && m.entry.key !== k);
+    const matched = [];
+    for (const entry of tables.zhNames) {
+      if (entry.key === k) continue; // never suggest what was typed
+      let rank;
+      if (entry.key.startsWith(k)) rank = 0;
+      else if (entry.key.includes(k)) rank = 1;
+      else continue;
+      matched.push({ entry, rank });
+    }
     matched.sort((a, b) => a.rank - b.rank || a.entry.name.length - b.entry.name.length);
     return matched.slice(0, limit).map((m) => ({ label: m.entry.name, hint: m.entry.english }));
   }

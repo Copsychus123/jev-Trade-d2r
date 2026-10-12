@@ -6,7 +6,7 @@ import re
 from dataclasses import asdict, dataclass
 from typing import Any
 
-from jev_ultrafast.traderie.site import TRADERIE_D2R_URL
+from jev_ultrafast.traderie.site import TRADERIE_D2R_URL, TRADING_MARKERS
 
 SIGN_IN_PROMPT = "Please sign in to view offers"
 
@@ -206,7 +206,7 @@ def _card_affixes(mid_lines: list[str]) -> list[str]:
 def _trade_idx(clean_prefix: list[str]) -> int:
     """The index of the card line ("Trading For" or "Make an Offer") that ends its item section; -1 when absent."""
     for i, entry in enumerate(clean_prefix):
-        if entry in ("Trading For", "Make an Offer"):
+        if entry in TRADING_MARKERS:
             return i
     return -1
 
