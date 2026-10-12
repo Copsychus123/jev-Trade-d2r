@@ -348,6 +348,8 @@ function answerToken(line) {
   return content;
 }
 
+/** One trade row. `buyer_or_seller` is the "They Give" item line; the marker fallback puts the line above its marker
+ * there instead, a page shape nothing in this repo samples - so the name covers the main path and the twin keeps step. */
 function trade(buyerOrSeller, price, tradeTime) {
   return { buyer_or_seller: buyerOrSeller, price, trade_time: tradeTime, item_name: null, specs: null, platform: null, mode: null, ladder: null, game_version: null };
 }
@@ -444,6 +446,7 @@ function markerTrades(lines) {
   const trades = [];
   lines.forEach((line, idx) => {
     if (markers.includes(line.toLowerCase())) {
+      // The line above the marker, whatever the page puts there: unnamed on purpose (see `trade`).
       trades.push(
         trade(
           idx > 0 ? lines[idx - 1] : "Unknown",

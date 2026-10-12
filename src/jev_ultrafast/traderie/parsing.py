@@ -98,6 +98,8 @@ class ListingCard:
 
 @dataclass
 class TradeRecord:
+    # The item line of a "They Give" block. The marker fallback below puts the line above its marker here instead,
+    # and nothing in this repo samples that page shape - so the name describes the main path and the ambiguity stays.
     buyer_or_seller: str | None
     price: str
     trade_time: str
@@ -451,6 +453,8 @@ def _marker_trades(lines: list[str]) -> list[TradeRecord]:
         if any(marker.lower() == line.lower() for marker in TRADE_DONE_MARKERS):
             price = lines[i + 1] if i + 1 < len(lines) else ""
             trade_time = lines[i + 2] if i + 2 < len(lines) else ""
+            # What the page prints above the marker; no sample in this repo pins down what that is (this path has no
+            # fixture and no test), so it is recorded as it stands rather than given a name it might not deserve.
             buyer_or_seller = lines[i - 1] if i > 0 else "Unknown"
             trades.append(TradeRecord(
                 buyer_or_seller=buyer_or_seller,
