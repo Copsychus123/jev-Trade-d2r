@@ -10,6 +10,13 @@ first (same profile) and spends one real Jev query per run. Exit 0 pass, 1 faile
 and TYPESAFE_API_KEY is not needed. The plan follows the goal the backend builds: it scrolls the Trading list to the
 bottom when Load More batches were asked for (the panel's own phase-finish rule then makes the presses), answers DONE
 on the view it must end on, and clicks the page's Recent Trades tab before ending phase B.
+
+`--item` (default Harlequin Crest) is the name typed into the panel, `--load-more` (default 2) is how many times the
+載入更多 button is pressed before the query starts, and `--timeout` (default 300 s) is how long the panel may take
+before the run counts as a timeout. `--api URL` with `--invite CODE` targets a deployed backend instead of the local
+one (both must be given together, and `--stub-chooser` cannot be combined with them); `--hold N` keeps the window
+open for N seconds after the query, for a demo. The `--expect-*` flags assert the layer the query used, the name in
+the CSV file name and a 「找不到這個裝備」 outcome.
 """
 
 import argparse
@@ -623,9 +630,9 @@ def cleanup(chrome, backend) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="擴充功能真實 Chrome 端對端測試")
     parser.add_argument("--headed", action="store_true", help="顯示 Chrome 視窗（預設無視窗）")
-    parser.add_argument("--item", default="Harlequin Crest")
-    parser.add_argument("--load-more", type=int, default=2)
-    parser.add_argument("--timeout", type=int, default=300)
+    parser.add_argument("--item", default="Harlequin Crest", help="要查的商品名稱（面板的裝備名稱欄）")
+    parser.add_argument("--load-more", type=int, default=2, help="查詢前按幾次「載入更多」（按過時掛單要多於 50 筆）")
+    parser.add_argument("--timeout", type=int, default=300, help="查詢最多等幾秒（每 3 秒取樣一次側邊欄）")
     parser.add_argument("--api", help="測已部署的後端網址（需要同時給 --invite）；省略時用本機後端")
     parser.add_argument("--invite", help="已部署後端的邀請碼")
     parser.add_argument(

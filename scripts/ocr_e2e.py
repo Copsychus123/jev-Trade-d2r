@@ -14,6 +14,10 @@ Chrome, then in the side panel:
 It downloads the model files from www.modelscope.cn (the panel's auto-download flow) and closes the
 dedicated Chrome first. Writes artifacts/ocr-e2e/report.json only for a complete passing accuracy run (any other run
 goes to report-last.json, so the last accepted numbers survive). Exit 0 all good, 1 something failed, 2 environment.
+
+Flags: `--headed` shows the Chrome window (headless by default). `--skip-download` drops the C download group and
+`--skip-accuracy` drops the A/B accuracy and speed group, so a run can check just one part. `--truth` picks the tuned
+answer file inside scripts/data/ (default ocr_truth.json), and `--only` narrows the tuned list to the named pictures.
 """
 
 import argparse
@@ -562,10 +566,10 @@ def verdict(report: dict, floors: dict | None = None, holdout: dict | None = Non
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="截圖辨識真實 Chrome 端對端測試")
-    parser.add_argument("--headed", action="store_true")
+    parser.add_argument("--headed", action="store_true", help="顯示 Chrome 視窗（預設無視窗）")
     parser.add_argument("--only", help="只跑這些圖片檔（逗號分隔）")
-    parser.add_argument("--skip-download", action="store_true")
-    parser.add_argument("--skip-accuracy", action="store_true")
+    parser.add_argument("--skip-download", action="store_true", help="跳過 C 下載組（不檢查模型首次下載的流程）")
+    parser.add_argument("--skip-accuracy", action="store_true", help="跳過 A/B 準確度與速度組")
     parser.add_argument("--truth", default="ocr_truth.json", help="答案清單（在 scripts/data/ 裡）")
     args = parser.parse_args()
     truth = json.loads((DATA / args.truth).read_text(encoding="utf-8"))

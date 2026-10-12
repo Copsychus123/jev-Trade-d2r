@@ -1,5 +1,9 @@
 """Real-Chrome check of the demo page's result rendering: `uv run --group e2e python scripts/demo_e2e.py [--headed]`.
 
+`--headed` is accepted only so the whole e2e family shares one command line; it has no effect here, because this check
+always renders in the dedicated Chrome headless (`jev_ultrafast.browser.Browser` has no headed mode). Passing it prints
+a notice and the run continues the same way.
+
 The core flow's most visible artefact is the local demo page showing the two tables, and that page is the one
 player-facing surface with no automated check (the panel has `scan_e2e`, the readers have `ocr_e2e`). This script
 needs no quota, no Traderie login and no extension: it serves the demo's own static files from a throwaway server
@@ -242,7 +246,11 @@ def verdict(report: dict) -> list[str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Real-Chrome check of the demo page's result rendering.")
-    parser.add_argument("--headed", action="store_true", help="顯示 Chrome 視窗（預設無視窗）")
+    parser.add_argument(
+        "--headed",
+        action="store_true",
+        help="無作用：這個檢查一律用專用 Chrome 無視窗渲染（只為和其他 e2e 共用同一組參數而保留）",
+    )
     args = parser.parse_args()
     if args.headed:
         # The package's Browser always runs the dedicated Chrome headless; note it and continue.

@@ -18,6 +18,10 @@ The raw (Chinese, English) pairs of a full run are saved to scripts/data/item_pa
 when that file would exceed 300 KB, because only a small snapshot belongs in git). `--from-cache` rebuilds from that
 file without opening any website. Commit the snapshot after a full run so the rebuild does not depend on a
 git-ignored folder.
+
+`--reuse-products` skips the Traderie list and reuses the products already in `--out` (handy when only the names need
+re-reading); `--add-translations` goes further and reads only d2r.world's translation pages, adding their names to the
+`zh` table already in `--out`.
 """
 
 import argparse
@@ -610,7 +614,12 @@ async def main_async(
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--out", type=Path, default=OUT)
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=OUT,
+        help="where to write the table (default: extension/src/traderie/data/items.json)",
+    )
     parser.add_argument("--reuse-products", action="store_true", help="skip Traderie, reuse products already in --out")
     parser.add_argument(
         "--add-translations",

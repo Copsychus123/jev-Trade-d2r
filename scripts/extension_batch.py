@@ -8,7 +8,9 @@ reused; each case reloads the panel, types the input and presses start. Results 
 Every case is a real query against the deployed backend: it spends invite quota, up to JEV_CALL_LIMIT paid Jev calls
 and live Traderie page loads. The script prints that estimate and refuses to start without --yes. A failed case is
 run once only; --rerun-failed N repeats it up to N more times (each repeat costs the same again).
-The invite codes come from the environment, not the command line (command lines are visible to other programs).
+--only narrows the batch to the named case ids or group letters (for example A,D03) and --headed shows the Chrome window
+(headless by default). The invite codes come from the environment, not the command line (command lines are visible to
+other programs).
 Exit 0 all expected, 1 some cases failed, 2 environment problem or no --yes, 3 stopped by a site challenge.
 """
 
@@ -214,10 +216,10 @@ def load_done() -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="擴充功能批次端對端測試")
-    parser.add_argument("--api", required=True)
+    parser.add_argument("--api", required=True, help="已部署後端網址（每個案例都是一次真實查詢）")
     parser.add_argument("--yes", action="store_true", help="確認要花費真實額度與 Jev 呼叫（不給就只印預估後結束）")
     parser.add_argument("--rerun-failed", type=int, default=0, metavar="N", help="失敗的案例最多再跑 N 次（預設 0）")
-    parser.add_argument("--headed", action="store_true")
+    parser.add_argument("--headed", action="store_true", help="顯示 Chrome 視窗（預設無視窗）")
     parser.add_argument("--resume", action="store_true", help="跳過 results.jsonl 裡已完成的案例")
     parser.add_argument("--only", help="只跑這些案例（逗號分隔的 id 或類別字母，例如 A,D03）")
     args = parser.parse_args()
