@@ -665,6 +665,80 @@ test("a box dragged on the picture is the read region, and the button asks for a
   assert.deepEqual(canvasSizes, [[90, 50]], "only the boxed region was read");
 });
 
+test("a box under the 20x10 image-pixel minimum is refused; just over it is the region the read uses", async () => {
+  const s = setup({ seed: "present" }); // auto-read on: 辨識 stays hidden while no region is set
+  await settle(2);
+
+  s.paste([image()]);
+  await settle(5);
+  const preview = s.el("ocr-preview");
+  canvasSizes.length = 0; // the whole-picture auto-read is not what this test measures
+
+  // The preview shows its natural 640x480 at CSS size, so one CSS pixel is one image pixel: the dragged box is
+  // already in image pixels.
+  const drag = (width, height) => {
+    preview.fire("pointerdown", { clientX: 100, clientY: 100, pointerId: 1 });
+    preview.fire("pointermove", { clientX: 100 + width, clientY: 100 + height, pointerId: 1 });
+    preview.fire("pointerup", { clientX: 100 + width, clientY: 100 + height, pointerId: 1 });
+  };
+
+  drag(20, 10); // exactly the minimum on both axes: still a sliver
+  assert.equal(s.el("ocr-box").hidden, true, "a 20x10 box is refused");
+  assert.equal(s.el("ocr-go").hidden, true, "and leaves no region to read");
+  drag(30, 10);
+  assert.equal(s.el("ocr-go").hidden, true, "10 image pixels tall is too thin whatever the width");
+  drag(20, 40);
+  assert.equal(s.el("ocr-go").hidden, true, "20 image pixels wide is too thin whatever the height");
+
+  drag(21, 11); // one image pixel over each minimum
+  assert.equal(s.el("ocr-box").hidden, false, "a 21x11 box is kept");
+  assert.equal(s.el("ocr-go").hidden, false, "a boxed region means a manual read");
+  s.el("ocr-go").click();
+  await settle(5);
+  assert.deepEqual(canvasSizes, [[21, 11]], "the read used exactly the box, in image pixels");
+});
+
+test("the dragged region is scaled by the preview's width, not by its height", async () => {
+  const s = setup({ seed: "present" });
+  await settle(2);
+
+  const preview = s.el("ocr-preview");
+  preview.getBoundingClientRect = () => ({ left: 0, top: 0, width: 200, height: 100 }); // laid out twice as wide as tall
+  preview.naturalWidth = 400; // 400 image pixels across 200 CSS pixels: 2 image pixels per CSS pixel
+  s.paste([image()]);
+  await settle(5);
+  canvasSizes.length = 0;
+
+  preview.fire("pointerdown", { clientX: 10, clientY: 10, pointerId: 1 });
+  preview.fire("pointermove", { clientX: 40, clientY: 30, pointerId: 1 }); // a 30x20 CSS box
+  preview.fire("pointerup", { clientX: 40, clientY: 30, pointerId: 1 });
+
+  s.el("ocr-go").click();
+  await settle(5);
+  // 30*2 = 60 wide and 20*2 = 40 tall. A scale taken from the preview's height (400/100 = 4) would read 120x80.
+  assert.deepEqual(canvasSizes, [[60, 40]], "the region is in image pixels, scaled by width over width");
+});
+
+test("a drag the panel could not turn into numbers leaves no region, instead of reading {width: NaN}", async () => {
+  const s = setup({ seed: "present" });
+  await settle(2);
+
+  const preview = s.el("ocr-preview");
+  s.paste([image()]);
+  await settle(5);
+  canvasSizes.length = 0; // the whole-picture auto-read is not what this test measures
+
+  preview.fire("pointerdown", { clientX: 100, clientY: 100, pointerId: 1 });
+  // pointermove builds the box from the event's own coordinates, so a coordinate that is not a number leaves the box
+  // style unparsable ("NaNpx"). The read must be refused here, not handed a region of NaN pixels.
+  preview.fire("pointermove", { clientX: Number.NaN, clientY: Number.NaN, pointerId: 1 });
+  preview.fire("pointerup", { clientX: Number.NaN, clientY: Number.NaN, pointerId: 1 });
+
+  assert.equal(s.el("ocr-box").hidden, true, "a box that is not a number is refused");
+  assert.equal(s.el("ocr-go").hidden, true, "and leaves no region to read");
+  assert.deepEqual(canvasSizes, [], "and nothing was read again for it");
+});
+
 // --- supersede: a new picture or a closed panel drops the read in flight ----------------------------------------
 
 test("replacing the picture aborts the download in flight and leaves no notice behind", async () => {

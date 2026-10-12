@@ -19,20 +19,27 @@
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { register } from "node:module";
 import test from "node:test";
-import { fileURLToPath, pathToFileURL } from "node:url";
 
-const csvUrl = pathToFileURL(fileURLToPath(new URL("../../src/jev_ultrafast/static/csv.js", import.meta.url))).href;
+import { installStubResolver } from "./support/stubs.mjs";
+
 const configUrl = `data:text/javascript,${encodeURIComponent('export const API_BASE = "https://api.test";')}`;
-const loader = `export async function resolve(specifier, context, next) {
-  if (specifier.endsWith("csv.js")) return { url: ${JSON.stringify(csvUrl)}, shortCircuit: true };
-  if (specifier === "./config.js" && context.parentURL?.includes("/sidepanel.js")) {
-    return { url: ${JSON.stringify(configUrl)}, shortCircuit: true };
-  }
-  return next(specifier, context);
-}`;
-register(new URL("data:text/javascript;base64," + Buffer.from(loader).toString("base64")));
+
+// sidepanel.js alone meets an Agent stand-in: every other test stops at the query window, so the panel never builds an
+// Agent there, and this is the only seam that hands the run's choose/vetoBlocked over to a test. It records what the
+// panel asked for and then builds the real Agent, so the test drives the very callbacks the product passed.
+const agentUrl = new URL("../src/agent.js", import.meta.url).href;
+const agentStandIn = `data:text/javascript,${encodeURIComponent(
+  `import * as real from ${JSON.stringify(agentUrl)};
+export const newCallBudget = real.newCallBudget;
+export const Agent = {
+  create: (options) => (globalThis.__jevAgentCreates.push(options), real.Agent.create(options)),
+};`,
+)}`;
+installStubResolver([
+  { specifier: "./config.js", parent: "/sidepanel.js", url: configUrl },
+  { specifier: "./agent.js", parent: "/sidepanel.js", url: agentStandIn },
+]);
 
 // --- the shipped markup, so the fake starts where a browser starts --------------------------------------------
 
@@ -239,13 +246,14 @@ const flush = async (turns = 25) => {
 
 const realFetch = globalThis.fetch;
 
-async function boot({ storage = {}, fetchImpl = defaultFetch(), windowsCreate } = {}) {
+async function boot({ storage = {}, fetchImpl = defaultFetch(), windowsCreate, debuggerImpl } = {}) {
   const document = makeDocument();
   const store = { ...storage };
   const session = {};
   const calls = { fetch: [], local: [], tabs: [], windows: [] };
   const listeners = {};
 
+  globalThis.__jevAgentCreates = []; // the Agent stand-in appends here each time the panel builds one
   globalThis.document = document;
   globalThis.window = { addEventListener: (type, handler) => (listeners[type] ??= []).push(handler) };
   globalThis.Option = FakeOption;
@@ -272,6 +280,8 @@ async function boot({ storage = {}, fetchImpl = defaultFetch(), windowsCreate } 
       },
     },
     tabs: { create: async (options) => (calls.tabs.push(options), { id: 1 }) },
+    // A Tab is only ever constructed where windows.create succeeds, so a plain boot needs no debugger at all.
+    ...(debuggerImpl ? { debugger: debuggerImpl } : {}),
     windows: {
       create: async (options) => {
         calls.windows.push(options);
@@ -852,6 +862,115 @@ test("a refused invite with a stored code leaves the settings button in the bann
   await fire("banner-settings", "click");
   assert.equal(panel.document.body.dataset.view, "settings");
   assert.equal(get("part-settings").hidden, false);
+});
+
+// --- the agent a query builds (the window really opens here) ---------------------------------------------------
+
+const noEvents = { addListener() {}, removeListener() {} };
+
+/**
+ * One page, shaped the way cdp.js `observe` returns one (url, title, text, actions, scroll, marker). The debugger
+ * below answers the page scripts with it, so the table jump lands and the finder goes on to build the Agent.
+ */
+const PAGE = {
+  url: "https://www.traderie.com/diablo2resurrected/product/monarch",
+  title: "Monarch",
+  text: "Monarch\nTrading For\nMake an Offer",
+  actions: [],
+  scroll: 0,
+  marker: ["monarch"],
+};
+
+/** The page scripts the panel's Tab runs, each a sentinel so the fake debugger can tell one read from another. */
+const pageScriptFetch = defaultFetch({
+  "/page/snapshot.js": () => okText("__snapshot__"),
+  "/page/settle.js": () => okText("__settle__"),
+  "/page/settled_page.js": () => okText("__settledPage__"),
+  // The backend echoes the run it was asked for, so the panel's load-more count and cleaned name reach the Agent.
+  "/api/run/start": (_href, init) => {
+    const body = JSON.parse(init.body);
+    return okJson({ run_token: "tok-7f3", item_name: body.item_name, load_more: body.load_more, used: 3, limit: 5 });
+  },
+});
+
+const queryDebugger = () => ({
+  onDetach: noEvents,
+  onEvent: noEvents,
+  attach: async () => {},
+  detach: async () => {},
+  sendCommand: async (_target, method, params = {}) => {
+    if (method !== "Runtime.evaluate") return { result: {} };
+    const expression = params.expression;
+    if (expression === "document.readyState") return { result: { value: "complete" } };
+    if (expression.startsWith("__settle__")) return { result: { value: { capped: false, ms: 1, visibility: "visible" } } };
+    if (expression.startsWith("__settledPage__")) return { result: { value: PAGE } };
+    if (expression === "__snapshot__") return { result: { value: PAGE } };
+    return { result: { value: false } }; // the guard's challenge-frame probe and everything else boolean
+  },
+});
+
+/** A query that really opens its window: choose the name search, ask for two extra batches, type the name, start. */
+async function bootQuery(item = "  monarch ") {
+  const panel = await boot({
+    storage: { invite: "STORED" },
+    fetchImpl: pageScriptFetch,
+    debuggerImpl: queryDebugger(),
+    windowsCreate: async () => ({ id: 1, tabs: [{ id: 1 }] }),
+  });
+  await panel.fire("choose-name", "click");
+  panel.get("item").value = item;
+  await panel.fire("more-plus", "click");
+  await panel.fire("more-plus", "click");
+  await panel.fire("start", "click"); // the choose fetch has no answer, so the run ends as a problem - the Agent is built
+  return panel;
+}
+
+test("the query builds its Agent with the run's cleaned name and the load-more rule the run carries", async () => {
+  const panel = await bootQuery("  monarch ");
+  const built = globalThis.__jevAgentCreates;
+
+  // The table jump really opened the product window and the finder went on to make exactly one Agent.
+  assert.deepEqual(panel.calls.windows, [
+    { url: "https://www.traderie.com/diablo2resurrected/product/monarch", state: "minimized" },
+  ]);
+  assert.equal(built.length, 1);
+  // The two kinds of search the Agent reads, and the rule that ends a phase after the count the run asked for.
+  assert.deepEqual(built[0].phases, ["trading", "recent_trades"]);
+  assert.deepEqual(built[0].finishPhaseAfter, ["Load More", 2]);
+  // "  monarch " was cleaned to the table's own spelling before the run, and that is the text the Agent types.
+  assert.equal(built[0].text, "Monarch");
+});
+
+test("the choose the query builds posts the run's own token", async () => {
+  const panel = await bootQuery();
+  const choose = globalThis.__jevAgentCreates[0].choose;
+  const asked = () => panel.calls.fetch.filter((call) => call.href.endsWith("/api/choose")).map((call) => JSON.parse(call.init.body));
+
+  // The run's own first choice (its fetch has no answer, so the call rejects) ...
+  await assert.rejects(choose(PAGE, "trading", []));
+  // ... and one more call through the same callback: every one of them carries the token the backend issued.
+  assert.ok(asked().length >= 2);
+  for (const body of asked()) assert.equal(body.run_token, "tok-7f3");
+});
+
+test("the veto the query builds fires on a search page that lists the item, quiet on the product page", async () => {
+  const panel = await bootQuery();
+  const vetoBlocked = globalThis.__jevAgentCreates[0].vetoBlocked;
+
+  // A search page whose own headline names a different item, yet lists a clickable link named exactly the run's item:
+  // Jev's BLOCKED verdict on such a page is the misjudgement this predicate exists to catch.
+  const searchPage = {
+    url: "https://www.traderie.com/diablo2resurrected?search=monarch",
+    title: "Bone Wand",
+    text: "Best Match\nBone Wand\nMonarch",
+    actions: [{ kind: "click", role: "link", label: "Monarch" }],
+  };
+  // The wanted item's own product page lists the same link but is not a search page: nothing to reconsider here.
+  const productPage = { ...searchPage, url: PAGE.url, title: "Monarch", text: "Monarch" };
+
+  assert.equal(vetoBlocked(searchPage), true);
+  assert.equal(vetoBlocked(productPage), false);
+  assert.equal(panel.document.body.dataset.view, "problem");
 });
 
 // --- not covered -----------------------------------------------------------------------------------------------

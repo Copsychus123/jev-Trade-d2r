@@ -8,18 +8,11 @@
 // real source file, so the shipped module runs as it is written.
 
 import assert from "node:assert/strict";
-import { register } from "node:module";
 import test from "node:test";
-import { fileURLToPath, pathToFileURL } from "node:url";
 
-const csvUrl = pathToFileURL(fileURLToPath(new URL("../../src/jev_ultrafast/static/csv.js", import.meta.url))).href;
-const loader = `export async function resolve(specifier, context, next) {
-  if (specifier === "./csv.js" && context.parentURL?.endsWith("/result-actions.js")) {
-    return { url: ${JSON.stringify(csvUrl)}, shortCircuit: true };
-  }
-  return next(specifier, context);
-}`;
-register(new URL("data:text/javascript;base64," + Buffer.from(loader).toString("base64")));
+import { installStubResolver } from "./support/stubs.mjs";
+
+installStubResolver();
 
 const { createResultActions } = await import("../src/result-actions.js");
 

@@ -14,18 +14,11 @@
 // real source file, so the shipped module runs as it is written.
 
 import assert from "node:assert/strict";
-import { register } from "node:module";
 import test from "node:test";
-import { fileURLToPath, pathToFileURL } from "node:url";
 
-const csvUrl = pathToFileURL(fileURLToPath(new URL("../../src/jev_ultrafast/static/csv.js", import.meta.url))).href;
-const loader = `export async function resolve(specifier, context, next) {
-  if (specifier === "../csv.js" && context.parentURL?.endsWith("/scan/scan-panel.js")) {
-    return { url: ${JSON.stringify(csvUrl)}, shortCircuit: true };
-  }
-  return next(specifier, context);
-}`;
-register(new URL("data:text/javascript;base64," + Buffer.from(loader).toString("base64")));
+import { installStubResolver } from "./support/stubs.mjs";
+
+installStubResolver();
 
 import { indexTables } from "../src/traderie/lookup.js";
 import { downscale } from "../src/scan/tooltip.js";
@@ -259,6 +252,7 @@ globalThis.OffscreenCanvas = FakeOffscreenCanvas;
 globalThis.createImageBitmap = async (frame) => {
   env.bitmaps.push(frame.timestamp);
   if (env.failFrames.has(frame.timestamp)) throw new Error("boom"); // a decoder that gave up on this frame
+  if (env.holdFrames.has(frame.timestamp)) await new Promise((resolve) => (env.held = resolve)); // a decoder still at work
   return {
     width: frame.img.width,
     height: frame.img.height,
@@ -336,6 +330,8 @@ function setup({ pick, missing = { names: [], bytes: 0 }, download = async () =>
     canvases: [],
     bitmaps: [],
     failFrames: new Set(),
+    holdFrames: new Set(),
+    held: null,
     frames: [],
     readers: [],
     tracks: [],
@@ -403,10 +399,12 @@ function makeOcr() {
     recognize(blob) {
       api.reads.push(blob);
       let resolve;
-      const promise = new Promise((r) => {
+      let reject;
+      const promise = new Promise((r, j) => {
         resolve = r;
+        reject = j;
       });
-      api.pending.push({ blob, resolve });
+      api.pending.push({ blob, resolve, reject });
       return promise;
     },
     match(text) {
@@ -440,11 +438,15 @@ function darkFrame(timestamp) {
 }
 
 /**
- * Drains the microtask queue until `done()` holds. Every step of the panel's path is a microtask with these fakes
- * (the capture loop, the crop, the OCR, the render), so nothing has to sleep for it.
+ * Runs the panel's queued work until `done()` holds, then asserts it did. The wait is driven by that observable
+ * state, one turn of the event loop at a time (setImmediate: a yield to the loop, not a timer and not a sleep), so a
+ * loaded machine cannot starve it the way a fixed microtask budget could. The count is only a guard against a panel
+ * that really is stuck, and it is far above what any test here needs (the busiest wait takes a few turns).
  */
-async function settle(done, label, limit = 4000) {
-  for (let i = 0; i < limit && !done(); i++) await Promise.resolve();
+async function settle(done, label, limit = 10000) {
+  for (let i = 0; i < limit && !done(); i++) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
   assert.ok(done(), `the panel never settled: ${label}`);
 }
 
@@ -486,6 +488,12 @@ const settleReads = (n) => settle(() => env.ocr.reads.length === n, `${n} crops 
 
 /** Waits until the frame loop is over: every frame pushed so far has been through onFrame and closed. */
 const drained = () => settle(() => env.readers[0].drained, "the read loop to end");
+
+/** Lets the one frame the fake decoder is holding (env.holdFrames) through, so the read loop goes on to the rest. */
+function releaseFrame() {
+  env.held();
+  env.held = null;
+}
 
 /**
  * Answers crop `i` with `text` and waits until the panel has taken the answer (match() ran for it), rather than
@@ -841,6 +849,35 @@ test("a read loop that gave up ends the capture and puts the reason in front of 
   assert.equal(node("scan-stop").hidden, true);
   assert.equal(node("scan-start").disabled, false);
   assert.deepEqual(listEl().children, []);
+});
+
+test("a read the engine refused shows 辨識失敗 in front of the live status, and the next crop clears it", async () => {
+  setup();
+  await startScan();
+  // The second panel's last frame waits in the decoder, so the capture is still feeding frames when the first read
+  // fails: that is what lets the next crop reach the engine in this same run (a stable tooltip re-enters the pump).
+  env.holdFrames.add(400000);
+  deliver([{ box: PANEL_A }, { box: PANEL_B, stripes: 0.3 }]);
+  await settleReads(1); // panel A's crop is at the engine and stays there
+  env.ocr.pending[0].reject(new Error("engine exploded"));
+  await settle(() => statusText().includes("辨識失敗"), "the failure to reach the status line");
+
+  // Not statusText: a mid-scan failure must be visible now, in front of the live count.
+  assert.equal(statusText(), "辨識失敗：engine exploded 掃描中：已記錄 0 件，待辨識 0 件");
+  assert.deepEqual(listEl().children, []);
+
+  releaseFrame();
+  await settleReads(2);
+  fireTick(); // the second's tick is what puts the waiting count on the status line
+  // The failure stays up while the next read is in flight (that read has already left the queue): it is only retired
+  // by a read that lands, not by one that starts.
+  assert.equal(statusText(), "辨識失敗：engine exploded 掃描中：已記錄 0 件，待辨識 0 件");
+
+  // The read that works is what retires the failure: it clears at the point the panel learns a later read landed.
+  env.ocr.pending[1].resolve(AFFIX_TEXT);
+  await settle(() => listEl().children.length === 1, "the record of crop 1 to land");
+  assert.equal(statusText(), "掃描中：已記錄 1 件，待辨識 0 件");
+  assert.equal(listEl().children[0].dataset.name, "");
 });
 
 test("a long run of dark frames warns about a black capture, and a picture coming back drops the advice", async () => {

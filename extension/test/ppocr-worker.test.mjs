@@ -9,10 +9,10 @@
 // worker, because the module's `pipeline` is private state that can never be reset from outside.
 
 import assert from "node:assert/strict";
-import { register } from "node:module";
 import test from "node:test";
 
 import { createOcrEngine } from "../src/ocr/engine.js";
+import { installStubResolver } from "./support/stubs.mjs";
 
 const OCR_DIR = new URL("../src/ocr/", import.meta.url);
 
@@ -60,16 +60,10 @@ const ortUrl = dataUrl(ORT_SOURCE);
 const libUrl = dataUrl(LIB_SOURCE);
 
 // Only the worker's own two specifiers are rewritten, exactly like the neighbours' csv/config hooks.
-const loader = `export async function resolve(specifier, context, next) {
-  if (specifier === "../vendor/ort/ort.min.mjs" && context.parentURL?.includes("ppocr-worker.js")) {
-    return { url: ${JSON.stringify(ortUrl)}, shortCircuit: true };
-  }
-  if (specifier === "./ppocrlib.js" && context.parentURL?.includes("ppocr-worker.js")) {
-    return { url: ${JSON.stringify(libUrl)}, shortCircuit: true };
-  }
-  return next(specifier, context);
-}`;
-register(new URL("data:text/javascript;base64," + Buffer.from(loader).toString("base64")));
+installStubResolver([
+  { specifier: "../vendor/ort/ort.min.mjs", parent: "ppocr-worker.js", url: ortUrl },
+  { specifier: "./ppocrlib.js", parent: "ppocr-worker.js", url: libUrl },
+]);
 
 const ort = await import(ortUrl); // the very namespace object the worker imports, so identity can be asserted
 
