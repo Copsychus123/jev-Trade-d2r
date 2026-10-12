@@ -283,6 +283,29 @@ def _ask_once(state, goal, history, elements, targets, controls, allow_blocked, 
     return body, result, _resolve(result, operations, targets, controls)
 
 
+def _reask_without_operation(state, goal, history, elements, targets, controls, allow_blocked, *, key, limits,
+                             body, result, decision, timeout, deadline):
+    """Ask Jev once more without the operation whose target it was unsure about. Returns the first request's values
+    unless the target probability is below MIN_TARGET_PROBABILITY; the decision then carries `reasked` and the usage
+    sums both requests. A second ask that does not fit before the deadline fails instead of acting on the uncertain
+    target."""
+    usage = dict(result.get("usage") or {})
+    target = decision["target"]
+    if target is not None and decision["target_probabilities"][target] < MIN_TARGET_PROBABILITY:
+        one_call = HTTP_TIMEOUT_SECONDS if timeout is None else timeout
+        if deadline is not None and deadline - time.monotonic() < one_call:
+            raise RuntimeError("Jev was unsure of the target and there is no time to ask again; no action executed.")
+        reasked = {"operation": decision["operation"], "target_probability": decision["target_probabilities"][target]}
+        remaining = {name: found for name, found in targets.items() if name != decision["operation"]}
+        body, result, decision = _ask_once(
+            state, goal, history, elements, remaining, controls, allow_blocked, key=key, limits=limits
+        )
+        for name, value in (result.get("usage") or {}).items():
+            usage[name] = usage.get(name, 0) + value
+        return body, result, decision, usage, reasked
+    return body, result, decision, usage, None
+
+
 def choose(state, goal, history, typed=None, allow_blocked=True, *, timeout=None, deadline=None):
     """Ask Jev for the next operation and target. `timeout` limits one request and `deadline` (time.monotonic()
     seconds) all of them together; a re-ask that does not fit before the deadline is not made and the step fails
@@ -297,20 +320,10 @@ def choose(state, goal, history, typed=None, allow_blocked=True, *, timeout=None
     body, result, decision = _ask_once(
         state, goal, history, elements, targets, controls, allow_blocked, key=key, limits=limits
     )
-    usage = dict(result.get("usage") or {})
-    reasked = None
-    target = decision["target"]
-    if target is not None and decision["target_probabilities"][target] < MIN_TARGET_PROBABILITY:
-        one_call = HTTP_TIMEOUT_SECONDS if timeout is None else timeout
-        if deadline is not None and deadline - time.monotonic() < one_call:
-            raise RuntimeError("Jev was unsure of the target and there is no time to ask again; no action executed.")
-        reasked = {"operation": decision["operation"], "target_probability": decision["target_probabilities"][target]}
-        remaining = {name: found for name, found in targets.items() if name != decision["operation"]}
-        body, result, decision = _ask_once(
-            state, goal, history, elements, remaining, controls, allow_blocked, key=key, limits=limits
-        )
-        for name, value in (result.get("usage") or {}).items():
-            usage[name] = usage.get(name, 0) + value
+    body, result, decision, usage, reasked = _reask_without_operation(
+        state, goal, history, elements, targets, controls, allow_blocked,
+        key=key, limits=limits, body=body, result=result, decision=decision, timeout=timeout, deadline=deadline,
+    )
     return {
         **decision,
         "usage": usage,
