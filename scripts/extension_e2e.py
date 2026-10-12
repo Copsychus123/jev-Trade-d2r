@@ -33,7 +33,7 @@ E2E_DIST = ROOT / "extension" / "dist-e2e"  # never extension/dist: that one is 
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _cdp import Environment, attach  # noqa: E402
+from _cdp import Environment, attach, new_tab  # noqa: E402
 from stub_backend import STUB_SERVER  # noqa: E402
 
 from jev_ultrafast.chrome import CHROME_PORT, PROFILE_DIR, chrome_binary  # noqa: E402
@@ -241,7 +241,7 @@ def load_extension() -> str:
 
 def open_panel(ext_id: str) -> str:
     url = urllib.parse.quote(f"chrome-extension://{ext_id}/sidepanel.html", safe=":/?=")
-    return httpx.put(f"http://127.0.0.1:{DEBUG_PORT}/json/new?{url}").json()["webSocketDebuggerUrl"]
+    return new_tab(DEBUG_PORT, url)["webSocketDebuggerUrl"]
 
 
 def start_chrome(headed: bool, extra_args: tuple[str, ...] = ()) -> subprocess.Popen:

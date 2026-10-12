@@ -411,6 +411,45 @@ function publishRun(session) {
   };
 }
 
+// The two run factories below take these instead of writing the panel's own state: what they touch stays visible where
+// they are built, in start().
+const setQuota = (next) => { quota = next; };
+const setAgent = (next) => { agent = next; };
+
+/**
+ * The backend call that `findAndRead` starts each run with: the invite belongs to the whole query, and only a run the
+ * backend accepted updates the quota and is worth remembering.
+ */
+function startRunRequest({ invite, rememberInvite, setQuota }) {
+  return async (args) => {
+    const run = await startRun(API_BASE, { invite, ...args });
+    setQuota({ used: run.used, limit: run.limit });
+    await rememberInvite(invite);
+    return run;
+  };
+}
+
+/**
+ * The agent a run is read with: its choose / veto callbacks close over the run token the query resolved to and that
+ * run's own item name, and the panel keeps the agent (the status line and the progress read it).
+ */
+function agentFactory({ session, callBudget, setAgent }) {
+  return async (tab, run) => {
+    const made = await Agent.create({
+      callBudget,
+      tab,
+      phases: ["trading", "recent_trades"],
+      text: run.item_name,
+      finishPhaseAfter: phaseFinishRule(run.load_more),
+      choose: (page, phase, history, options = {}) =>
+        chooseNext(API_BASE, { runToken: session.run.run_token, phase, page, history, noBlock: options.noBlock }),
+      vetoBlocked: (page) => searchShowsItem(page, run.item_name),
+    });
+    setAgent(made);
+    return made;
+  };
+}
+
 async function start() {
   if (running) return;
   if (!queryMode) return;
@@ -428,27 +467,10 @@ async function start() {
       tables: await loadTables(),
       tableStats,
       loadMore,
-      startRun: async (args) => {
-        const run = await startRun(API_BASE, { invite, ...args });
-        quota = { used: run.used, limit: run.limit };
-        await rememberInvite(invite);
-        return run;
-      },
+      startRun: startRunRequest({ invite, rememberInvite, setQuota }),
       pickBase: (args) => pickBase(API_BASE, args),
       openTab: (url) => Tab.open(url, scripts),
-      makeAgent: async (tab, run) => {
-        agent = await Agent.create({
-          callBudget,
-          tab,
-          phases: ["trading", "recent_trades"],
-          text: run.item_name,
-          finishPhaseAfter: phaseFinishRule(run.load_more),
-          choose: (page, phase, history, options = {}) =>
-            chooseNext(API_BASE, { runToken: session.run.run_token, phase, page, history, noBlock: options.noBlock }),
-          vetoBlocked: (page) => searchShowsItem(page, run.item_name),
-        });
-        return agent;
-      },
+      makeAgent: agentFactory({ session, callBudget, setAgent }),
       market,
       session,
       shouldStop: () => stopRequested,

@@ -13,7 +13,7 @@ SOURCE = HERE.parents[1] / "extension" / "src" / "traderie" / "data" / "items.js
 MAX_BASE_NAME = 80
 
 
-def is_plain(text) -> bool:
+def is_goal_safe(text) -> bool:
     """Text that is safe inside the goal: no control or invisible format characters (Cc, Cf) and no double quote,
     which frames the item name in the goal."""
     return (
@@ -29,7 +29,7 @@ def load(path: Path | None = None) -> tuple[str, ...]:
     valid = (
         isinstance(names, list)
         and names
-        and all(is_plain(n) and n == n.strip() and 0 < len(n) <= MAX_BASE_NAME for n in names)
+        and all(is_goal_safe(n) and n == n.strip() and 0 < len(n) <= MAX_BASE_NAME for n in names)
         and len(set(names)) == len(names)
     )
     if not valid:

@@ -72,7 +72,7 @@ def _clean_item(raw) -> str:
         raise ValueError("請輸入裝備名稱") from None
     if len(item) > MAX_ITEM_CHARS:
         raise ValueError("裝備名稱太長")
-    if not bases.is_plain(item):
+    if not bases.is_goal_safe(item):
         raise ValueError("裝備名稱含有不允許的字元")
     return item
 

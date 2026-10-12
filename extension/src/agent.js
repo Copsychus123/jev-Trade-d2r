@@ -330,7 +330,20 @@ export class Agent {
     if (budget.used + 2 > JEV_CALL_LIMIT) throw new Error(`Jev 呼叫次數已達這次查詢的上限（${JEV_CALL_LIMIT} 次），查詢已停止`);
     let decision = await this._choose(state.page, state.phase, phaseHistory);
     budget.used += decision.model_calls ?? 0;
-    // Jev gave up on a page the caller can see is fine: ask once more without the BLOCKED option.
+    decision = await this._vetoAndRechoose(state, phaseHistory, decision, budget);
+    state.decision = decision;
+    state.decisions.push({
+      ...state.decision,
+      fingerprint: state.page.fingerprint,
+      elapsed_ms: this._elapsedMs(),
+      ...this._decisionInfo(state),
+    });
+    state.status = "predicted";
+    return this.snapshot();
+  }
+
+  /** Jev gave up on a page the caller can see is fine: ask once more without the BLOCKED option. */
+  async _vetoAndRechoose(state, phaseHistory, decision, budget) {
     if (
       decision.choice === "BLOCKED" &&
       this.vetoBlocked?.(state.page) &&
@@ -343,15 +356,7 @@ export class Agent {
       decision = await this._choose(state.page, state.phase, phaseHistory, { noBlock: true });
       budget.used += decision.model_calls ?? 0;
     }
-    state.decision = decision;
-    state.decisions.push({
-      ...state.decision,
-      fingerprint: state.page.fingerprint,
-      elapsed_ms: this._elapsedMs(),
-      ...this._decisionInfo(state),
-    });
-    state.status = "predicted";
-    return this.snapshot();
+    return decision;
   }
 
   /** The controller's handoff: re-observe the page and count the next phase's actions from here. */
@@ -386,13 +391,15 @@ export class Agent {
       state.elapsed_ms = this._elapsedMs();
       return this.snapshot();
     }
-    const repeated = state.history.slice(-3);
-    state.status =
-      repeated.length === 3 && repeated.every((h) => h.page_changed === false && h.kind !== "wait")
-        ? "blocked"
-        : "ready";
+    state.status = this._isStuckRepeating(state) ? "blocked" : "ready";
     if (state.status === "ready") this._finishPhaseByRule(state);
     return this.snapshot();
+  }
+
+  /** The last three steps were non-wait actions that each left the page unchanged: this run cannot progress. */
+  _isStuckRepeating(state) {
+    const repeated = state.history.slice(-3);
+    return repeated.length === 3 && repeated.every((h) => h.page_changed === false && h.kind !== "wait");
   }
 
   /** A DONE or BLOCKED choice is a verdict about the page: it only stands while the page is still the same one. */

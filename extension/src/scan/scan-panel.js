@@ -21,6 +21,78 @@ const SLOW_SECONDS = 3;
 const BLACK_MESSAGE = "擷取到的是黑畫面：請把遊戲改成「視窗化全螢幕」。";
 const SLOW_MESSAGE = "遊戲蓋住 Chrome 時畫面會變慢：請把遊戲設為視窗模式並與 Chrome 並排，或用第二個螢幕。";
 
+// ---- the pieces that need no per-panel state: a crop's read, a list row, the stats line -------------------------
+
+/**
+ * One queued crop through the engine: read it, match what it says, and let the session keep the record the two make
+ * (it refuses one with neither a name nor an affix line, and one whose crop came from a cleared run). The read's own
+ * seconds are what 平均辨識 averages. `onRead` runs the moment the engine answered and before the record lands, so
+ * the screen drops an earlier failure at the point the panel learns a later read worked.
+ */
+async function processScanJob(job, { ocr, tables, session, onRead }) {
+  const started = performance.now();
+  const text = await ocr.recognize(job.blob);
+  onRead();
+  const candidates = ocr.match(text);
+  const match = candidates[0] ?? null;
+  session.stats.ocrSeconds += (performance.now() - started) / 1000;
+  const name = match?.name ?? null;
+  session.addRecord(
+    {
+      at: new Date(),
+      name,
+      zh: name ? chineseName(name, tables, match.matched) : "",
+      kind: match?.kind ?? null,
+      base: baseCandidate(candidates),
+      conditions: parseAffixLines(text).conditions,
+      text,
+    },
+    job.generation, // a crop taken before 清除紀錄 does not come back as a record
+  );
+}
+
+/** A `.link` button for a record at `index`, carrying the index and running `onClick`. */
+function linkButton(text, index, onClick) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "link";
+  button.dataset.index = String(index);
+  button.textContent = text;
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+/** One `<li>` per record: the name line, the 類型/詞綴 line and the two search buttons. */
+function recordListItem(record, index, { onSearchName, onSearchStats }) {
+  const cells = recordCells(record); // one source of truth for 類型 and 詞綴
+  const li = document.createElement("li");
+  li.dataset.index = String(index);
+  li.dataset.name = record.name ?? "";
+  li.dataset.kind = record.kind ?? "";
+  const line1 = document.createElement("div");
+  line1.className = "line1";
+  const name = document.createElement("strong");
+  name.textContent = record.name ? cells[1] + (cells[2] ? `（${cells[2]}）` : "") : "沒認出名稱";
+  line1.append(name);
+  const line2 = document.createElement("div");
+  line2.className = "line2";
+  line2.textContent = `${cells[0].slice(11)} · ${cells[3]}${cells[4] ? ` · ${cells[4]}` : ""}`;
+  const actions = document.createElement("div");
+  actions.className = "actions";
+  const precise = linkButton("精準搜尋", index, () => onSearchName(record));
+  precise.disabled = !record.name; // nothing to look up without a name
+  actions.append(precise, linkButton("模糊搜尋", index, () => onSearchStats(record)));
+  li.append(line1, line2, actions);
+  return li;
+}
+
+/** The 掃描統計 line: this second's frame rate, the run's counts, and the average read ("—" until one has landed). */
+function statsLine(stats, fps) {
+  const { detected, skipped, dropped, read, ocrSeconds } = stats;
+  const average = read ? (ocrSeconds / read).toFixed(1) : "—";
+  return `每秒畫面 ${fps}、偵測 ${detected}、略過 ${skipped}、丟棄 ${dropped}、平均辨識 ${average} 秒`;
+}
+
 export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
   const session = createScanSession();
   let capture = null;
@@ -39,6 +111,8 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
 
   const detect = new OffscreenCanvas(1, 1);
   const crop = new OffscreenCanvas(1, 1);
+  // What every list item's two search buttons carry; built once so a redraw allocates nothing per record.
+  const searches = { onSearchName, onSearchStats };
 
   // ---- reading one frame ------------------------------------------------------------------------------------------
 
@@ -111,31 +185,17 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
 
   // ---- OCR, one crop at a time -----------------------------------------------------------------------------------
 
+  // A read that came back is what retires the previous errorText: it runs while the job that read it is still going.
+  const onRead = () => {
+    errorText = "";
+  };
+
   async function pump() {
     if (pumping) return;
     pumping = true;
     try {
       while (session.queue.length) {
-        const job = session.take();
-        const started = performance.now();
-        const text = await ocr.recognize(job.blob);
-        errorText = ""; // a later read worked: the old failure is no longer the current state
-        const candidates = ocr.match(text);
-        const match = candidates[0] ?? null;
-        session.stats.ocrSeconds += (performance.now() - started) / 1000;
-        const name = match?.name ?? null;
-        session.addRecord(
-          {
-            at: new Date(),
-            name,
-            zh: name ? chineseName(name, tables, match.matched) : "",
-            kind: match?.kind ?? null,
-            base: baseCandidate(candidates),
-            conditions: parseAffixLines(text).conditions,
-            text,
-          },
-          job.generation, // a crop taken before 清除紀錄 does not come back as a record
-        );
+        await processScanJob(session.take(), { ocr, tables, session, onRead });
         renderScreen();
       }
     } catch (error) {
@@ -165,10 +225,7 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
   }
 
   function renderStats() {
-    const { detected, skipped, dropped, read, ocrSeconds } = session.stats;
-    const average = read ? (ocrSeconds / read).toFixed(1) : "—";
-    $("scan-stats").textContent =
-      `每秒畫面 ${fps}、偵測 ${detected}、略過 ${skipped}、丟棄 ${dropped}、平均辨識 ${average} 秒`;
+    $("scan-stats").textContent = statsLine(session.stats, fps);
   }
 
   /** Everything the screen says about the session at once: the record list and the two readouts under it. */
@@ -178,45 +235,10 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
     renderStats();
   }
 
-  /** A `.link` button for a record at `index`, carrying the index and running `onClick`. */
-  function linkButton(text, index, onClick) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "link";
-    button.dataset.index = String(index);
-    button.textContent = text;
-    button.addEventListener("click", onClick);
-    return button;
-  }
-
-  /** One `<li>` per record: the name line, the 類型/詞綴 line and the two search buttons. */
-  function recordElement(record, index) {
-    const cells = recordCells(record); // one source of truth for 類型 and 詞綴
-    const li = document.createElement("li");
-    li.dataset.index = String(index);
-    li.dataset.name = record.name ?? "";
-    li.dataset.kind = record.kind ?? "";
-    const line1 = document.createElement("div");
-    line1.className = "line1";
-    const name = document.createElement("strong");
-    name.textContent = record.name ? cells[1] + (cells[2] ? `（${cells[2]}）` : "") : "沒認出名稱";
-    line1.append(name);
-    const line2 = document.createElement("div");
-    line2.className = "line2";
-    line2.textContent = `${cells[0].slice(11)} · ${cells[3]}${cells[4] ? ` · ${cells[4]}` : ""}`;
-    const actions = document.createElement("div");
-    actions.className = "actions";
-    const precise = linkButton("精準搜尋", index, () => onSearchName(record));
-    precise.disabled = !record.name; // nothing to look up without a name
-    actions.append(precise, linkButton("模糊搜尋", index, () => onSearchStats(record)));
-    li.append(line1, line2, actions);
-    return li;
-  }
-
   function renderRecords() {
     const list = $("scan-list");
     list.replaceChildren();
-    session.records.forEach((record, index) => list.append(recordElement(record, index)));
+    session.records.forEach((record, index) => list.append(recordListItem(record, index, searches)));
     list.hidden = !session.records.length;
     for (const id of ["scan-csv", "scan-clear"]) $(id).disabled = !session.records.length;
   }

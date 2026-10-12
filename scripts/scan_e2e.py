@@ -26,10 +26,8 @@ import time
 import urllib.parse
 from pathlib import Path
 
-import httpx
-
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _cdp import Environment, attach  # noqa: E402
+from _cdp import Environment, attach, new_tab  # noqa: E402
 from _cdp import Panel as CdpPanel  # noqa: E402
 from extension_e2e import (  # noqa: E402
     DEBUG_PORT,
@@ -117,8 +115,7 @@ class Panel(CdpPanel):
 def open_sim() -> str:
     """Opens the sim page as its own tab and returns the tab's debugger websocket URL."""
     url = SIM.resolve().as_uri()
-    target = httpx.put(f"http://127.0.0.1:{DEBUG_PORT}/json/new?{urllib.parse.quote(url, safe=':/')}").json()
-    return target["webSocketDebuggerUrl"]
+    return new_tab(DEBUG_PORT, urllib.parse.quote(url, safe=":/"))["webSocketDebuggerUrl"]
 
 
 async def sim_state(sim) -> dict:

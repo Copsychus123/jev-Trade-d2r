@@ -6,6 +6,20 @@ import { ModelError, PPOCR, createModelManager, formatMB, idbStore } from "./mod
 import { $ } from "../dom.js";
 import { labelWithChinese } from "../traderie/lookup.js";
 
+/**
+ * The dragged box as a read region: the box is drawn in CSS pixels, the read needs image pixels, and a sliver thinner
+ * than a name line is not worth a read at all. Pure, so the crop rule can be reasoned about without the DOM.
+ */
+function cropRegionFromDrag({ left, top, width, height }, previewRect, naturalWidth) {
+  const toImagePixels = (value) => Math.round(parseFloat(value) * (naturalWidth / previewRect.width));
+  const w = toImagePixels(width);
+  const h = toImagePixels(height);
+  // A sliver thinner than a name line is not worth a read. Written with `>` so a box that is not a number is refused
+  // here too, exactly as the inline version did.
+  if (!(w > 20 && h > 10)) return null;
+  return { x: toImagePixels(left), y: toImagePixels(top), width: w, height: h };
+}
+
 export function initOcrPanel({ tables, onPick, onText = () => {}, onImage, isBusy }) {
   const manager = createModelManager({ store: idbStore() });
   const index = buildMatchIndex(tables);
@@ -119,10 +133,7 @@ export function initOcrPanel({ tables, onPick, onText = () => {}, onImage, isBus
       drag.active = false;
       if (box.hidden) return;
       const rect = preview.getBoundingClientRect();
-      const scale = preview.naturalWidth / rect.width;
-      const w = Math.round(parseFloat(box.style.width) * scale);
-      const h = Math.round(parseFloat(box.style.height) * scale);
-      region = w > 20 && h > 10 ? { x: Math.round(parseFloat(box.style.left) * scale), y: Math.round(parseFloat(box.style.top) * scale), width: w, height: h } : null;
+      region = cropRegionFromDrag(box.style, rect, preview.naturalWidth);
       if (!region) box.hidden = true;
       updateGo(); // a box means the player wants a manual read
     });

@@ -104,10 +104,16 @@ async def attach(ws_url: str, panel_class=Panel, **options):
         yield panel_class(ws, **options)
 
 
+def new_tab(port: int, url: str = "about:blank", *, timeout: float = 5.0) -> dict:
+    """Ask the Chrome on `port` for a new tab and return its `/json` target (websocket URL and id); the tab is left
+    open for the caller to drive and close. `url` is the part after `/json/new?` and is inserted as given."""
+    return httpx.put(f"http://127.0.0.1:{port}/json/new?{url}", timeout=timeout).json()
+
+
 @asynccontextmanager
 async def open_tab(port: int, panel_class=Panel, **options):
     """A new blank tab in the Chrome listening on `port`; the tab is closed on exit."""
-    target = httpx.put(f"http://127.0.0.1:{port}/json/new?about:blank", timeout=10).json()
+    target = new_tab(port, timeout=10)
     try:
         async with websockets.connect(target["webSocketDebuggerUrl"], max_size=None) as ws:
             yield panel_class(ws, **options)
