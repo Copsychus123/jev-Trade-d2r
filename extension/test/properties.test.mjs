@@ -10,7 +10,6 @@ import {
   ensureProperties,
   loadProperties,
   normalizeProperties,
-  propertiesAge,
 } from "../src/traderie/properties.js";
 
 const DAY = 24 * 3600 * 1000;
@@ -133,14 +132,6 @@ test("a damaged stored value counts as no copy", async () => {
   assert.equal(await cachedProperties(new FakeStore({ [PROPERTIES_KEY]: { fetchedAt: "yesterday", properties: [] } })), null);
   assert.equal(await cachedProperties(new FakeStore({ [PROPERTIES_KEY]: "garbage" })), null);
   assert.equal(await cachedProperties(new FakeStore()), null);
-});
-
-test("the settings line says when the list was read and how many properties it has", () => {
-  assert.equal(propertiesAge(null), "Traderie 屬性清單：尚未取得（第一次查詢時會自動取得）");
-  assert.equal(
-    propertiesAge({ fetchedAt: NOW, properties: normalizeProperties(API) }),
-    "Traderie 屬性清單：2026-10-05 取得（1 項）",
-  );
 });
 
 test("the page script that reads Traderie's list is a function expression that can be called with a path", async () => {

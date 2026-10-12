@@ -165,7 +165,6 @@ export function createScanSession() {
     accept,
     queue,
     take,
-    generation: () => generation,
     stats,
     records,
     addRecord,

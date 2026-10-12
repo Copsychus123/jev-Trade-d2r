@@ -725,11 +725,10 @@ function finalLines(recOut) {
 }
 
 export class OcrPipeline {
-  constructor(ort, sessions, characters, progress) {
+  constructor(ort, sessions, characters) {
     this.ort = ort;
     this.sessions = sessions; // {det, cls, rec}
     this.characters = characters;
-    this.progress = progress || (() => {});
   }
 
   async runSession(session, tensor) {

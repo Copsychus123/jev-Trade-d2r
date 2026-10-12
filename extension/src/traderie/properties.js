@@ -114,9 +114,3 @@ export async function loadProperties({ tab, scripts, store = chrome.storage.loca
 export async function ensureProperties({ openTab, scripts, store = chrome.storage.local, now = Date.now() }) {
   return propertiesList({ openTab, scripts, store, now });
 }
-
-/** The line in the settings page. */
-export function propertiesAge(saved) {
-  if (!saved) return "Traderie 屬性清單：尚未取得（第一次查詢時會自動取得）";
-  return `Traderie 屬性清單：${isoDay(saved.fetchedAt)} 取得（${saved.properties.length} 項）`;
-}
