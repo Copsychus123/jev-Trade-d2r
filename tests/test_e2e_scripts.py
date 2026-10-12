@@ -20,7 +20,7 @@ import pytest
 from jev_ultrafast.traderie.site import build_goal, phase_plan
 from jevsvc import invites
 from jevsvc.store import MemoryStore
-from scripts import demo_e2e, extension_batch, extension_e2e, ocr_e2e, scan_e2e, stub_backend
+from scripts import demo_e2e, extension_batch, extension_e2e, ocr_e2e, probe_stats, scan_e2e, stub_backend
 
 # --- extension_e2e.parse_sample ---------------------------------------------------------------------------
 
@@ -749,3 +749,23 @@ def test_demo_verdict_reports_exactly_the_single_broken_assertion(mutation, need
     mutation(report)
     failures = demo_e2e.verdict(report)
     assert len(failures) == 1 and needle in failures[0], failures
+
+
+# --- probe_stats.param_changed_the_list (what a filter address did to the list) ----------------------------
+
+def test_a_tag_page_counts_as_filtered_when_its_names_differ_from_the_unfiltered_page():
+    # The regression this pins: the old rule required every listed name to contain "ring", which no page carrying
+    # unique rings (Angelic Halo, Nagelring, Dwarf Star) can satisfy, so it called the tag parameter dead while the
+    # page was in fact filtered to rings.
+    tagged = ["Angelic Halo", "Blood Ring", "Nagelring", "Dwarf Star", "Caster Ring"]
+    unfiltered = ["Amulet", "Angelic Halo", "Archon Plate", "Caster Amulet", "Chain Boots"]
+    assert probe_stats.param_changed_the_list(tagged, unfiltered) is True
+
+
+def test_the_same_names_with_and_without_the_parameter_are_not_a_filtered_page():
+    names = ["Amulet", "Archon Plate", "Chain Boots"]
+    assert probe_stats.param_changed_the_list(names, names) is False
+
+
+def test_a_page_that_did_not_load_is_not_a_filtered_page():
+    assert probe_stats.param_changed_the_list([], ["Amulet", "Archon Plate"]) is False

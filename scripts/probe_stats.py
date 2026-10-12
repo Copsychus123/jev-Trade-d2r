@@ -100,6 +100,16 @@ def label_of(name: str) -> str:
     return re.sub(r"\{\{[^}]+\}\}", "X", name)
 
 
+def param_changed_the_list(with_param: list[str], without_param: list[str]) -> bool:
+    """Whether a filter address changed what is listed at all: the same page with and without the parameter.
+
+    The cards' own names cannot prove a parameter filters by TYPE: `tags[]=Ring` lists unique rings too (Angelic
+    Halo, Nagelring, Dwarf Star), and those names never say "ring". So the honest signal is that the listed set
+    differs from the unfiltered page's - not that every name carries the word (which no ring page can satisfy).
+    """
+    return bool(with_param) and set(with_param) != set(without_param)
+
+
 def keeps(final_url: str, expected: dict[str, str]) -> bool:
     got = dict(parse_qsl(urlparse(final_url).query))
     return all(got.get(key) == value for key, value in expected.items())
@@ -389,7 +399,7 @@ async def probe(redact: str | None) -> int:
                 labels_shown={"A": label_of(p1["name"]) in pages["A"]["text"]},
                 item_names={k: sorted(set(v))[:8] for k, v in names.items()},
                 search_narrows=narrows("S_ring", "ring") or narrows("S_amulet", "amulet"),
-                tags_narrow=narrows("T_ring", "ring"),
+                tags_narrow=param_changed_the_list(names["T_ring"], names["HOME"]),
                 rarity_property=None if not rarity else {"id": rarity["id"], "options": rarity.get("options")},
                 quality_props=quality_props,
                 recent_tab=recent_tab,
