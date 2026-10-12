@@ -443,6 +443,69 @@ def test_choose_without_limits_calls_post_json_exactly_as_before(monkeypatch):
     assert len(seen) == 2
 
 
+def _reask_post(requests):
+    """First request: CLICK with a 40% target. Second (without CLICK): WAIT. Each reply carries its own usage."""
+
+    def post(_url, _key, body, **limits):
+        requests.append((body, limits))
+        operations = list(body["questions"]["operation"]["criteria"])
+        chosen = "CLICK" if "CLICK" in operations else "WAIT"
+        others = [name for name in operations if name != chosen]
+        probabilities = {name: 0.1 / len(others) for name in others} | {chosen: 0.9}
+        answers = {"operation": {"choice": chosen, "probabilities": probabilities}}
+        usage = {"input_tokens": 100, "output_tokens": 25}
+        if chosen == "CLICK":
+            answers["click_target"] = {"choice": "1", "probabilities": {"1": 0.4, "2": 0.3, "3": 0.3}}
+        else:
+            usage = {"input_tokens": 40, "output_tokens": 7}
+        return {"model": "test", "usage": usage, "answers": answers}
+
+    return post
+
+
+def _sure_post(requests):
+    """One request: CLICK with a 90% target, so Jev is not asked again."""
+
+    def post(_url, _key, body, **limits):
+        requests.append((body, limits))
+        operations = list(body["questions"]["operation"]["criteria"])
+        others = [name for name in operations if name != "CLICK"]
+        probabilities = {name: 0.1 / len(others) for name in others} | {"CLICK": 0.9}
+        answers = {
+            "operation": {"choice": "CLICK", "probabilities": probabilities},
+            "click_target": {"choice": "1", "probabilities": {"1": 0.9, "2": 0.05, "3": 0.05}},
+        }
+        return {"model": "test", "usage": {"input_tokens": 100, "output_tokens": 25}, "answers": answers}
+
+    return post
+
+
+def test_choose_reask_names_the_operation_it_dropped_and_sums_both_replies_usage(monkeypatch):
+    """A 40% target makes Jev ask again without CLICK: `reasked` records what it dropped, and the run's usage is both
+    replies added up (100+40 in, 25+7 out), never just the last one."""
+    requests = []
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test")
+    monkeypatch.setattr(model, "post_json", _reask_post(requests))
+    decision = model.choose(_choose_page(), "goal", [], timeout=12, deadline=time.monotonic() + 40)
+    assert len(requests) == 2
+    assert decision["model_calls"] == 2 and decision["operation"] == "WAIT"
+    assert decision["reasked"] == {"operation": "CLICK", "target_probability": 0.4}
+    assert decision["usage"] == {"input_tokens": 140, "output_tokens": 32}
+
+
+def test_choose_a_sure_target_is_not_reasked_and_keeps_the_single_reply_usage(monkeypatch):
+    """A 90% target is not asked again: `reasked` is None, one request goes out, and the usage is exactly its reply."""
+    requests = []
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test")
+    monkeypatch.setattr(model, "post_json", _sure_post(requests))
+    decision = model.choose(_choose_page(), "goal", [], timeout=12, deadline=time.monotonic() + 40)
+    assert len(requests) == 1
+    assert decision["model_calls"] == 1
+    assert decision["operation"] == "CLICK" and decision["target"] == "1"
+    assert decision["reasked"] is None
+    assert decision["usage"] == {"input_tokens": 100, "output_tokens": 25}
+
+
 def _select_actions():
     """One <select> node reported once per non-selected option, as snapshot.js emits it."""
     base = {"kind": "select", "node": 7, "role": "combobox", "current_value": "Red", "id": "e1"}

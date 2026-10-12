@@ -14,22 +14,24 @@ import { formatMB, PPOCR, PPOCR_FILES } from "../src/ocr/models.js";
 import { indexTables } from "../src/traderie/lookup.js";
 
 // --- the long timers ------------------------------------------------------------------------------------------
-// The engine cache arms a 60 s idle timer and the model manager a 30 s stall timer. They only keep the node process
-// alive when they can never fire (the fake worker answers at once), so long delays are recorded but not scheduled.
+// Timers of a second or more are the long ones: the engine cache's 60 s idle timer, the model manager's 30 s stall
+// timer and the read's 15 s slow notice. None of them must really wait for the player (the fake worker answers at
+// once), and the slow notice is exactly what a test fires, so they are queued against the fake clock below instead
+// of the real one; `advanceClock` then runs the ones that fall due. Shorter timers stay real.
 const realSetTimeout = globalThis.setTimeout;
 const realClearTimeout = globalThis.clearTimeout;
-const swallowed = new Set();
+const pendingTimers = new Set();
 globalThis.setTimeout = (fn, ms, ...args) => {
-  if (ms >= 30_000) {
-    const handle = { swallowed: true };
-    swallowed.add(handle);
+  if (ms >= 1_000) {
+    const handle = { fn, ms, args, due: clock + ms };
+    pendingTimers.add(handle);
     return handle;
   }
   return realSetTimeout(fn, ms, ...args);
 };
 globalThis.clearTimeout = (handle) => {
-  if (handle && handle.swallowed) {
-    swallowed.delete(handle);
+  if (handle && pendingTimers.has(handle)) {
+    pendingTimers.delete(handle);
     return;
   }
   realClearTimeout(handle);
@@ -397,6 +399,20 @@ const tables = indexTables({
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const settle = async (times = 3) => {
   for (let i = 0; i < times; i += 1) await tick();
+};
+
+/** Move the fake clock forward by `ms`, running every queued long timer that falls due, earliest first. */
+const advanceClock = async (ms) => {
+  const target = clock + ms;
+  for (;;) {
+    const due = [...pendingTimers].filter((handle) => handle.due <= target).sort((a, b) => a.due - b.due)[0];
+    if (!due) break;
+    clock = due.due;
+    pendingTimers.delete(due);
+    due.fn(...due.args);
+    await settle(1);
+  }
+  clock = target;
 };
 
 const image = (width = 640, height = 480) => ({ type: "image/png", width, height });
@@ -830,6 +846,45 @@ test("a read that fails after the engine started reports the failure and offers 
   assert.equal(s.status().kind, "error");
   assert.deepEqual(s.texts, []);
   assert.deepEqual(s.candidateButtons(), []);
+});
+
+// --- the slow-read notice --------------------------------------------------------------------------------------
+
+test("a read still running after 15 s shows the slow notice, which the finished read clears", async () => {
+  const s = setup({ seed: "present", worker: { hold: true } });
+  await settle(2);
+
+  s.paste([image()]);
+  await settle(4);
+  assert.equal(workers.length, 1, "the read reached the engine");
+  assert.notEqual(s.status().text, "這張圖比較大，還在辨識中…", "before 15 s the slow notice has not shown yet");
+
+  await advanceClock(16_000);
+  assert.equal(s.status().text, "這張圖比較大，還在辨識中…", "the slow read tells the player why it takes a while");
+  assert.equal(s.status().kind, "", "the notice is not an error");
+
+  workers[0].respond();
+  await settle(4);
+  assert.equal(
+    s.status().text,
+    "已辨識，並填入裝備名稱「Ripsaw（瑞普煞）」。請確認後自己按「開始查詢」。不對的話，可改點下面其他名稱：",
+    "the result replaced the notice once the read finished",
+  );
+  assert.deepEqual(s.texts, ["Ripsaw\nRing Mail"]);
+});
+
+test("a read that finishes quickly never shows the slow notice, and its timer is cleared", async () => {
+  const s = setup({ seed: "present" });
+  await settle(2);
+
+  s.paste([image()]);
+  await settle(5);
+  const finished = s.status().text;
+  assert.equal(finished.startsWith("已辨識"), true, "the read already finished");
+  assert.equal([...pendingTimers].some((handle) => handle.ms === 15_000), false, "the slow notice timer was cleared");
+
+  await advanceClock(16_000);
+  assert.equal(s.status().text, finished, "advancing the clock past 15 s did not bring the notice back");
 });
 
 // --- the other ways a picture gets in --------------------------------------------------------------------------
