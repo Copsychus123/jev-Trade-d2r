@@ -42,6 +42,12 @@ function limitInput(condition, field, text, busy) {
   return input;
 }
 
+/** The capture mark is a question the player has not answered yet; editing the control answers it, so the mark goes. */
+function clearCaptureMark(control) {
+  control.classList.remove("from-capture");
+  control.removeAttribute("title");
+}
+
 /**
  * The quality radios, built from QUALITIES: a quality added to stats.js always has a control here, with the same value
  * and label, so the two lists cannot drift apart. It reads no form state, so it lives outside the form.
@@ -147,6 +153,7 @@ export function initStatsForm({ getProperties, onChange }) {
       if (!li || !field) return;
       form = setLimit(form, li.dataset.key, field, event.target.value);
       li.classList.toggle("invalid", invalidKeys(form).includes(li.dataset.key));
+      clearCaptureMark(event.target);
       onChange();
     });
     list.addEventListener("click", (event) => {
@@ -159,7 +166,8 @@ export function initStatsForm({ getProperties, onChange }) {
     });
     $("stats-base").addEventListener("input", (event) => {
       form = setBase(form, event.target.value);
-      $("stats-base").dataset.from = "";
+      event.target.dataset.from = "";
+      clearCaptureMark(event.target);
       onChange();
     });
     for (const radio of qualityRadios()) {
