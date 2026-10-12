@@ -3,6 +3,8 @@
 import re
 from pathlib import Path
 
+REPO_ROOT = Path(__file__).resolve().parents[1]  # this file lives in tests/
+
 
 def extract_doc_paths():
     """
@@ -10,7 +12,6 @@ def extract_doc_paths():
     Returns set of relative paths that should exist.
     Skips glob patterns (containing *) and tokens with ellipsis (...).
     """
-    repo_root = Path(__file__).resolve().parents[1]  # this file lives in tests/
     paths = set()
     
     # Pattern: backticked token that starts with scripts/, src/, core/, services/, or extension/
@@ -19,7 +20,7 @@ def extract_doc_paths():
     pattern = r"`((?:scripts|src|core|services|extension)/[^`]*\.(?:py|js|md|json|mjs|html|css)(?::[a-zA-Z0-9_\-]+)?)`"
     
     for doc_file in ["README.md", "AGENTS.md"]:
-        doc_path = repo_root / doc_file
+        doc_path = REPO_ROOT / doc_file
         if not doc_path.exists():
             continue
         
@@ -42,11 +43,10 @@ def extract_doc_paths():
 
 def test_all_doc_paths_exist():
     """Assert that every file path referenced in docs exists."""
-    repo_root = Path(__file__).resolve().parents[1]  # this file lives in tests/
     doc_paths = extract_doc_paths()
     # A wrong root (a moved test file) or a broken pattern would make this test pass without checking anything.
     for doc_file in ("README.md", "AGENTS.md"):
-        assert (repo_root / doc_file).is_file(), f"{doc_file} was not found at {repo_root}"
+        assert (REPO_ROOT / doc_file).is_file(), f"{doc_file} was not found at {REPO_ROOT}"
     assert doc_paths, "no backticked paths were extracted from README.md/AGENTS.md"
     
     # Allow-list for git-ignored but valid generated/build/cache paths
@@ -60,7 +60,7 @@ def test_all_doc_paths_exist():
     
     missing = []
     for path_str in sorted(doc_paths):
-        full_path = repo_root / path_str
+        full_path = REPO_ROOT / path_str
         if not full_path.exists() and path_str not in allow_list:
             missing.append(path_str)
     
@@ -72,16 +72,15 @@ def test_every_shipped_module_is_named_in_the_rulebook():
     rename or a delete of it goes unnoticed (a documented path is checked by the test above, an undocumented one is
     not). A name counts either as its file name or as a dotted reference (`dev_server.make_server`, the rulebook's
     usual way). `extension/src/vendor` and the item tables are data, not modules."""
-    repo_root = Path(__file__).resolve().parents[1]
-    rulebook = (repo_root / "AGENTS.md").read_text(encoding="utf-8")
+    rulebook = (REPO_ROOT / "AGENTS.md").read_text(encoding="utf-8")
     skip = ("vendor", "data", "__pycache__", "dist", ".build", ".tmp", "artifacts")
     modules = [
         path
         for base, suffix in (
-            (repo_root / "extension" / "src", ".js"),
-            (repo_root / "src" / "jev_ultrafast", ".py"),
-            (repo_root / "services", ".py"),
-            (repo_root / "scripts", ".py"),
+            (REPO_ROOT / "extension" / "src", ".js"),
+            (REPO_ROOT / "src" / "jev_ultrafast", ".py"),
+            (REPO_ROOT / "services", ".py"),
+            (REPO_ROOT / "scripts", ".py"),
         )
         for path in base.rglob(f"*{suffix}")
         if path.is_file()
@@ -93,7 +92,7 @@ def test_every_shipped_module_is_named_in_the_rulebook():
     def named(path: Path) -> bool:
         return path.name in rulebook or re.search(rf"\b{re.escape(path.stem)}\.", rulebook) is not None
 
-    unnamed = sorted(path.relative_to(repo_root).as_posix() for path in modules if not named(path))
+    unnamed = sorted(path.relative_to(REPO_ROOT).as_posix() for path in modules if not named(path))
     assert not unnamed, f"modules no document names: {unnamed}"
 
 
@@ -121,19 +120,18 @@ ENV_READERS = (
 def test_every_setting_the_code_reads_is_documented():
     """A setting nobody documents is a knob the operator cannot find. This found two: CHROME_PATH (which the error
     message itself tells the user to set) and API_RETRY_COUNT (which `.env.example` listed every neighbour of)."""
-    repo_root = Path(__file__).resolve().parents[1]
     docs = "\n".join(
-        (repo_root / name).read_text(encoding="utf-8")
+        (REPO_ROOT / name).read_text(encoding="utf-8")
         for name in ("AGENTS.md", "README.md", "docs/design.md", ".env.example")
-        if (repo_root / name).exists()
+        if (REPO_ROOT / name).exists()
     )
     sources = [
         path
         for base, suffix in (
-            (repo_root / "src", ".py"),
-            (repo_root / "services", ".py"),
-            (repo_root / "scripts", ".py"),
-            (repo_root / "extension" / "src", ".js"),
+            (REPO_ROOT / "src", ".py"),
+            (REPO_ROOT / "services", ".py"),
+            (REPO_ROOT / "scripts", ".py"),
+            (REPO_ROOT / "extension" / "src", ".js"),
         )
         for path in base.rglob(f"*{suffix}")
         if path.is_file()

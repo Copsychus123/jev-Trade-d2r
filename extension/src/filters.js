@@ -81,6 +81,24 @@ export function filtersActive(filters) {
 }
 
 /**
+ * One row's verdict against the active filters: "hide" when an active field holds a different non-empty value
+ * (a mismatch outranks a missing value), "unknown" when the row only lacks values an active field asked for,
+ * "keep" when every active field matches.
+ */
+function rowVerdict(row, activeFields, filters) {
+  let hasMissing = false;
+
+  for (const field of activeFields) {
+    const rowValue = row[field];
+    if (rowValue === filters[field]) continue;
+    if (!isEmpty(rowValue)) return "hide";
+    hasMissing = true;
+  }
+
+  return hasMissing ? "unknown" : "keep";
+}
+
+/**
  * Apply filters to rows.
  * Returns { rows, hidden, unknown }.
  * - rows: the kept rows in original order (same row objects, not copies)
@@ -99,22 +117,9 @@ export function applyFilters(rows, filters) {
   let unknown = 0;
 
   for (const row of rows) {
-    let hasMismatch = false;
-    let hasMissing = false;
-
-    for (const field of activeFields) {
-      const rowValue = row[field];
-      if (rowValue === filters[field]) continue;
-      if (isEmpty(rowValue)) {
-        hasMissing = true;
-      } else {
-        hasMismatch = true;
-        break;
-      }
-    }
-
-    if (hasMismatch) continue;
-    if (hasMissing) unknown += 1;
+    const verdict = rowVerdict(row, activeFields, filters);
+    if (verdict === "hide") continue;
+    if (verdict === "unknown") unknown += 1;
     else keptRows.push(row);
   }
 

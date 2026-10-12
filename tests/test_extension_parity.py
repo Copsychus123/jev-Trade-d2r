@@ -274,14 +274,14 @@ def test_product_section_tells_the_trading_page_from_the_other_sections():
 
 def test_fixtures_give_rows_to_compare():
     """Guards against the parity test passing on two empty results."""
-    trading = (FIXTURES / "trading_harlequin_crest.txt").read_text(encoding="utf-8")
-    recent = (FIXTURES / "recent_harlequin_crest.txt").read_text(encoding="utf-8")
+    trading = _fixture("trading_harlequin_crest.txt")
+    recent = _fixture("recent_harlequin_crest.txt")
     assert len(parse_trading_txt(trading, item_name=ITEM)) > 0
     assert len(parse_recent_trades(recent)["trades"]) > 0
 
 
 def test_recent_trade_tags_are_read_from_the_they_give_side_only():
-    recent = (FIXTURES / "recent_harlequin_crest.txt").read_text(encoding="utf-8")
+    recent = _fixture("recent_harlequin_crest.txt")
     first = parse_recent_trades(recent)["trades"][0]
     assert (first["platform"], first["mode"], first["ladder"], first["game_version"]) == (
         "PC", "Softcore", "Ladder", "Reign of the Warlock",

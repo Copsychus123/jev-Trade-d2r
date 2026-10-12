@@ -8,44 +8,32 @@ test is what actually keeps them in step, the same way `test_docs_paths.py` keep
 import re
 from pathlib import Path
 
+from tests.test_docs_numbers import _code_number, _doc_number
+
 ROOT = Path(__file__).resolve().parents[1]
-
-
-def _declared(path: str, pattern: str) -> int:
-    """The number a source file declares with `pattern` (one capture group); fails loudly when the line is gone."""
-    text = (ROOT / path).read_text(encoding="utf-8")
-    match = re.search(pattern, text)
-    assert match, f"{path} no longer declares {pattern!r}"
-    return int(match.group(1))
-
-
-def _documented(pattern: str) -> int:
-    """The number AGENTS.md promises with `pattern`. The docs are part of this contract, not decoration: without
-    this the three code sites could drift together and the rulebook would quietly lie."""
-    return _declared("AGENTS.md", pattern)
 
 
 def test_the_jev_call_budget_is_the_same_everywhere():
     assert (
-        _declared("extension/src/agent.js", r"const JEV_CALL_LIMIT = (\d+);")
-        == _declared("services/jevsvc/app.py", r"MAX_MODEL_CALLS = (\d+)")
-        == _declared("scripts/extension_batch.py", r"JEV_CALL_LIMIT = (\d+)")
-        == _documented(r"one budget of (\d+) Jev calls per run")
+        _code_number("extension/src/agent.js", r"const JEV_CALL_LIMIT = (\d+);")
+        == _code_number("services/jevsvc/app.py", r"MAX_MODEL_CALLS = (\d+)")
+        == _code_number("scripts/extension_batch.py", r"JEV_CALL_LIMIT = (\d+)")
+        == _doc_number("AGENTS.md", r"one budget of (\d+) Jev calls per run")
     )
 
 
 def test_the_action_budget_is_the_same_everywhere():
     assert (
-        _declared("extension/src/agent.js", r"const MAX_STEPS = (\d+);")
-        == _declared("services/jevsvc/app.py", r"MAX_HISTORY = (\d+)")
-        == _declared("src/jev_ultrafast/config.py", r"MAX_STEPS = (\d+)")
-        == _documented(r"\((\d+) actions, \d+ decisions,")
+        _code_number("extension/src/agent.js", r"const MAX_STEPS = (\d+);")
+        == _code_number("services/jevsvc/app.py", r"MAX_HISTORY = (\d+)")
+        == _code_number("src/jev_ultrafast/config.py", r"MAX_STEPS = (\d+)")
+        == _doc_number("AGENTS.md", r"\((\d+) actions, \d+ decisions,")
     )
 
 
 def test_the_browser_cache_cap_is_the_size_the_rulebook_states():
-    assert _declared("src/jev_ultrafast/chrome.py", r"DISK_CACHE_BYTES = (\d+) \* 1024 \* 1024") == _documented(
-        r"page cache is capped at (\d+) MB"
+    assert _code_number("src/jev_ultrafast/chrome.py", r"DISK_CACHE_BYTES = (\d+) \* 1024 \* 1024") == _doc_number(
+        "AGENTS.md", r"page cache is capped at (\d+) MB"
     )
 
 
@@ -80,8 +68,8 @@ def test_the_design_document_states_the_same_budgets_as_the_code():
                 return cells
         raise AssertionError(f"docs/design.md's Budgets table has no row for {hint}")
 
-    steps = _declared("src/jev_ultrafast/config.py", r"MAX_STEPS = (\d+)")
-    calls = _declared("extension/src/agent.js", r"const JEV_CALL_LIMIT = (\d+);")
+    steps = _code_number("src/jev_ultrafast/config.py", r"MAX_STEPS = (\d+)")
+    calls = _code_number("extension/src/agent.js", r"const JEV_CALL_LIMIT = (\d+);")
     core, extension, backend = row("config.py"), row("agent.js"), row("app.py")
     assert first_number(core[0]) == steps and first_number(core[1]) == steps * 2
     assert first_number(extension[0]) == steps and first_number(extension[1]) == calls

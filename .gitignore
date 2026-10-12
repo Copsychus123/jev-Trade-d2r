@@ -10,14 +10,11 @@ artifacts/
 *.egg-info/
 
 dist/
-archive/
-artifacts/
 .tmp-*/
 services/.build/
 extension/dist/
 extension/*.zip
 extension/dist-e2e/
-extension/jev-traderie-extension-*/
 
 # Kept out of version control on purpose (a local deploy switch and a local screenshot).
 /vercel.json

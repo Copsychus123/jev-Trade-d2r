@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 const noEvents = { addListener() {}, removeListener() {} };
-globalThis.chrome = { debugger: { onDetach: noEvents, onEvent: noEvents } };
+const debuggerEvents = { onDetach: noEvents, onEvent: noEvents };
+globalThis.chrome = { debugger: debuggerEvents };
 const { Tab, closeStaleWindows, commandTimeoutMs } = await import("../src/cdp.js");
 const { AbortedError, StalePage, TimeoutError } = await import("../src/errors.js");
 
@@ -32,8 +33,7 @@ test("the page opens in its own minimized window and that window is closed with 
       remove: async (id) => calls.push(["remove", id]),
     },
     debugger: {
-      onDetach: noEvents,
-      onEvent: noEvents,
+      ...debuggerEvents,
       attach: async () => {},
       detach: async () => calls.push(["detach"]),
       sendCommand: async () => ({ result: { value: "complete" } }),
@@ -112,8 +112,7 @@ test("the read-only steps (observe, fresh, settle, page reads, readyState pollin
 test("a page script that throws is a real error with the page's description, not a stale page", async () => {
   globalThis.chrome = {
     debugger: {
-      onDetach: noEvents,
-      onEvent: noEvents,
+      ...debuggerEvents,
       sendCommand: async () => ({
         exceptionDetails: { text: "Uncaught", exception: { description: "TypeError: x is not a function\n    at <anonymous>" } },
       }),
@@ -132,8 +131,7 @@ test("only navigation failures are a stale page, whether Chrome reports them as 
   for (const failure of failures) {
     globalThis.chrome = {
       debugger: {
-        onDetach: noEvents,
-        onEvent: noEvents,
+        ...debuggerEvents,
         sendCommand: async () => {
           if (failure instanceof Error) throw failure;
           return failure;
@@ -149,8 +147,7 @@ function hangingChrome() {
   globalThis.chrome = {
     windows: { remove: async (id) => calls.push(["remove", id]) },
     debugger: {
-      onDetach: noEvents,
-      onEvent: noEvents,
+      ...debuggerEvents,
       detach: async () => calls.push(["detach"]),
       sendCommand: (_target, method) => {
         calls.push(["send", method]);
@@ -233,7 +230,7 @@ function sessionChrome() {
         removed.push(id);
       },
     },
-    debugger: { onDetach: noEvents, onEvent: noEvents, attach: async () => {}, detach: async () => {}, sendCommand: async () => ({ result: { value: "complete" } }) },
+    debugger: { ...debuggerEvents, attach: async () => {}, detach: async () => {}, sendCommand: async () => ({ result: { value: "complete" } }) },
   };
   return { store, removed };
 }
