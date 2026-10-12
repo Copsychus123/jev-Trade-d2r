@@ -29,6 +29,19 @@ const FROM_CAPTURE_TITLE = "從擷取讀到，請確認";
 
 // --- the shipped markup -----------------------------------------------------------------------------------------
 
+/**
+ * A tag's attributes as name -> value: `name="value"` keeps the value, a bare flag (`hidden`, `disabled`, `checked`)
+ * becomes "", and the trailing `/` of a self-closing tag is skipped. One scan over the whole tag, so a word inside a
+ * quoted value can never pass for an attribute of its own.
+ */
+function readAttributes(text) {
+  const values = {};
+  for (const [, name, value] of text.matchAll(/([\w-]+)(?:="([^"]*)")?|"[^"]*"/g)) {
+    if (name) values[name] = value ?? "";
+  }
+  return values;
+}
+
 /** Every id sidepanel.html carries, with the attributes it ships (so `list` is a real attribute and `hidden` a real flag). */
 const MARKUP = (() => {
   const html = readFileSync(new URL("../src/sidepanel.html", import.meta.url), "utf8");
@@ -36,9 +49,7 @@ const MARKUP = (() => {
   for (const [, tag, attrs] of html.matchAll(/<([a-zA-Z][\w-]*)\b([^>]*)>/g)) {
     const id = /\bid="([^"]+)"/.exec(attrs)?.[1];
     if (!id || found.has(id)) continue;
-    const values = {};
-    for (const [, name, value] of attrs.matchAll(/\b([\w-]+)="([^"]*)"/g)) values[name] = value;
-    found.set(id, { tag, attrs: values });
+    found.set(id, { tag, attrs: readAttributes(attrs) });
   }
   return found;
 })();
@@ -254,7 +265,24 @@ function boot({ properties = PROPERTIES } = {}) {
 // --- the fake's own footing -------------------------------------------------------------------------------------
 
 test("the fake starts from the shipped markup and the shipped item types", () => {
+  // Bare flags are markup too, and the shipped page carries two that matter here: `stats-base` is `hidden` and
+  // `affix-fill` is `disabled`, neither with a value. Both are the panel's own render's to change later (sidepanel.js
+  // shows the base field in stats mode; stats-form.js enables the fill button once a picture is read), so the fake has
+  // to start with them on, exactly as the browser's parser would leave them.
+  const raw = makeDocument();
+  assert.equal(raw.getElementById("stats-base").hidden, true, "stats-base ships hidden");
+  assert.equal(raw.getElementById("affix-fill").disabled, true, "affix-fill ships disabled");
+
   const panel = boot();
+
+  // The binder runs over that same markup: it leaves the base field's visibility to the panel, and it owns the fill
+  // button, which the shipped `disabled` only starts off.
+  assert.equal(panel.get("stats-base").hidden, true, "the first render does not touch the shipped hidden");
+  assert.equal(panel.get("affix-fill").disabled, true, "nothing was read yet");
+  panel.form.rememberScreenshot("+7% Faster Cast Rate");
+  assert.equal(panel.get("affix-fill").disabled, false, "the render is what turns the shipped-disabled button on");
+  panel.form.forgetScreenshot();
+  assert.equal(panel.get("affix-fill").disabled, true, "and back off when the picture goes");
 
   // The datalist holds real base names before the binder runs, so "the binder leaves them" means something.
   assert.deepEqual(

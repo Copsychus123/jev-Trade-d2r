@@ -6,9 +6,11 @@
 // AbortController and fake timers, so nothing waits 300 s and no socket is opened.
 //
 // The paths and body keys are the server's, not a guess: services/jevsvc/app.py routes "/api/run/start", "/api/choose"
-// and "/api/run/base", reads `invite`/`item_name`/`load_more`, `run_token`/`phase`/`page`/`history`/`no_block` and
-// `run_token`/`options`/`base` (run_start, choose_step and pick_base_step). The messages echoed below are the ones
-// those handlers build.
+// and "/api/run/base" and reads `invite`/`item_name`/`load_more` and `run_token`/`phase`/`page`/`history`/`no_block`
+// (run_start, choose_step). The client also sends `options`/`base` to pick_base_step, but the server ignores the list
+// (its docstring: "A list in the request is ignored: the client does not get to decide what Jev may choose from") and
+// picks from its own BASES - so `options` is the CLIENT's contract, pinned here, not something the server reads.
+// The refusal messages echoed below are the server's own; the file each one comes from is named next to it.
 
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -144,8 +146,19 @@ test("chooseNext adds no_block only when asked for, and reports the decision the
   assert.deepEqual(bodyOf(h.calls[1]).history, []);
 });
 
-test("pickBase POSTs the options and includes base only when the caller already matched it", async (t) => {
-  const h = install({ answer: () => okJson({ base: "Monarch", probability: 0.9 }) });
+test("pickBase POSTs the options (which the server ignores) and includes base only when the caller already matched it", async (t) => {
+  // The wire body is the client's contract: pick_base_step (services/jevsvc/app.py) ignores a list in the request and
+  // picks from the server's own BASES. A non-null pick answers with the real `_base_reply` shape - base, probability,
+  // usage, item_name and a fresh run_token (services/jevsvc/app.py `_base_reply`) - so the fake replies with that.
+  const h = install({
+    answer: () => okJson({
+      base: "Monarch",
+      probability: 0.9,
+      usage: { input_tokens: 12, output_tokens: 3 },
+      item_name: "Monarch",
+      run_token: "tok-base",
+    }),
+  });
   t.after(h.restore);
 
   await pickBase(BASE, { runToken: "tok", options: ["Monarch", "Bone Wand"] });
@@ -162,11 +175,18 @@ test("pickBase POSTs the options and includes base only when the caller already 
 
 test("every call arms a 300 s timer that aborts the signal handed to fetch, then clears it", async (t) => {
   // The fetch never settles on its own: it rejects only when the signal it was handed aborts, the way the browser's
-  // fetch does. So the deadline firing is what makes the call fail, not a timer the test fires into the void.
+  // fetch does. So the deadline firing is what makes the call fail, not a timer the test fires into the void. The
+  // abort is asserted SYNCHRONOUSLY, straight after the deadline and before any await: were `controller.abort()` a
+  // no-op, the awaited promise below would never settle and this test would hang, taking its `t.after` fakes and the
+  // rest of the file with it. Checked this way, the same mutation fails right here.
+  let sawAbort = false;
   const h = install({
     fetchImpl: (_href, init) =>
       new Promise((_resolve, reject) => {
-        init.signal.addEventListener("abort", () => reject(new Error("AbortError")));
+        init.signal.addEventListener("abort", () => {
+          sawAbort = true;
+          reject(new Error("AbortError"));
+        });
       }),
   });
   t.after(h.restore);
@@ -188,6 +208,9 @@ test("every call arms a 300 s timer that aborts the signal handed to fetch, then
 
   h.timers[0].fn(); // the deadline: 300 s, compressed into one call
 
+  assert.equal(signal.aborted, true, "the deadline aborts the signal fetch holds");
+  assert.equal(sawAbort, true, "the fetch saw the abort, so it rejects as the browser's would");
+
   const error = await pending;
   assert.ok(error instanceof ApiError, `expected ApiError, got ${error}`);
   assert.equal(error.status, 0);
@@ -207,7 +230,10 @@ test("a successful call also clears its timer", async (t) => {
 // --- what the caller is told -------------------------------------------------------------------------------------
 
 test("a refused invite reaches the caller as the server's own message, with its status", async (t) => {
-  const h = install({ answer: () => reply({ status: 401, body: { error: "邀請碼無效", code: "invite_invalid" } }) });
+  // "邀請碼無效或已停用" is the server's wording for a bad or disabled invite (services/jevsvc/invites.py, raised as
+  // InviteError and handed straight through as the body's `error` by services/jevsvc/http.py). The client must echo
+  // that field, not invent a message of its own.
+  const h = install({ answer: () => reply({ status: 401, body: { error: "邀請碼無效或已停用", code: "invite_invalid" } }) });
   t.after(h.restore);
 
   const error = await startRun(BASE, { invite: "bad", itemName: "Monarch", loadMore: 0 }).then(
@@ -217,11 +243,13 @@ test("a refused invite reaches the caller as the server's own message, with its 
 
   assert.ok(error instanceof ApiError);
   assert.equal(error.status, 401);
-  assert.equal(error.message, "邀請碼無效");
+  assert.equal(error.message, "邀請碼無效或已停用");
 });
 
 test("an exhausted quota reaches the caller as the server's own message, with its status", async (t) => {
-  const h = install({ answer: () => reply({ status: 429, body: { error: "這次查詢的 Jev 呼叫次數已達上限（40 次），請重新開始", code: "call_limit" } }) });
+  // The server builds this one from its own cap: "…已達上限（30 次）…" with MAX_MODEL_CALLS = 30
+  // (services/jevsvc/app.py, `_reserve_call_budget`). The client echoes the body's `error` verbatim.
+  const h = install({ answer: () => reply({ status: 429, body: { error: "這次查詢的 Jev 呼叫次數已達上限（30 次），請重新開始", code: "call_limit" } }) });
   t.after(h.restore);
 
   const error = await chooseNext(BASE, { runToken: "tok", phase: "trading", page: { url: "u", title: "t", text: "x", actions: [] }, history: [] }).then(
@@ -231,10 +259,12 @@ test("an exhausted quota reaches the caller as the server's own message, with it
 
   assert.ok(error instanceof ApiError);
   assert.equal(error.status, 429);
-  assert.equal(error.message, "這次查詢的 Jev 呼叫次數已達上限（40 次），請重新開始");
+  assert.equal(error.message, "這次查詢的 Jev 呼叫次數已達上限（30 次），請重新開始");
 });
 
 test("a non-OK answer without a message falls back to 伺服器沒有回應 and keeps the status", async (t) => {
+  // Synthetic: the server's `_error` (services/jevsvc/app.py) always sends `error` next to `code`, so a body with
+  // only `code` is a shape app.py never sends - kept to prove the client's defensive fallback when `error` is absent.
   const h = install({ answer: () => reply({ status: 500, body: { code: "not_configured" } }) });
   t.after(h.restore);
 

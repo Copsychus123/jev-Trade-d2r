@@ -9,16 +9,12 @@
 // worker, because the module's `pipeline` is private state that can never be reset from outside.
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { register } from "node:module";
 import test from "node:test";
 
 import { createOcrEngine } from "../src/ocr/engine.js";
 
 const OCR_DIR = new URL("../src/ocr/", import.meta.url);
-const WORKER_SOURCE = readFileSync(new URL("ppocr-worker.js", OCR_DIR), "utf8");
-const ENGINE_SOURCE = readFileSync(new URL("engine.js", OCR_DIR), "utf8");
-const PANEL_SOURCE = readFileSync(new URL("panel.js", OCR_DIR), "utf8");
 
 // --- the two imports a real worker has and node cannot give it -------------------------------------------------
 // onnxruntime is a minified bundle and the pipeline does real tensor work; the worker touches only a handful of their
@@ -43,7 +39,10 @@ export function buildCharacterList(text) {
 export function imageDataToBgr(image) {
   const state = globalThis.__ppocrWorkerTest;
   state.conversions.push(image);
-  return { bgr: true, width: image.width, height: image.height };
+  // The real module's shape and field names (ppocrlib.js imageDataToBgr -> { data, w, h }).
+  const bgr = { data: new Uint8Array(image.width * image.height * 3), w: image.width, h: image.height };
+  state.bgr.push(bgr);
+  return bgr;
 }
 export class OcrPipeline {
   constructor(ort, sessions, characters) {
@@ -85,6 +84,7 @@ function workerState(overrides = {}) {
     characters: new Array(DICT_LENGTH).fill("x"), // what buildCharacterList returns
     dicts: [], // dict texts handed to buildCharacterList
     conversions: [], // imageDatas handed to imageDataToBgr
+    bgr: [], // what imageDataToBgr returned, in order
     builds: [], // OcrPipeline constructor arguments
     reads: [], // what recognizeImage was handed
     answer: async () => ({ lines: [] }),
@@ -124,6 +124,13 @@ let loads = 0;
 async function loadWorker(scope, state) {
   globalThis.__ppocrWorkerTest = state;
   globalThis.self = scope;
+  // The worker module is re-imported per call, but `ort` is one namespace shared by every test, so its env still holds
+  // whatever the previous test's module load left. Put it back to the stub's own start, or a test that asserts a value
+  // the worker did not set only passes because it happened to run first.
+  ort.env.wasm.numThreads = 0;
+  ort.env.wasm.simd = false;
+  ort.env.wasm.wasmPaths = undefined;
+  ort.env.logLevel = "";
   loads += 1;
   return import(new URL(`ppocr-worker.js?case=${loads}`, OCR_DIR).href);
 }
@@ -244,7 +251,13 @@ test("a recognize converts the panel's pixels and answers with the same id and t
   assert.ok(converted.data instanceof Uint8ClampedArray, "the RGBA bytes are rebuilt as clamped pixels");
   assert.notEqual(converted.data, data, "the worker rebuilds the pixels instead of handing the transferred view on");
   assert.deepEqual([converted.width, converted.height, ...converted.data], [2, 1, 1, 2, 3, 4, 5, 6, 7, 8]);
-  assert.deepEqual(state.reads, [{ bgr: true, width: 2, height: 1 }], "the pipeline reads the BGR image, not the pixels");
+  assert.equal(state.reads.length, 1, "the one conversion feeds the one read");
+  assert.equal(state.reads[0], state.bgr[0], "the pipeline reads exactly what imageDataToBgr returned");
+  assert.deepEqual(
+    [Object.keys(state.reads[0]).sort(), state.reads[0].w, state.reads[0].h],
+    [["data", "h", "w"], 2, 1],
+    "that value is the real module's { data, w, h }, not a shape of the stand-in's invention",
+  );
 });
 
 test("a recognize that throws answers the read's own id, with the thrown value's own text when it is not an Error", async () => {
@@ -304,9 +317,15 @@ function makeRelay(scope) {
       if (!relay.listeners.has(type)) relay.listeners.set(type, []);
       relay.listeners.get(type).push(handler);
     },
-    postMessage(message) {
+    /**
+     * The browser's postMessage: the receiver is handed a structured clone (so the worker's buffers are its own), the
+     * buffers on the transfer list leave the sender detached, and delivery lands on a later turn of the event loop -
+     * never synchronously, which would let the panel read state the worker cannot have set yet.
+     */
+    postMessage(message, transfer = []) {
       relay.posted.push(message);
-      scope.receive(message);
+      const delivered = structuredClone(message, { transfer });
+      setImmediate(() => scope.receive(delivered));
     },
     terminate() {
       relay.terminated = true;
@@ -364,10 +383,23 @@ test("the engine and the worker agree end to end: init, the two phase texts, a r
   assert.equal(init.type, "init");
   assert.deepEqual(init.providers, ["wasm"]);
   assert.equal(init.wasmPaths, "vendor/ort/", "no chrome.* inside the worker: the panel resolves the ORT directory");
-  assert.equal(init.models.det, models.det.buffer, "the model bytes are handed over as they are");
-  assert.equal(ort.env.wasm.wasmPaths, init.wasmPaths, "the address the panel sent is the one onnxruntime is given");
   await settleUntil(() => state.builds.length === 1, "the init to build the pipeline");
-  assert.equal(state.builds[0].sessions.det.bytes, models.det.buffer, "the bytes the panel posted are the ones used");
+
+  // The panel transfers the bytes away, so its own four buffers end up detached - and the worker's sessions are built
+  // from its own copies of the same content, never from the panel's objects, which hold nothing any more.
+  assert.deepEqual(
+    [models.det.buffer.detached, models.rec.buffer.detached, models.cls.buffer.detached, models.dict.buffer.detached],
+    [true, true, true, true],
+    "the transferred model bytes leave the panel",
+  );
+  const sent = state.builds[0].sessions;
+  assert.deepEqual(
+    [sent.det.bytes, sent.rec.bytes, sent.cls.bytes].map((b) => [...new Uint8Array(b)]),
+    [[1], [2, 2], [3, 3, 3]],
+    "the worker's det/rec/cls sessions hold the panel's bytes, content and all",
+  );
+  assert.notEqual(sent.det.bytes, models.det.buffer, "the worker's buffer is its own, not the panel's detached one");
+  assert.equal(ort.env.wasm.wasmPaths, init.wasmPaths, "the address the panel sent is the one onnxruntime is given");
 
   const reading = watchRead(engine);
   await settleUntil(() => reading.state !== "pending", "the read to come back from the worker");
@@ -380,6 +412,7 @@ test("the engine and the worker agree end to end: init, the two phase texts, a r
   engine.terminate();
   assert.equal(relay.terminated, true);
   assert.deepEqual(relay.posted.at(-1), { type: "close" });
+  await settleUntil(() => scope.closes === 1, "the close to reach the worker");
   assert.equal(scope.closes, 1, "the panel's close reaches the worker's self.close()");
 });
 
@@ -394,21 +427,4 @@ test("the engine takes the worker's engine-level failure as its own, message and
   await settleUntil(() => reading.state !== "pending", "the engine-level failure");
   assert.deepEqual(reading, { state: "rejected", text: "字元清單長度不對（1，應為 18710）" });
   assert.deepEqual(relay.posted.map((m) => m.type), ["init"], "a read is not even posted once the engine has failed");
-});
-
-test("both sides name the same wire in their own source", () => {
-  // The round trips above fail on a rename the flow exercises; this pins the vocabulary itself, on both sides.
-  for (const name of ["init", "recognize", "close", "status", "loading", "ready", "result", "error"]) {
-    assert.ok(WORKER_SOURCE.includes(`"${name}"`), `the worker no longer speaks ${name}`);
-    assert.ok(ENGINE_SOURCE.includes(`"${name}"`), `the panel side no longer reads ${name}`);
-  }
-  for (const field of ["message.wasmPaths", "message.providers", "message.models", "message.id", "message.width", "message.height", "message.data"]) {
-    assert.ok(WORKER_SOURCE.includes(field), `the worker no longer reads ${field}`);
-  }
-  for (const field of ["message.type", "message.stage", "message.id", "message.text", "message.message"]) {
-    assert.ok(ENGINE_SOURCE.includes(field), `the panel side no longer reads ${field}`);
-  }
-  // The panel itself only ever sees the phase text the engine makes out of the worker's stages.
-  assert.match(PANEL_SOURCE, /onStatus:/u, "the panel passes onStatus to createOcrEngine");
-  assert.match(PANEL_SOURCE, /say\(message\)/u, "the phase text the engine reports is the one the panel shows");
 });

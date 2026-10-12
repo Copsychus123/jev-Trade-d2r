@@ -85,7 +85,10 @@ async function boot(t) {
 test("importing background.js only registers the two listeners and never opens the panel yet", async (t) => {
   const fake = await boot(t);
 
-  assert.deepEqual(fake.reads, ["runtime", "runtime.onInstalled", "runtime", "runtime.onStartup"]);
+  // The strict chrome Proxy already throws on any property outside {runtime, sidePanel}, so an unexpected read
+  // fails the import by itself: pin only that the panel was not touched, not how often or in what order the two
+  // properties were read (a `const { runtime, sidePanel } = chrome` refactor would change that harmlessly).
+  assert.equal(fake.reads.includes("sidePanel"), false, "chrome.sidePanel is untouched until a listener fires");
   assert.equal(fake.listeners.installed.length, 1);
   assert.equal(fake.listeners.startup.length, 1);
   assert.equal(typeof fake.listeners.installed[0], "function");
@@ -99,7 +102,7 @@ test("the install listener asks Chrome to open the side panel on a toolbar-icon 
   fake.listeners.installed[0]();
 
   assert.deepEqual(fake.behavior, [{ openPanelOnActionClick: true }]);
-  assert.deepEqual(fake.reads, ["runtime", "runtime.onInstalled", "runtime", "runtime.onStartup", "sidePanel"]);
+  assert.ok(fake.reads.includes("sidePanel"), "the click reaches chrome.sidePanel");
 });
 
 test("the startup listener does the same", async (t) => {
@@ -111,13 +114,21 @@ test("the startup listener does the same", async (t) => {
 });
 
 test("a setPanelBehavior rejection is swallowed, not left unhandled", async (t) => {
+  // A real rejected promise, watched from inside the test: if the module removed `.catch`, the rejection surfaces
+  // through the run's unhandled-rejection hook below and fails THIS test, rather than only the file at large.
+  const unhandled = [];
+  const onUnhandled = (reason) => unhandled.push(reason);
+  process.on("unhandledRejection", onUnhandled);
+  t.after(() => process.off("unhandledRejection", onUnhandled));
+
   const fake = await boot(t);
   fake.setResult(Promise.reject(new Error("no side panel on this Chrome")));
 
-  // If the module did not attach `.catch`, this rejection would surface as an unhandled rejection and fail the run.
   fake.listeners.installed[0]();
   fake.listeners.startup[0]();
   await flush();
+  await new Promise((resolve) => setImmediate(resolve));
 
   assert.deepEqual(fake.behavior, [{ openPanelOnActionClick: true }, { openPanelOnActionClick: true }]);
+  assert.deepEqual(unhandled, [], "every setPanelBehavior rejection must be caught by the module");
 });

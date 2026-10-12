@@ -302,15 +302,18 @@ def test_cookie_specs_carry_only_url_name_value_for_the_traderie_origin():
     """Each spec is a `Network.setCookie` argument: pinned to Traderie's origin and carrying exactly `url`/`name`/
     `value` - no cookie attribute keys, which would silently inject a differently scoped cookie."""
     from jev_ultrafast.config import get_settings
-    from jev_ultrafast.traderie.auth import COOKIE_ATTRS, COOKIE_ORIGIN, cookie_specs
+    from jev_ultrafast.traderie.auth import COOKIE_ORIGIN, cookie_specs
 
     assert COOKIE_ORIGIN == "https://www.traderie.com/"
-    specs = cookie_specs(get_settings({"TRADERIE_COOKIE": "name=value", "TRADERIE_SESSION_TOKEN": "token-value"}))
+    # The pasted header carries cookie attributes (`domain=`, `path=`) next to a real pair. Those must be dropped -
+    # never a spec key (which would scope the cookie elsewhere) and never a bogus cookie named after the attribute.
+    specs = cookie_specs(
+        get_settings({"TRADERIE_COOKIE": "domain=.x; path=/; name=value", "TRADERIE_SESSION_TOKEN": "token-value"})
+    )
     assert specs
     assert all(set(spec) == {"url", "name", "value"} for spec in specs)
     assert all(spec["url"] == COOKIE_ORIGIN for spec in specs)
-    assert not any(COOKIE_ATTRS & set(spec) for spec in specs)
-    assert {"domain", "path", "secure", "samesite", "httponly"} <= COOKIE_ATTRS
+    assert [spec["name"] for spec in specs] == ["name", "session"]
 
 
 def test_cookie_specs_falls_back_to_the_session_name_when_it_is_blank():
