@@ -88,21 +88,31 @@ export function buildMatchIndex(tables) {
   return { items, bases };
 }
 
+/**
+ * One raw line reduced to the part that can hold a name. A stat line ("+9 力量(STR)", "需要等級:46") is never a
+ * name, but OCR sometimes glues the type line onto the front of one ("芭戒指天要等級:48"): keep what comes before
+ * the first stat mark when that is long enough to be more than a stat word such as 力量.
+ * Returns `{ line, statPrefix }`, or null for a line that has nothing but a stat.
+ */
+function nameLine(rawLine) {
+  const untagged = rawLine.replace(TAG_START, "");
+  const mark = untagged.search(STAT_LINE);
+  // A stat line has a value after its mark; a name line that merely ends in a stray "+"/"%" does not, so require a
+  // digit after the first mark before cutting the line down to its prefix.
+  const statPrefix = mark !== -1 && /\d/u.test(untagged.slice(mark));
+  const line = statPrefix ? untagged.slice(0, mark) : untagged;
+  if (statPrefix && line.replace(/\s+/gu, "").length < MIN_BEFORE_STAT) return null;
+  return { line, statPrefix };
+}
+
 function textPieces(text) {
   const cjk = [];
   const latin = [];
   // Every piece keeps the line it came from: it breaks ties between equally good candidates (see rank).
   for (const [at, rawLine] of String(text ?? "").split(/\r?\n/u).entries()) {
-    // A stat line ("+9 力量(STR)", "需要等級:46") is never a name, but OCR sometimes glues the type line onto the
-    // front of one ("芭戒指天要等級:48"): keep what comes before the first stat mark when that is long enough to be
-    // more than a stat word such as 力量.
-    const untagged = rawLine.replace(TAG_START, "");
-    const mark = untagged.search(STAT_LINE);
-    // A stat line has a value after its mark; a name line that merely ends in a stray "+"/"%" does not, so require a
-    // digit after the first mark before cutting the line down to its prefix.
-    const statPrefix = mark !== -1 && /\d/u.test(untagged.slice(mark));
-    const line = statPrefix ? untagged.slice(0, mark) : untagged;
-    if (statPrefix && line.replace(/\s+/gu, "").length < MIN_BEFORE_STAT) continue;
+    const reduced = nameLine(rawLine);
+    if (!reduced) continue;
+    const { line, statPrefix } = reduced;
     const compact = repairCjkGlyphs(line.replace(/\s+/gu, ""));
     for (const run of compact.match(CJK_RUN) ?? []) cjk.push({ text: stripSeparators(run), statPrefix, at });
     const letters = line.replace(/[^A-Za-z'’\- ]+/gu, "");
@@ -114,13 +124,37 @@ function textPieces(text) {
   };
 }
 
+/**
+ * How far the text `piece` is from the catalogue name `entry.key`: the plain distance, the best window of the name's
+ * own length inside a longer run (cjk), a short type word ending a longer run (cjk + suffix), or 0 when the name sits
+ * in a piece with only a little glue around it. `limit` is the caller's allowed edits.
+ */
+function nameDistance(piece, entry, { cjk, suffix, limit }) {
+  const size = entry.key.length;
+  let distance = piece.length <= size + limit ? levenshtein(piece, entry.key, limit) : Infinity;
+  // A long Chinese name may sit inside a longer run (a prefix glued on): try every window of the name's length.
+  // (A fuzzy window for short type words was tried and removed: it matched noise such as "Defender".)
+  for (let start = 0; cjk && size >= WINDOW_MIN_NAME && start + size <= piece.length && distance > 0; start += 1) {
+    distance = Math.min(distance, levenshtein(piece.slice(start, start + size), entry.key, limit));
+  }
+  // Magic and rare charms read "<random name>特大咒符": a short type word may also end a long run (types only).
+  if (cjk && suffix && size < WINDOW_MIN_NAME && piece.length > size) {
+    distance = Math.min(distance, levenshtein(piece.slice(-size), entry.key, limit));
+  }
+  // OCR often glues neighbouring words onto a line: the word, spelled exactly, counts if noise is small.
+  // Items get less gluing slack than bases (stat words such as 力量/生命 collide with item names).
+  if (cjk && piece.length <= size + (suffix ? TYPE_CONTEXT : ITEM_INCLUDE_CONTEXT) && piece.includes(entry.key)) {
+    distance = 0;
+  }
+  return distance;
+}
+
 function closest(pieces, entries, { cjk, wide, suffix = false, allowStatPrefix = false }) {
   const found = new Map();
   for (const raw of pieces) {
-    const piece = typeof raw === "string" ? raw : raw.text;
-    const at = typeof raw === "string" ? 0 : raw.at;
+    const { text: piece, at, statPrefix } = raw;
     // Text cut from the front of a stat line is only evidence for a glued type word (base pass), never for an item.
-    if (typeof raw !== "string" && raw.statPrefix && !allowStatPrefix) continue;
+    if (statPrefix && !allowStatPrefix) continue;
     for (const entry of entries) {
       if (entry.cjk !== cjk) continue;
       const size = entry.key.length;
@@ -128,19 +162,7 @@ function closest(pieces, entries, { cjk, wide, suffix = false, allowStatPrefix =
       if (!cjk && size < MIN_LATIN_NAME) continue;
       const limit = allowedEdits(size, { cjk, wide });
       if (piece.length < size - limit) continue;
-      let distance = piece.length <= size + limit ? levenshtein(piece, entry.key, limit) : Infinity;
-      // A long Chinese name may sit inside a longer run (a prefix glued on): try every window of the name's length.
-      // (A fuzzy window for short type words was tried and removed: it matched noise such as "Defender".)
-      for (let start = 0; cjk && size >= WINDOW_MIN_NAME && start + size <= piece.length && distance > 0; start += 1) {
-        distance = Math.min(distance, levenshtein(piece.slice(start, start + size), entry.key, limit));
-      }
-      // Magic and rare charms read "<random name>特大咒符": a short type word may also end a long run (types only).
-      if (cjk && suffix && size < WINDOW_MIN_NAME && piece.length > size) {
-        distance = Math.min(distance, levenshtein(piece.slice(-size), entry.key, limit));
-      }
-      // OCR often glues neighbouring words onto a line: the word, spelled exactly, counts if noise is small.
-      // Items get less gluing slack than bases (stat words such as 力量/生命 collide with item names).
-      if (cjk && piece.length <= size + (suffix ? TYPE_CONTEXT : ITEM_INCLUDE_CONTEXT) && piece.includes(entry.key)) distance = 0;
+      const distance = nameDistance(piece, entry, { cjk, suffix, limit });
       if (distance > limit) continue;
       const score = distance * 100 - Math.min(size, 40);
       const previous = found.get(entry.name);
@@ -160,6 +182,8 @@ const rank = (list) => {
   for (const c of list.sort((a, b) => a.score - b.score || a.at - b.at)) if (!unique.has(c.name)) unique.set(c.name, c);
   return [...unique.values()].slice(0, MAX_CANDIDATES);
 };
+
+const tagged = (kind, list) => list.map((c) => ({ kind, ...c }));
 
 /**
  * Candidates for a pasted screenshot's OCR text, best first, at most three.
@@ -186,24 +210,16 @@ export function matchOcrText(text, index) {
         ...closest(latin, index.bases, { cjk: false, wide: true }),
       ]);
   if (strong.length) {
-    return [
-      ...strong.map((c) => ({ kind: "item", ...c })),
-      ...asBases.map((c) => ({ kind: "base", ...c })),
-    ].slice(0, MAX_CANDIDATES);
+    return [...tagged("item", strong), ...tagged("base", asBases)].slice(0, MAX_CANDIDATES);
   }
   if (asBases.length) {
     // A short Chinese name (≤3 chars) that matches a product exactly could be a real unique/set item OR a
     // rare/magic item whose random name happens to collide. Default to the exact-match item, but also offer
     // the base as an alternative candidate button for the player to pick instead.
     const exactWeak = rank(asItems.filter((c) => c.size <= WEAK_ITEM_MAX && c.distance === 0));
-    if (exactWeak.length) {
-      return [
-        ...exactWeak.map((c) => ({ kind: "item", ...c })),
-        ...asBases.map((c) => ({ kind: "base", ...c })),
-      ];
-    }
-    return asBases.map((c) => ({ kind: "base", ...c }));
+    if (exactWeak.length) return [...tagged("item", exactWeak), ...tagged("base", asBases)];
+    return tagged("base", asBases);
   }
-  return rank(asItems).map((c) => ({ kind: "item", ...c }));
+  return tagged("item", rank(asItems));
 }
 

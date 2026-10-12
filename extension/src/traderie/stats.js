@@ -19,6 +19,9 @@ export const QUALITIES = [
   { key: "normal", label: "白裝", values: ["normal", "superior"] },
 ];
 
+/** The QUALITIES row for a key ("rare"), or undefined when there is no such quality: one lookup for the whole form. */
+export const qualityChoice = (quality) => QUALITIES.find((q) => q.key === quality);
+
 // The sidebar's "Item Type" entries filter with this parameter (tags[]=Ring lists rings, unique ones included).
 const TYPE_PARAM = "tags[]";
 
@@ -70,7 +73,7 @@ export function mapConditions(conditions, properties, dictionary = AFFIXES) {
 
 /** { name, value } for a chosen quality, or null when "any" was chosen or Traderie's list has no usable Rarity. */
 export function mapQuality(quality, properties) {
-  const wanted = QUALITIES.find((q) => q.key === quality);
+  const wanted = qualityChoice(quality);
   if (!wanted?.values) return null;
   const property = properties.find((p) => p.name === QUALITY_PROPERTY && p.type === "string");
   if (!property || !wanted.values.every((value) => property.options?.includes(value))) return null;

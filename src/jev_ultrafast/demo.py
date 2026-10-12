@@ -28,13 +28,23 @@ OUTPUT_DIR = TRADERIE_LATEST_DIR
 RUN: dict = {}  # demo-owned fields; AGENT.state is only changed through AGENT.command
 
 
+def _pick(source, keys):
+    """Only the named keys the source actually has, in the order given."""
+    return {key: source[key] for key in keys if key in source}
+
+
+def _omit(source, keys):
+    """A copy of the mapping without the named keys."""
+    return {key: value for key, value in source.items() if key not in keys}
+
+
 def _trim_decisions(decisions):
     """Copy for the browser: the last decision keeps its request, earlier ones only the ranking summary."""
     brief = ("operation", "choice", "probabilities", "usage", "latency_ms",
              "label", "probability", "target_probability", "reasked", "phase", "step", "alternatives")
     last_keys = (*brief, "request", "target", "target_probabilities", "operation_probabilities")
     return [
-        {k: d[k] for k in (last_keys if i == len(decisions) - 1 else brief) if k in d}
+        _pick(d, last_keys if i == len(decisions) - 1 else brief)
         for i, d in enumerate(decisions)
     ]
 
@@ -61,15 +71,15 @@ def response_state():
     market = dict(RUN.get("market", {}))
     for key in VIEW_NAMES:
         if key in market:
-            view = {k: v for k, v in market[key].items() if k != "text"}
+            view = _omit(market[key], ("text",))
             market[key] = {**view, "text_length": len(market[key]["text"])}
     page = state.get("page")
     if page:
         shot = page.get("screenshot")
-        page = {k: page[k] for k in PAGE_FIELDS if k in page}
+        page = _pick(page, PAGE_FIELDS)
         page["screenshot_id"] = format(hash(shot) & 0xFFFFFFFF, "x") if shot else None
         state["page"] = page
-    run = {k: v for k, v in RUN.items() if k != "report_md"}
+    run = _omit(RUN, ("report_md",))
     return {
         **state,
         **run,
@@ -110,16 +120,19 @@ def _reset_command(body):
     RUN.update(item_name=item, market=new_market(), report_md=None)
 
 
-def _tick_command(body):
+def _require_agent():
     if AGENT is None:
         raise ValueError("請先按「開始查詢」")
+
+
+def _tick_command(body):
+    _require_agent()
     AGENT.command("tick", body)
     advance(AGENT, RUN["item_name"], RUN["market"])
 
 
 def _report_command(_body):
-    if AGENT is None:
-        raise ValueError("請先按「開始查詢」")
+    _require_agent()
     verification = RUN["market"]["verification"]
     if verification is None:
         raise ValueError("Agent 尚未完成兩段讀取，無法產生報告")
@@ -158,6 +171,20 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(content)
 
+    def _serve_static(self, path):
+        """The demo page itself: index.html and its assets, with this run's token substituted in."""
+        files = {
+            "/": ("index.html", "text/html"),
+            "/app.js": ("app.js", "text/javascript"),
+            "/csv.js": ("csv.js", "text/javascript"),
+            "/style.css": ("style.css", "text/css"),
+        }
+        if path not in files:
+            return self.send(404, "找不到", "text/plain")
+        name, mime = files[path]
+        content = (ROOT / "static" / name).read_text(encoding="utf-8").replace("__TOKEN__", TOKEN)
+        self.send(200, content, mime + "; charset=utf-8")
+
     def do_GET(self):
         if self.forbidden():
             return self.send(403, "只接受本機的示範頁面", "text/plain")
@@ -184,17 +211,7 @@ class Handler(BaseHTTPRequestHandler):
             if report:
                 return self.send(200, report, "text/markdown; charset=utf-8")
             return self.send(404, json.dumps({"error": "尚未產生報告"}))
-        files = {
-            "/": ("index.html", "text/html"),
-            "/app.js": ("app.js", "text/javascript"),
-            "/csv.js": ("csv.js", "text/javascript"),
-            "/style.css": ("style.css", "text/css"),
-        }
-        if path not in files:
-            return self.send(404, "找不到", "text/plain")
-        name, mime = files[path]
-        content = (ROOT / "static" / name).read_text(encoding="utf-8").replace("__TOKEN__", TOKEN)
-        self.send(200, content, mime + "; charset=utf-8")
+        self._serve_static(path)
 
     def do_POST(self):
         if self.forbidden() or self.forbidden_post():

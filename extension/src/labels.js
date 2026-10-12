@@ -52,8 +52,9 @@ const SOURCE_LABELS = { scan: "掃描紀錄", picture: "截圖" };
  * because formatting a clock needs the DOM module and that one imports this one.
  */
 export function sourceLine(source) {
-  if (!source || !SOURCE_LABELS[source.kind]) return "";
-  const head = `來源：${[SOURCE_LABELS[source.kind], source.time].filter(Boolean).join(" ")}`;
+  const label = source ? SOURCE_LABELS[source.kind] : "";
+  if (!label) return "";
+  const head = `來源：${[label, source.time].filter(Boolean).join(" ")}`;
   return source.affixes ? `${head} · ${source.affixes}` : head;
 }
 
@@ -97,6 +98,12 @@ function viewStep(entry, view, active) {
   } else if (active) entry.state = "active";
 }
 
+/** The verify step: done when the verification passed, failed when it did not, active while the check is still to come. */
+function verifyStep(entry, verification, active) {
+  if (verification) entry.state = verification.passed ? "done" : "failed";
+  else if (active) entry.state = "active";
+}
+
 // The steps of a stats query (home page filters): the stage the flow reached is kept in market.lookup.stage.
 function statsProgressSteps({ market, running }) {
   const lookup = market.lookup;
@@ -115,8 +122,7 @@ function statsProgressSteps({ market, running }) {
   if (lookup?.unmapped?.length) steps[1].detail = "有條件 Traderie 沒有對應的屬性";
   if (stage === "read" || read) steps[1].state = "done";
   viewStep(steps[2], view, running && stage === "read");
-  if (market.verification) steps[3].state = market.verification.passed ? "done" : "failed";
-  else if (running && read) steps[3].state = "active";
+  verifyStep(steps[3], market.verification, running && read);
   return steps;
 }
 
@@ -142,7 +148,6 @@ export function progressSteps({ market, phase, running }) {
   viewStep(trading, tradingView, running && (phase === "trading" || (findDone && phase == null)));
   viewStep(recent, recentView, running && phase === "recent_trades");
   const read = (view) => view.status === "PASSED" || ENDED.includes(view.status);
-  if (verification) verify.state = verification.passed ? "done" : "failed";
-  else if (running && read(tradingView) && read(recentView)) verify.state = "active";
+  verifyStep(verify, verification, running && read(tradingView) && read(recentView));
   return steps;
 }

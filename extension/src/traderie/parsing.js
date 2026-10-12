@@ -19,18 +19,19 @@ const ABSOLUTE_DATE =
   "\\d{4}年\\d{1,2}月\\d{1,2}日|\\d{4}[-/.]\\d{1,2}[-/.]\\d{1,2}|\\d{1,2}/\\d{1,2}/\\d{4}" +
   "|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\.? \\d{1,2},? \\d{4}";
 
+// The tail both time patterns share: "just now", its Chinese form, then an absolute date.
+const TIME_TAIL = `just now|剛剛|${ABSOLUTE_DATE}`;
+
 export const TIME_REGEX = new RegExp(
   "^(?:[a-z ]*(?:\\d+|a|an)\\s*(seconds?|minutes?|hours?|days?|weeks?|months?|years?|s|m|h|d|秒|分鐘|小时|小時|天|週|周|個月|月|年)s?\\s*(?:ago|前)|" +
-    "just now|剛剛|" +
-    `${ABSOLUTE_DATE})$`,
+    `${TIME_TAIL})$`,
   "iu",
 );
 
 const TRADE_TIME_RE = new RegExp(
   "^(?:\\d+\\s*(?:秒|分鐘|小时|小時|天|週|周|個月|月|年)前|" +
     "(?:[a-z ]*)?(?:\\d+|a|an) ?(?:second|minute|hour|day|week|month|year|s|m|h|d)s? ago|" +
-    "just now|剛剛|" +
-    `${ABSOLUTE_DATE})$`,
+    `${TIME_TAIL})$`,
   "iu",
 );
 
@@ -78,8 +79,8 @@ function envLabels(low) {
  * @returns {string|null}
  */
 function cardPlatform(midLower) {
-  const isPc = midLower.includes("pc"); // midLower is the joined middle lines, so a per-line token test adds nothing
-  if (isPc) return "PC";
+  // midLower is the joined middle lines, so a per-line token test adds nothing
+  if (midLower.includes("pc")) return "PC";
   if (midLower.includes("playstation")) return "Playstation";
   if (midLower.includes("xbox")) return "Xbox";
   if (midLower.includes("switch")) return "Switch";
@@ -171,6 +172,11 @@ function askFields(cleanPrefix, tradeIdx, card) {
   return { ask, highRuneValue };
 }
 
+/** A tag line with its trailing bullet glyphs and surrounding whitespace removed. */
+function tagText(line) {
+  return pyStrip(line.replace(/•+$/u, ""));
+}
+
 /**
  * affixes: midLines excluding env/tag/quality words
  * @returns {string[]}
@@ -178,13 +184,34 @@ function askFields(cleanPrefix, tradeIdx, card) {
 function cardAffixes(midLines) {
   const affixes = [];
   for (const entry of midLines) {
-    const cleaned = pyStrip(entry.replace(/•+$/u, ""));
+    const cleaned = tagText(entry);
     const low = cleaned.toLowerCase();
     if (low && !CARD_ENV_TAGS.has(low)) {
       affixes.push(cleaned);
     }
   }
   return affixes;
+}
+
+/**
+ * The seller and rating of a card, or null when a home-page row has neither (so it is not a listing).
+ *
+ * A card with a known itemName names its seller and rating on its first two lines. The home page has no known
+ * name, so both are scanned backwards from the item line instead; a home row without either is not a listing.
+ * @returns {{seller: string|null, rating: string|null}|null}
+ */
+function cardSellerRating(cleanPrefix, itemName, itemIdx) {
+  if (!itemName && itemIdx !== -1) {
+    const { seller, rating } = homeSeller(cleanPrefix, itemIdx);
+    if (!seller || rating === null) return null;
+    return { seller, rating };
+  }
+  const seller = cleanPrefix[0];
+  let rating = null;
+  if (cleanPrefix.length > 1 && cleanPrefix[1].startsWith("(") && cleanPrefix[1].endsWith(")")) {
+    rating = cleanPrefix[1];
+  }
+  return { seller, rating };
 }
 
 /**
@@ -202,18 +229,9 @@ function cardData(card, itemName) {
 
   const { itemLine: nameLine, itemIdx } = itemLine(cleanPrefix, itemName, itemLower);
 
-  // Find seller and rating — for null itemNames, scan backwards from the item for the rating
-  let seller;
-  let rating = null;
-  if (itemLower === null && itemIdx !== -1) {
-    ({ seller, rating } = homeSeller(cleanPrefix, itemIdx));
-    if (!seller || rating === null) return null;
-  } else {
-    seller = cleanPrefix[0];
-    if (cleanPrefix.length > 1 && cleanPrefix[1].startsWith("(") && cleanPrefix[1].endsWith(")")) {
-      rating = cleanPrefix[1];
-    }
-  }
+  const sellerRating = cardSellerRating(cleanPrefix, itemName, itemIdx);
+  if (!sellerRating) return null;
+  const { seller, rating } = sellerRating;
 
   let tradeIdx = -1;
   for (let i = 0; i < cleanPrefix.length; i += 1) {
@@ -259,14 +277,16 @@ function cardData(card, itemName) {
   };
 }
 
-export function parseTradingTxt(text, { itemName = "Harlequin Crest" } = {}) {
-  if (!text) return [];
+/** The non-empty, Python-stripped lines of a page's text. */
+function textLines(text) {
+  return splitLines(text).map((line) => pyStrip(line)).filter((line) => line);
+}
 
-  const lines = splitLines(text)
-    .map((line) => pyStrip(line))
-    .filter((line) => line)
-    .map((line) => line.replaceAll("\xa0", " "));
-
+/**
+ * The half-open range of `lines` holding the listings: after the search banner, before the load-more prompt.
+ * @returns {{start: number, end: number}}
+ */
+function listingBounds(lines) {
   let start = 0;
   lines.forEach((line, i) => {
     if (line.includes("Apply this search for all")) start = i + 1;
@@ -280,15 +300,30 @@ export function parseTradingTxt(text, { itemName = "Harlequin Crest" } = {}) {
     }
   }
 
+  return { start, end };
+}
+
+/** Group the listing area's lines into cards: each card ends at its own time line. */
+function splitCards(listingLines) {
   const cardsRaw = [];
   let current = [];
-  for (const line of lines.slice(start, end)) {
+  for (const line of listingLines) {
     current.push(line);
     if (TIME_REGEX.test(line)) {
       cardsRaw.push(current);
       current = [];
     }
   }
+  return cardsRaw;
+}
+
+export function parseTradingTxt(text, { itemName = "Harlequin Crest" } = {}) {
+  if (!text) return [];
+
+  const lines = textLines(text).map((line) => line.replaceAll("\xa0", " "));
+
+  const { start, end } = listingBounds(lines);
+  const cardsRaw = splitCards(lines.slice(start, end));
 
   const listings = [];
   for (const card of cardsRaw) {
@@ -300,7 +335,7 @@ export function parseTradingTxt(text, { itemName = "Harlequin Crest" } = {}) {
 
 /** One wanted-tag line, cleaned; null for the environment words and the "Additional Item(s)" filler. */
 function answerToken(line) {
-  const content = pyStrip(line.replace(/•+$/u, ""));
+  const content = tagText(line);
   if (!content || RECENT_ENV_TAGS.has(content.toLowerCase()) || content === "Additional Item(s)") return null;
   return content;
 }
@@ -413,6 +448,23 @@ function markerTrades(lines) {
   return trades;
 }
 
+/** Every trade on the page: the "They Give" blocks, or the marker fallback when the page has none. */
+function collectTrades(lines) {
+  const trades = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (lines[i].toLowerCase() === "they give") {
+      const { record, next } = tradeBlock(lines, i);
+      if (record) trades.push(record);
+      i = next;
+      continue;
+    }
+    i += 1;
+  }
+  if (!trades.length) trades.push(...markerTrades(lines));
+  return trades;
+}
+
 export function parseRecentTrades(textContent, observeJson = null) {
   const text = (textContent || "") + " " + (observeJson ? (observeJson.text ?? "") : "");
   const url =
@@ -431,23 +483,8 @@ export function parseRecentTrades(textContent, observeJson = null) {
     };
   }
 
-  const trades = [];
-  const lines = splitLines(text)
-    .map((entry) => pyStrip(entry))
-    .filter((entry) => entry);
-
-  let i = 0;
-  while (i < lines.length) {
-    if (lines[i].toLowerCase() === "they give") {
-      const { record, next } = tradeBlock(lines, i);
-      if (record) trades.push(record);
-      i = next;
-      continue;
-    }
-    i += 1;
-  }
-
-  if (!trades.length) trades.push(...markerTrades(lines));
+  const lines = textLines(text);
+  const trades = collectTrades(lines);
 
   if (!trades.length && (textLower.includes("sign in") || textLower.includes("login"))) {
     return {

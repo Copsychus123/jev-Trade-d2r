@@ -20,6 +20,63 @@ HTML = """<!doctype html><title>Guard checks</title>
 <p id="outside">Unrelated offscreen text</p>"""
 
 
+def _controls_ok(actions) -> bool:
+    """The native controls expose only the operations they support, and never a secret value."""
+    return (
+        all({a["kind"] for a in actions if a.get("role") == role} == {"click"} for role in ("checkbox", "radio"))
+        and {a["kind"] for a in actions if a["label"] == "Read only"} == {"click"}
+        and not any(a["label"] == "Disabled" or a.get("value") == "never expose this" for a in actions)
+        and [a["value"] for a in actions if a["kind"] == "select"] == ["Design"]
+    )
+
+
+def _click_is_blocked(browser, page, action) -> bool:
+    """True when acting on `action` is refused: a textless overlay must block a click without changing the state."""
+    try:
+        browser.act(action, page)
+        return False
+    except (RuntimeError, StalePage):
+        return True
+
+
+def _check_mutations(browser, check) -> None:
+    """Each mutation of something the model can see must invalidate the page observed just before it."""
+    mutations = {
+        "visible context": "document.querySelector('#context').textContent='Cart total: $100'",
+        "accessible label": "document.querySelector('#target').setAttribute('aria-label','Delete account')",
+        "field property": "document.querySelector('#field').value='London'",
+        "checkbox property": "document.querySelector('#toggle').checked=true",
+        "disabled target": "document.querySelector('#target').disabled=true",
+        "read-only field": "document.querySelector('#field').readOnly=true",
+        "hidden target": "document.querySelector('#target').style.display='none'",
+        "replaced node": "document.querySelector('#target').outerHTML=document.querySelector('#target').outerHTML",
+        "dropdown option": "document.querySelector('select').options[1].text='Coastal'",
+    }
+    reset = (
+        "document.querySelector('#target').style.display='block'; document.querySelector('#target').disabled=false"
+    )
+    for label, expression in mutations.items():
+        browser.evaluate(reset)
+        page = browser.observe(screenshot=False)
+        browser.evaluate(expression)
+        check(not browser.fresh(page), label + " invalidates")
+
+
+def _check_action_guards(browser, check) -> None:
+    """Each mutation near the target must invalidate the page's action-specific guard for that target."""
+    cases = {
+        "nearby price": "document.querySelector('#price').textContent='Total $100'",
+        "form value": "document.querySelector('#query').value='changed'",
+        "form toggle": "document.querySelector('#check').checked=true",
+        "target replacement": "document.querySelector('#buy').outerHTML=document.querySelector('#buy').outerHTML",
+    }
+    for label, expression in cases.items():
+        page = browser.observe(screenshot=False)
+        buy = next(a for a in page["actions"] if a["label"] == "Buy")
+        browser.evaluate(expression)
+        check(not browser.fresh(page, buy), label + " invalidates action-specific guard")
+
+
 def main():
     browser = Browser("data:text/html," + quote(HTML))
     passed: list[str] = []
@@ -42,25 +99,7 @@ def main():
         browser.evaluate("document.querySelector('#outside').textContent='Updated outside the viewport'")
         check(browser.fresh(page), "unrelated offscreen text does not invalidate")
 
-        mutations = {
-            "visible context": "document.querySelector('#context').textContent='Cart total: $100'",
-            "accessible label": "document.querySelector('#target').setAttribute('aria-label','Delete account')",
-            "field property": "document.querySelector('#field').value='London'",
-            "checkbox property": "document.querySelector('#toggle').checked=true",
-            "disabled target": "document.querySelector('#target').disabled=true",
-            "read-only field": "document.querySelector('#field').readOnly=true",
-            "hidden target": "document.querySelector('#target').style.display='none'",
-            "replaced node": "document.querySelector('#target').outerHTML=document.querySelector('#target').outerHTML",
-            "dropdown option": "document.querySelector('select').options[1].text='Coastal'",
-        }
-        for label, expression in mutations.items():
-            browser.evaluate(
-                "document.querySelector('#target').style.display='block'; "
-                "document.querySelector('#target').disabled=false"
-            )
-            page = browser.observe(screenshot=False)
-            browser.evaluate(expression)
-            check(not browser.fresh(page), label + " invalidates")
+        _check_mutations(browser, check)
 
         browser.evaluate(
             "document.querySelector('#target').disabled=false; document.querySelector('#target').style.display='block'"
@@ -74,11 +113,7 @@ def main():
             "document.body.append(cover)"
         )
         overlay_fresh = browser.fresh(page)
-        try:
-            browser.act(action, page)
-            blocked = False
-        except (RuntimeError, StalePage):
-            blocked = True
+        blocked = _click_is_blocked(browser, page, action)
         check(
             overlay_fresh and blocked and browser.evaluate("window.clicks") == 1,
             "overlay blocked before input",
@@ -109,26 +144,11 @@ def main():
             browser.fresh(page, buy) and not browser.fresh(page),
             "click guard accepts unrelated visible updates; terminal guard rejects them",
         )
-        for label, expression in {
-            "nearby price": "document.querySelector('#price').textContent='Total $100'",
-            "form value": "document.querySelector('#query').value='changed'",
-            "form toggle": "document.querySelector('#check').checked=true",
-            "target replacement": "document.querySelector('#buy').outerHTML=document.querySelector('#buy').outerHTML",
-        }.items():
-            page = browser.observe(screenshot=False)
-            buy = next(a for a in page["actions"] if a["label"] == "Buy")
-            browser.evaluate(expression)
-            check(not browser.fresh(page, buy), label + " invalidates action-specific guard")
+        _check_action_guards(browser, check)
 
         page = browser.observe(screenshot=False)
         actions = page["actions"]
-        controls_ok = (
-            all({a["kind"] for a in actions if a.get("role") == role} == {"click"} for role in ("checkbox", "radio"))
-            and {a["kind"] for a in actions if a["label"] == "Read only"} == {"click"}
-            and not any(a["label"] == "Disabled" or a.get("value") == "never expose this" for a in actions)
-            and [a["value"] for a in actions if a["kind"] == "select"] == ["Design"]
-        )
-        check(controls_ok, "native controls expose only supported operations and safe values")
+        check(_controls_ok(actions), "native controls expose only supported operations and safe values")
 
         select = next(a for a in actions if a["kind"] == "select")
         browser.act(select, page)

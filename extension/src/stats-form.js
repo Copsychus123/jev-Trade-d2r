@@ -2,6 +2,7 @@
 // stats-form-state.js; this file only draws them. Screenshot text is untrusted: everything is written with textContent.
 import { AFFIXES } from "./ocr/affix_dictionary.js";
 import { parseAffixLines } from "./ocr/affixes.js";
+import { $, element } from "./dom.js";
 import {
   addCondition,
   availableToAdd,
@@ -18,8 +19,43 @@ import {
 } from "./stats-form-state.js";
 import { QUALITIES, unmappedKeys } from "./traderie/stats.js";
 
-const $ = (id) => document.getElementById(id);
-const element = (tag, props = {}) => Object.assign(document.createElement(tag), props);
+/** Title of every field whose value came from a screenshot: the player is asked to confirm it. */
+const FROM_CAPTURE_TITLE = "從擷取讀到，請確認";
+
+/**
+ * One 最小/最大 number box of `condition`. Only the box that actually carries a captured number is marked: an empty
+ * one came from nothing.
+ */
+function limitInput(condition, field, text, busy) {
+  const captured = condition.fromCapture && condition[field] !== null && condition[field] !== "";
+  const input = element("input", {
+    type: "number",
+    className: `affix-${field}${captured ? " from-capture" : ""}`,
+    min: "0",
+    step: "1",
+    value: condition[field] ?? "",
+    placeholder: text,
+  });
+  if (captured) input.title = FROM_CAPTURE_TITLE;
+  input.setAttribute("aria-label", `${condition.label}${text}值`);
+  input.disabled = busy;
+  return input;
+}
+
+/**
+ * The quality radios, built from QUALITIES: a quality added to stats.js always has a control here, with the same value
+ * and label, so the two lists cannot drift apart. It reads no form state, so it lives outside the form.
+ */
+function buildQualityRadios() {
+  for (const quality of QUALITIES) {
+    const label = element("label");
+    label.append(
+      element("input", { type: "radio", name: "quality", value: quality.key }),
+      element("span", { textContent: quality.label }),
+    );
+    $("quality-group").append(label);
+  }
+}
 
 /**
  * `getProperties()` gives Traderie's property list of an earlier query (or null before the first one): with it a
@@ -32,19 +68,8 @@ export function initStatsForm({ getProperties, onChange }) {
   let hasScreenshot = false;
   let screenshotText = "";
 
-  // The quality radios are built from QUALITIES: a quality added to stats.js always has a control here, with the same
-  // value and label, so the two lists cannot drift apart.
-  function buildQualityRadios() {
-    for (const quality of QUALITIES) {
-      const label = element("label");
-      label.append(
-        element("input", { type: "radio", name: "quality", value: quality.key }),
-        element("span", { textContent: quality.label }),
-      );
-      $("quality-group").append(label);
-    }
-  }
-  buildQualityRadios();
+  buildQualityRadios(); // before the first render: every later pass reads the radios this fills in
+  const qualityRadios = () => document.querySelectorAll('input[name="quality"]');
 
   function set(next) {
     form = next;
@@ -56,20 +81,7 @@ export function initStatsForm({ getProperties, onChange }) {
   function limitFields(condition) {
     const limits = element("span", { className: "affix-limits" });
     for (const [field, text] of [["min", "最小"], ["max", "最大"]]) {
-      // Only the box that actually carries a captured number is marked: an empty one came from nothing.
-      const captured = condition.fromCapture && condition[field] !== null && condition[field] !== "";
-      const input = element("input", {
-        type: "number",
-        className: `affix-${field}${captured ? " from-capture" : ""}`,
-        min: "0",
-        step: "1",
-        value: condition[field] ?? "",
-        placeholder: text,
-      });
-      if (captured) input.title = "從擷取讀到，請確認";
-      input.setAttribute("aria-label", `${condition.label}${text}值`);
-      input.disabled = busy;
-      limits.append(input);
+      limits.append(limitInput(condition, field, text, busy));
     }
     return limits;
   }
@@ -98,35 +110,38 @@ export function initStatsForm({ getProperties, onChange }) {
 
   function render() {
     $("affix-list").replaceChildren(...form.conditions.map(rowElement));
-    $("affix-empty").textContent = EMPTY_LIST;
-    $("affix-empty").hidden = form.conditions.length > 0;
+    const empty = $("affix-empty");
+    empty.textContent = EMPTY_LIST;
+    empty.hidden = form.conditions.length > 0;
 
     const select = $("affix-select");
     select.replaceChildren(new Option("新增條件…", ""));
     for (const entry of availableToAdd(form, AFFIXES)) select.append(new Option(entry.zh, entry.key));
     select.disabled = busy;
     $("affix-fill").disabled = busy || !hasScreenshot;
-    for (const radio of document.querySelectorAll('input[name="quality"]')) {
+    for (const radio of qualityRadios()) {
       radio.checked = radio.value === form.quality;
       radio.disabled = busy;
     }
-    if ($("stats-base").value !== form.base) $("stats-base").value = form.base;
+    const base = $("stats-base");
+    if (base.value !== form.base) base.value = form.base;
     // A base that came from a picture or a scan record is marked the same way a captured number is: the player can see
     // it was not their own typing, and editing it clears the mark.
-    const baseFromCapture = $("stats-base").dataset.from === "ocr";
-    $("stats-base").classList.toggle("from-capture", baseFromCapture);
-    if (baseFromCapture) $("stats-base").title = "從擷取讀到，請確認";
-    else $("stats-base").removeAttribute("title");
-    $("stats-base").disabled = busy;
+    const baseFromCapture = base.dataset.from === "ocr";
+    base.classList.toggle("from-capture", baseFromCapture);
+    if (baseFromCapture) base.title = FROM_CAPTURE_TITLE;
+    else base.removeAttribute("title");
+    base.disabled = busy;
   }
 
   // The list is redrawn on structural changes only; typing a number just updates the state and the invalid marks.
   function wireEvents() {
-    $("affix-list").addEventListener("change", (event) => {
+    const list = $("affix-list");
+    list.addEventListener("change", (event) => {
       const key = event.target.closest("li")?.dataset.key;
       if (key && event.target.classList.contains("affix-on")) set(setOn(form, key, event.target.checked));
     });
-    $("affix-list").addEventListener("input", (event) => {
+    list.addEventListener("input", (event) => {
       const li = event.target.closest("li");
       const field = ["min", "max"].find((f) => event.target.classList.contains(`affix-${f}`));
       if (!li || !field) return;
@@ -134,7 +149,7 @@ export function initStatsForm({ getProperties, onChange }) {
       li.classList.toggle("invalid", invalidKeys(form).includes(li.dataset.key));
       onChange();
     });
-    $("affix-list").addEventListener("click", (event) => {
+    list.addEventListener("click", (event) => {
       const key = event.target.closest("li")?.dataset.key;
       if (key && event.target.closest(".affix-remove")) set(removeCondition(form, key));
     });
@@ -147,7 +162,7 @@ export function initStatsForm({ getProperties, onChange }) {
       $("stats-base").dataset.from = "";
       onChange();
     });
-    for (const radio of document.querySelectorAll('input[name="quality"]')) {
+    for (const radio of qualityRadios()) {
       radio.addEventListener("change", () => set(setQuality(form, radio.value)));
     }
     $("affix-fill").addEventListener("click", () => fillFromText(screenshotText, { carryValues: true }));

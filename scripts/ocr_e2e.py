@@ -32,11 +32,10 @@ from extension_e2e import (  # noqa: E402
     LOCAL_API,
     build_extension,
     cleanup,
-    free_profile,
-    launch_chrome,
-    load_extension,
+    environment_failure,
     open_panel,
     say,
+    start_chrome_with_extension,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -122,6 +121,18 @@ def model_requests(state):
     return [u for u in state["external"] if "www.modelscope.cn" in u]
 
 
+async def _wait_read(panel: Panel, seconds: int) -> dict:
+    """Wait until a read ends: the panel shows a time, or reports an error."""
+    return await panel.wait(lambda s: s["time"] or s["kind"] == "error", seconds)
+
+
+async def _read_picture(panel: Panel, path: Path, seconds: int = 240) -> dict:
+    """Load one picture, press go and wait for the read to end."""
+    await panel.load_picture(path)
+    await panel.evaluate("document.getElementById('ocr-go').click()")
+    return await _wait_read(panel, seconds)
+
+
 async def _fail_paused_requests(panel: Panel) -> int:
     """Answer every paused model-download request with a connection error; returns how many were answered."""
     failed = 0
@@ -148,9 +159,7 @@ async def download_group(panel: Panel, report: dict, first_image: Path) -> None:
     await _blocked_download_checks(panel, checks, first_image)
 
     # The blocked-download test wiped the models; the reading groups below need them, so download them again.
-    await panel.load_picture(first_image)
-    await panel.evaluate("document.getElementById('ocr-go').click()")
-    await panel.wait(lambda s: s["time"] or s["kind"] == "error", 240)
+    await _read_picture(panel, first_image)
 
 
 async def _install_progress_hooks(panel: Panel) -> None:
@@ -187,7 +196,7 @@ async def _first_download_checks(panel: Panel, checks: dict, first_image: Path) 
     checks["notice_shown"] = state["downloadNotice"] or notice_observed
     checks["download_without_a_click"] = True
 
-    state = await panel.wait(lambda s: s["time"] or s["kind"] == "error", 180)
+    state = await _wait_read(panel, 180)
     checks["requests_started_by_themselves"] = bool(model_requests(state))
     progress = json.loads(await panel.evaluate("JSON.stringify([...window.__progress])"))
     values = json.loads(await panel.evaluate("JSON.stringify(window.__progressValues)"))
@@ -201,14 +210,12 @@ async def _first_download_checks(panel: Panel, checks: dict, first_image: Path) 
     await panel.load_picture(first_image)
     before = len(model_requests(await panel.state()))
     await panel.evaluate("document.getElementById('ocr-go').click()")
-    state = await panel.wait(lambda s: s["time"] or s["kind"] == "error", 180)
+    state = await _wait_read(panel, 180)
     checks["second_run_no_download"] = len(model_requests(state)) == before
 
     # Reload the panel (the models must survive in IndexedDB).
     await panel.reload()
-    await panel.load_picture(first_image)
-    await panel.evaluate("document.getElementById('ocr-go').click()")
-    state = await panel.wait(lambda s: s["time"] or s["kind"] == "error", 180)
+    state = await _read_picture(panel, first_image, 180)
     checks["after_reload_no_download"] = not model_requests(state)
 
 
@@ -286,9 +293,7 @@ async def accuracy_speed_group(
         await panel.reload()
         await panel.evaluate("document.getElementById('choose-name').click()")
         await panel.evaluate("document.getElementById('item').value = ''")
-        await panel.load_picture(DATA / item["file"])
-        await panel.evaluate("document.getElementById('ocr-go').click()")
-        state = await panel.wait(lambda s: s["time"] or s["kind"] == "error", 240)
+        state = await _read_picture(panel, DATA / item["file"])
         seconds = float(state["time"].split()[1]) if state["time"] else None
         # The best result is written into the name field; the kinds and names of the other candidates come from the
         # data-kind/data-name attributes the panel sets (the label alone no longer says which is a base).
@@ -317,6 +322,34 @@ async def accuracy_speed_group(
     report[rows_key] = rows
 
 
+async def _affix_start_gate(panel: Panel, checks: dict) -> None:
+    """The captured numbers are in the boxes, so the gate is open. Emptying every box through the page (real input
+    events, the way the listener hears them) must close it and show startBlocker's NEED_VALUES reason; giving one
+    value back must open it again."""
+    gate = (
+        "JSON.stringify({ disabled: document.getElementById('start').disabled,"
+        " whyVisible: !document.getElementById('start-why').hidden })"
+    )
+    checks["start_gate_after_capture"] = json.loads(await panel.evaluate(gate))
+    emptied = await panel.evaluate(
+        "(() => { const boxes = [...document.querySelectorAll('#affix-list .affix-min')];"
+        " if (!boxes.length) return false;"
+        " for (const box of boxes) { box.value = ''; box.dispatchEvent(new Event('input', { bubbles: true })); }"
+        " return true; })()"
+    )
+    if emptied:
+        checks["start_gate_after_clearing"] = json.loads(await panel.evaluate(gate))
+        checks["start_why_after_clearing"] = await panel.evaluate("document.getElementById('start-why').textContent")
+        filled = await panel.evaluate(
+            "(() => { const li = [...document.querySelectorAll('#affix-list li')]"
+            ".find((l) => l.querySelector('.affix-min')); if (!li) return false;"
+            " const box = li.querySelector('.affix-min'); box.value = '5';"
+            " box.dispatchEvent(new Event('input', { bubbles: true })); return true; })()"
+        )
+        if filled:
+            checks["start_enabled_after_value"] = json.loads(await panel.evaluate(gate))
+
+
 async def affix_group(panel: Panel, report: dict, item: dict) -> None:
     """A base-kind picture read in the affix (模糊搜尋) form: the reading itself fills the base and every recognised
     condition — the attributes are ticked, and the numbers the reader read are filled in and marked as captured — the
@@ -333,9 +366,7 @@ async def affix_group(panel: Panel, report: dict, item: dict) -> None:
         "(() => { const b = document.getElementById('stats-base'); b.value = ''; b.dataset.from = '';"
         " b.dispatchEvent(new Event('input')); })()"
     )
-    await panel.load_picture(DATA / item["file"])
-    await panel.evaluate("document.getElementById('ocr-go').click()")
-    state = await panel.wait(lambda s: s["time"] or s["kind"] == "error", 240)
+    state = await _read_picture(panel, DATA / item["file"])
     status, rows = state["status"], state["affixRows"]
     # (a) the status holds the recognised name as English（中文）: a Latin name, a full-width open bracket, some Chinese
     # and the closing bracket. The 「只認出底材（不會依品質篩選）」 prefix has no Latin name before its bracket.
@@ -357,31 +388,7 @@ async def affix_group(panel: Panel, report: dict, item: dict) -> None:
     checks["values_filled"] = bool(boxed) and all(r["min"] or r["max"] for r in boxed)
     checks["values_marked"] = bool(boxed) and all(r["marked"] >= 1 for r in boxed)
     checks["no_query_started"] = state["mode"] == "stats" and state["view"] == "ready"
-    GATE = (
-        "JSON.stringify({ disabled: document.getElementById('start').disabled,"
-        " whyVisible: !document.getElementById('start-why').hidden })"
-    )
-    # The captured numbers are in the boxes, so the gate is open. Emptying every box through the page (real input
-    # events, the way the listener hears them) must close it and show startBlocker's NEED_VALUES reason; giving one
-    # value back must open it again.
-    checks["start_gate_after_capture"] = json.loads(await panel.evaluate(GATE))
-    emptied = await panel.evaluate(
-        "(() => { const boxes = [...document.querySelectorAll('#affix-list .affix-min')];"
-        " if (!boxes.length) return false;"
-        " for (const box of boxes) { box.value = ''; box.dispatchEvent(new Event('input', { bubbles: true })); }"
-        " return true; })()"
-    )
-    if emptied:
-        checks["start_gate_after_clearing"] = json.loads(await panel.evaluate(GATE))
-        checks["start_why_after_clearing"] = await panel.evaluate("document.getElementById('start-why').textContent")
-        filled = await panel.evaluate(
-            "(() => { const li = [...document.querySelectorAll('#affix-list li')]"
-            ".find((l) => l.querySelector('.affix-min')); if (!li) return false;"
-            " const box = li.querySelector('.affix-min'); box.value = '5';"
-            " box.dispatchEvent(new Event('input', { bubbles: true })); return true; })()"
-        )
-        if filled:
-            checks["start_enabled_after_value"] = json.loads(await panel.evaluate(GATE))
+    await _affix_start_gate(panel, checks)
     say(
         f"  詞綴：{checks['label']!r} 底材 {state['base']!r} {len(rows)} 條"
         f"（值填了 {checks['values_filled']}／標記 {checks['values_marked']}，沒查詢 {checks['no_query_started']}）"
@@ -439,7 +446,7 @@ async def auto_group(panel: Panel, report: dict) -> None:
     await panel.evaluate("document.getElementById('choose-name').click()")
     await panel.evaluate("document.getElementById('item').value = ''")
     await panel.set_files("#ocr-file", [DATA / "image-4.png"])
-    state = await panel.wait(lambda s: s["time"] or s["kind"] == "error", 120)
+    state = await _wait_read(panel, 120)
     row["reads_by_itself_with_model"] = bool(state["time"]) and state["item"] == "Small Charm"
     row["did_not_start_a_query"] = await panel.evaluate(
         "document.body.dataset.view === 'ready' && document.getElementById('banner').hidden"
@@ -456,7 +463,7 @@ async def auto_group(panel: Panel, report: dict) -> None:
     say(f"  自動辨識：{row}")
     # Leave the profile usable for the next run: read once by hand, which downloads the models.
     await panel.evaluate("document.getElementById('ocr-go').click()")
-    await panel.wait(lambda s: s["time"] or s["kind"] == "error", 120)
+    await _wait_read(panel, 120)
 
 
 ACCURACY_KEYS = ("top1", "top3", "screenshots_top3", "phone_top3")
@@ -573,22 +580,15 @@ def main() -> int:
     chrome = None
     try:
         build_extension(LOCAL_API)
-        free_profile()
-        chrome = launch_chrome(args.headed)
-        ext_id = load_extension()
-        say(f"擴充功能已載入（{ext_id}）")
+        chrome, ext_id = start_chrome_with_extension(args.headed)
         report = asyncio.run(
             drive(
                 open_panel(ext_id), truth, args.skip_download, args.skip_accuracy,
                 affix_item=affix_item, holdout=holdout
             )
         )
-    except Environment as error:
-        say(f"環境問題：{error}")
-        return 2
-    except subprocess.CalledProcessError:
-        say("環境問題：擴充功能打包失敗")
-        return 2
+    except (Environment, subprocess.CalledProcessError) as error:
+        return environment_failure(error)
     finally:
         cleanup(chrome, None)
     report["truth"] = args.truth

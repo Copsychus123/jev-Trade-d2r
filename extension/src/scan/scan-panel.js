@@ -4,14 +4,13 @@
 // Everything written to the page goes through textContent: OCR text is untrusted page-like text, and the plan forbids
 // innerHTML for it.
 import { toCsv } from "../csv.js";
+import { $ } from "../dom.js";
 import { saveText } from "../download.js";
 import { parseAffixLines } from "../ocr/affixes.js";
 import { chineseName } from "../traderie/lookup.js";
 import { startCapture } from "./capture.js";
 import { RECORD_HEAD, baseCandidate, createScanSession, recordCells } from "./session.js";
 import { DETECT_WIDTH, boxKey } from "./tooltip.js";
-
-const $ = (id) => document.getElementById(id);
 
 const FRAME_US = 66_000; // at most one processed frame per 66 ms; the skipped ones are closed at once
 const PAD = 4; // the crop keeps 4 px of the frame around the detected box
@@ -117,9 +116,9 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
     pumping = true;
     try {
       while (session.queue.length) {
-        const crop = session.take();
+        const job = session.take();
         const started = performance.now();
-        const text = await ocr.recognize(crop.blob);
+        const text = await ocr.recognize(job.blob);
         errorText = ""; // a later read worked: the old failure is no longer the current state
         const candidates = ocr.match(text);
         const match = candidates[0] ?? null;
@@ -135,11 +134,9 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
             conditions: parseAffixLines(text).conditions,
             text,
           },
-          crop.generation, // a crop taken before 清除紀錄 does not come back as a record
+          job.generation, // a crop taken before 清除紀錄 does not come back as a record
         );
-        renderRecords();
-        refreshStatus();
-        renderStats();
+        renderScreen();
       }
     } catch (error) {
       // Not statusText: that is only shown while no capture is running, and a mid-scan failure must be visible now.
@@ -161,11 +158,9 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
   // contingency message sits in front of it, so 「待辨識 N 件」 stays readable (scripts/scan_e2e.py waits for it
   // while the queue drains). statusText is only for the not-capturing case.
   function refreshStatus() {
-    const base = capture
-      ? `掃描中：已記錄 ${session.records.length} 件，待辨識 ${session.queue.length} 件`
-      : stopped
-        ? `已停止，共記錄 ${session.records.length} 件`
-        : statusText;
+    let base = statusText;
+    if (capture) base = `掃描中：已記錄 ${session.records.length} 件，待辨識 ${session.queue.length} 件`;
+    else if (stopped) base = `已停止，共記錄 ${session.records.length} 件`;
     $("scan-status").textContent = [errorText, warning, base].filter(Boolean).join(" ");
   }
 
@@ -174,6 +169,24 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
     const average = read ? (ocrSeconds / read).toFixed(1) : "—";
     $("scan-stats").textContent =
       `每秒畫面 ${fps}、偵測 ${detected}、略過 ${skipped}、丟棄 ${dropped}、平均辨識 ${average} 秒`;
+  }
+
+  /** Everything the screen says about the session at once: the record list and the two readouts under it. */
+  function renderScreen() {
+    renderRecords();
+    refreshStatus();
+    renderStats();
+  }
+
+  /** A `.link` button for a record at `index`, carrying the index and running `onClick`. */
+  function linkButton(text, index, onClick) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "link";
+    button.dataset.index = String(index);
+    button.textContent = text;
+    button.addEventListener("click", onClick);
+    return button;
   }
 
   /** One `<li>` per record: the name line, the 類型/詞綴 line and the two search buttons. */
@@ -193,20 +206,9 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
     line2.textContent = `${cells[0].slice(11)} · ${cells[3]}${cells[4] ? ` · ${cells[4]}` : ""}`;
     const actions = document.createElement("div");
     actions.className = "actions";
-    const precise = document.createElement("button");
-    precise.type = "button";
-    precise.className = "link";
-    precise.dataset.index = String(index);
-    precise.textContent = "精準搜尋";
+    const precise = linkButton("精準搜尋", index, () => onSearchName(record));
     precise.disabled = !record.name; // nothing to look up without a name
-    precise.addEventListener("click", () => onSearchName(record));
-    const fuzzy = document.createElement("button");
-    fuzzy.type = "button";
-    fuzzy.className = "link";
-    fuzzy.dataset.index = String(index);
-    fuzzy.textContent = "模糊搜尋";
-    fuzzy.addEventListener("click", () => onSearchStats(record));
-    actions.append(precise, fuzzy);
+    actions.append(precise, linkButton("模糊搜尋", index, () => onSearchStats(record)));
     li.append(line1, line2, actions);
     return li;
   }
@@ -342,9 +344,7 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
     $("scan-stop").addEventListener("click", stop);
     $("scan-clear").addEventListener("click", () => {
       session.clear();
-      renderRecords();
-      refreshStatus();
-      renderStats();
+      renderScreen();
     });
     $("scan-csv").addEventListener("click", () => {
       if (!session.records.length) return;

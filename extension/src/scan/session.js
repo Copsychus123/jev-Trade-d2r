@@ -68,11 +68,10 @@ export function createScanSession() {
   // records reappear after the player pressed 清除紀錄. `take`/`addRecord` carry it, so this is provable offline.
   let generation = 0;
 
+  // The detector's box drifts a couple of pixels with the backdrop, so a "same" box is one within 2 px a side.
+  const within2 = (a, b) => Math.abs(a - b) <= 2;
   const sameBox = (a, b) =>
-    Math.abs(a.x - b.x) <= 2 &&
-    Math.abs(a.y - b.y) <= 2 &&
-    Math.abs(a.width - b.width) <= 2 &&
-    Math.abs(a.height - b.height) <= 2;
+    within2(a.x, b.x) && within2(a.y, b.y) && within2(a.width, b.width) && within2(a.height, b.height);
 
   const reset = () => {
     streak = 0;

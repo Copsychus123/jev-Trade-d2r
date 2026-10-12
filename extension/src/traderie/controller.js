@@ -4,7 +4,7 @@ import { AbortedError, StalePage, TimeoutError } from "../errors.js";
 import { timed } from "../timeline.js";
 import { parseRecentTrades, parseTradingTxt, splitLines } from "./parsing.js";
 import { normalizeName } from "./lookup.js";
-import { propertyLabel } from "./properties.js";
+import { numberConditionLabels } from "./properties.js";
 import { detectGuard, productRootUrl, productSection, TRADING_MARKERS } from "./site.js";
 import { isHomeUrl, rowsMissingConditions, urlKeepsParams } from "./stats.js";
 
@@ -104,6 +104,12 @@ async function observePage(tab) {
 /** How many row markers the page shows: the count the parsed rows are cross-checked against. */
 const markerCount = (lines) => lines.filter((line) => TRADING_MARKERS.includes(line)).length;
 
+// Reason builders shared by the readers below, which fail the same way and must say the same thing.
+const UNSETTLED_REASON = "頁面在時限內沒有穩定下來，讀到的筆數不可信";
+const NO_ROWS_REASON = "頁面上沒有讀到任何掛單";
+const noAnchorReason = (rows) => `讀到 ${rows.length} 筆，但頁面上找不到可以核對的筆數標記`;
+const fewerRows = (rows, markers) => (rows.length < markers ? `表格 ${rows.length} 筆，少於網頁上的 ${markers} 筆` : null);
+
 /**
  * Per-view read rules, so `readView` (trading, recent_trades) and `readStatsOnce` (stats) share one reconcile.
  * `parse` builds the rows and the parsed recent-trades answer (which carries its own login verdict); `markers`
@@ -114,12 +120,12 @@ const markerCount = (lines) => lines.filter((line) => TRADING_MARKERS.includes(l
 const VIEW_READERS = {
   trading: {
     parse: (text, itemName) => ({ rows: parseTradingTxt(text, { itemName }), parsed: null }),
-    markers: (lines) => markerCount(lines),
+    markers: markerCount,
     emptyText: EMPTY_TRADING,
     emptyReason: "目前沒有掛單",
-    noRows: () => "頁面上沒有讀到任何掛單",
-    noAnchor: (rows) => `讀到 ${rows.length} 筆，但頁面上找不到可以核對的筆數標記`,
-    mismatch: (rows, markers) => (rows.length < markers ? `表格 ${rows.length} 筆，少於網頁上的 ${markers} 筆` : null),
+    noRows: () => NO_ROWS_REASON,
+    noAnchor: noAnchorReason,
+    mismatch: fewerRows,
   },
   recent_trades: {
     parse: (text) => {
@@ -130,7 +136,7 @@ const VIEW_READERS = {
     emptyText: EMPTY_RECENT,
     emptyReason: "目前沒有成交紀錄",
     noRows: (parsed) => parsed.reason,
-    noAnchor: (rows) => `讀到 ${rows.length} 筆，但頁面上找不到可以核對的筆數標記`,
+    noAnchor: noAnchorReason,
     mismatch: (rows, markers) => (rows.length !== markers ? `表格 ${rows.length} 筆，和網頁上的 ${markers} 筆不一致` : null),
   },
   stats: {
@@ -138,12 +144,12 @@ const VIEW_READERS = {
     // is a list that has not loaded, not an empty one. The list names its own items, so its markers sit on the home
     // page and its no-anchor reason says so.
     parse: (text) => ({ rows: parseTradingTxt(text, { itemName: null }), parsed: null }),
-    markers: (lines) => markerCount(lines),
+    markers: markerCount,
     emptyText: EMPTY_TRADING,
     emptyReason: "沒有符合條件的掛單",
-    noRows: () => "頁面上沒有讀到任何掛單",
+    noRows: () => NO_ROWS_REASON,
     noAnchor: (rows) => `讀到 ${rows.length} 筆，但首頁上看不到可以核對的筆數標記`,
-    mismatch: (rows, markers) => (rows.length < markers ? `表格 ${rows.length} 筆，少於網頁上的 ${markers} 筆` : null),
+    mismatch: fewerRows,
   },
 };
 
@@ -154,6 +160,19 @@ const VIEW_READERS = {
 function viewRows(reader, lines, text, itemName) {
   const { rows, parsed } = reader.parse(text, itemName);
   return { rows, markers: reader.markers(lines), parsed };
+}
+
+/**
+ * Parses one view's page text into `result`: the login verdict first, then the row-count reconcile, else PASSED.
+ */
+async function readRows(reader, result, text, itemName, tab) {
+  const lines = splitLines(text).map((line) => line.trim());
+  const read = viewRows(reader, lines, text, itemName);
+  if (read.parsed?.code === "login_required" || read.parsed?.code === "login_or_no_data") {
+    return fail(result, "login_required", read.parsed.reason, "BLOCKED");
+  }
+  const reconciled = reconcile(result, reader, read, lines);
+  return reconciled ?? Object.assign(result, { status: "PASSED", rows: read.rows, has_more: await hasMore(tab) });
 }
 
 /** The row-count check: the finished result when the read is inconclusive, or null when the rows and the page agree. */
@@ -183,17 +202,10 @@ export async function readView(tab, itemName, viewName) {
   if (!pageMatchesItem(itemName, page.title ?? "", text)) {
     return fail(result, "wrong_item", `頁面不是 ${itemName} 的商品頁`);
   }
-  if (result.settled === false) return fail(result, "unsettled", "頁面在時限內沒有穩定下來，讀到的筆數不可信");
+  if (result.settled === false) return fail(result, "unsettled", UNSETTLED_REASON);
 
   const reader = VIEW_READERS[viewName];
-  const lines = splitLines(text).map((line) => line.trim());
-  const read = viewRows(reader, lines, text, itemName);
-  if (read.parsed?.code === "login_required" || read.parsed?.code === "login_or_no_data") {
-    return fail(result, "login_required", read.parsed.reason, "BLOCKED");
-  }
-  const reconciled = reconcile(result, reader, read, lines);
-  if (reconciled) return reconciled;
-  return Object.assign(result, { status: "PASSED", rows: read.rows, has_more: await hasMore(tab) });
+  return readRows(reader, result, text, itemName, tab);
 }
 
 // The stats search reads the first page of the home page's listing list: every card names its own item, so there is
@@ -206,14 +218,10 @@ async function readStatsOnce(tab, expectedUrl) {
 
   if (!isHomeUrl(page.url)) return fail(result, "wrong_view", `停在的不是 Traderie 首頁：${page.url}`);
   result.url_kept = urlKeepsParams(page.url, expectedUrl);
-  if (result.settled === false) return fail(result, "unsettled", "頁面在時限內沒有穩定下來，讀到的筆數不可信");
+  if (result.settled === false) return fail(result, "unsettled", UNSETTLED_REASON);
 
   const reader = VIEW_READERS.stats;
-  const lines = splitLines(text).map((line) => line.trim());
-  const read = viewRows(reader, lines, text, null);
-  const reconciled = reconcile(result, reader, read, lines);
-  if (reconciled) return reconciled;
-  return Object.assign(result, { status: "PASSED", rows: read.rows, has_more: await hasMore(tab) });
+  return readRows(reader, result, text, null, tab);
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -259,7 +267,7 @@ function verification({ checks, item_name = null, product_url = null, view_reaso
 export function verifyStats(market) {
   const trading = market.trading;
   const conditions = market.lookup?.conditions ?? [];
-  const labels = conditions.filter((c) => c.type === "number").map((c) => propertyLabel(c.name));
+  const labels = numberConditionLabels(conditions);
   const missing = trading.status === "PASSED" ? rowsMissingConditions(trading.rows ?? [], conditions) : 0;
   const checks = {
     home_page: isHomeUrl(trading.url || ""),

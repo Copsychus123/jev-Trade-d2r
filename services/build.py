@@ -18,8 +18,9 @@ KEEP = ".vercel"
 def build(target: Path = BUILD) -> None:
     if target.exists():
         for child in target.iterdir():
-            if child.name != KEEP:
-                shutil.rmtree(child) if child.is_dir() else child.unlink()
+            if child.name == KEEP:
+                continue
+            shutil.rmtree(child) if child.is_dir() else child.unlink()
     target.mkdir(parents=True, exist_ok=True)
     shutil.copytree(ROOT / "jevsvc", target / "jevsvc", ignore=shutil.ignore_patterns("__pycache__", "bases.json"))
     for name in ("app.py", "requirements.txt", "vercel.json", ".python-version"):

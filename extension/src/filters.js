@@ -1,5 +1,8 @@
 // Filter logic for rows (trading listings and recent trades). No DOM or chrome.* here: it is also tested under node.
 
+// The same notion of "no value" the row shaper dashes, so a row hidden as unlabelled is exactly one shown as "—".
+import { isEmpty } from "./rows.js";
+
 export const FILTER_FIELDS = [
   {
     key: "platform",
@@ -102,7 +105,7 @@ export function applyFilters(rows, filters) {
     for (const field of activeFields) {
       const rowValue = row[field];
       if (rowValue === filters[field]) continue;
-      if (rowValue === null || rowValue === undefined || rowValue === "") {
+      if (isEmpty(rowValue)) {
         hasMissing = true;
       } else {
         hasMismatch = true;
@@ -128,15 +131,7 @@ export function applyFilters(rows, filters) {
  * Returns "" when none active.
  */
 export function describeFilters(filters) {
-  const descriptions = [];
-
-  for (const field of FILTER_FIELDS) {
-    const key = field.key;
-    if (filters[key] !== "") {
-      const label = FILTER_OPTION_LABELS[filters[key]];
-      descriptions.push(label || filters[key]);
-    }
-  }
-
-  return descriptions.join(" · ");
+  return FILTER_FIELDS.filter((field) => filters[field.key] !== "")
+    .map((field) => FILTER_OPTION_LABELS[filters[field.key]] || filters[field.key])
+    .join(" · ");
 }

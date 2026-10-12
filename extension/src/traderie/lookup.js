@@ -43,33 +43,44 @@ export function isWellFormed(query) {
   return query.length > 0 && query === searchText(query) && !hasChinese(query);
 }
 
-export function indexTables(data) {
+/** Products by comparison key, and the keys that belong to more than one product: the table cannot pick one. */
+function indexProducts(products) {
   const byKey = new Map();
-  const ambiguous = new Set(); // names that belong to more than one product: the table cannot pick one
-  for (const product of data.products) {
+  const ambiguous = new Set();
+  for (const product of products) {
     const key = normalizeName(product.name);
     if (byKey.has(key)) ambiguous.add(key);
     byKey.set(key, product);
   }
-  const zh = new Map();
-  const zhNames = [];
-  const zhByKey = new Map(); // English name -> Chinese name, for the "English（中文）" label of the screenshot reader
-  for (const [chinese, english] of Object.entries(data.zh)) {
+  return { byKey, ambiguous };
+}
+
+/**
+ * The Chinese side of the table: the comparison key -> English name, the table's own names (for the suggestion list)
+ * and English name -> Chinese name, for the "English（中文）" label of the screenshot reader.
+ */
+function indexChinese(zh) {
+  const byKey = new Map();
+  const names = [];
+  const byEnglishKey = new Map();
+  for (const [chinese, english] of Object.entries(zh)) {
     const key = chineseKey(cleanName(chinese));
-    zh.set(key, english);
-    zhNames.push({ name: chinese, key, english });
+    byKey.set(key, english);
+    names.push({ name: chinese, key, english });
     // Several Chinese names can map to one English name; the smallest one wins so the label does not depend on the
     // order of the JSON keys.
     const englishKey = normalizeName(english);
-    const previous = zhByKey.get(englishKey);
-    if (previous === undefined || chinese < previous) zhByKey.set(englishKey, chinese);
+    const previous = byEnglishKey.get(englishKey);
+    if (previous === undefined || chinese < previous) byEnglishKey.set(englishKey, chinese);
   }
+  return { zh: byKey, zhNames: names, zhByKey: byEnglishKey };
+}
+
+/** Everything a lookup needs from the shipped item tables: the two indexes above plus the base and game-only sets. */
+export function indexTables(data) {
   return {
-    byKey,
-    ambiguous,
-    zh,
-    zhNames,
-    zhByKey,
+    ...indexProducts(data.products),
+    ...indexChinese(data.zh),
     bases: data.bases,
     baseByKey: new Map(data.bases.map((name) => [normalizeName(name), name])),
     gameOnly: new Set(data.game_only.map(normalizeName)),
@@ -139,25 +150,20 @@ export function resolveInput(raw, tables) {
   return { typed, query: product ? product.name : query, translated: false };
 }
 
+/** The table's own spelling of a base name, or the name itself when the table does not list it. */
+const baseNameOf = (tables, name) => tables?.baseByKey?.get?.(normalizeName(name)) || name;
+
 /**
  * Resolves a raw base name (Chinese or English, possibly empty) to standard English base name.
  */
 export function resolveBase(raw, tables) {
-  if (raw === null || raw === undefined) return "";
+  if (raw == null) return "";
   const cleaned = cleanName(raw);
   if (!cleaned) return "";
-  if (hasChinese(cleaned)) {
-    const key = chineseKey(cleaned);
-    const english = tables?.zh?.get?.(key);
-    if (english) {
-      const canonical = tables?.baseByKey?.get?.(normalizeName(english));
-      return canonical || english;
-    }
-    throw new Error(`對照表裡沒有底材「${cleaned}」的英文名稱，請改輸入英文底材（如 Ring、Circlet）`);
-  }
-  const canonical = tables?.baseByKey?.get?.(normalizeName(cleaned));
-  if (canonical) return canonical;
-  return cleaned;
+  if (!hasChinese(cleaned)) return baseNameOf(tables, cleaned);
+  const english = tables?.zh?.get?.(chineseKey(cleaned));
+  if (!english) throw new Error(`對照表裡沒有底材「${cleaned}」的英文名稱，請改輸入英文底材（如 Ring、Circlet）`);
+  return baseNameOf(tables, english);
 }
 
 /**

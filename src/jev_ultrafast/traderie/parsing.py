@@ -44,11 +44,13 @@ ABSOLUTE_DATE = (
     r"|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? \d{1,2},? \d{4}"
 )
 
+# The tail both time patterns share: "just now", its Chinese form, then an absolute date.
+TIME_TAIL = r"just now|剛剛|" + ABSOLUTE_DATE
+
 TIME_REGEX = re.compile(
     r"^(?:[a-z ]*(?:\d+|a|an)\s*(seconds?|minutes?|hours?|days?|weeks?|months?|years?|"
     r"s|m|h|d|秒|分鐘|小时|小時|天|週|周|個月|月|年)s?\s*(?:ago|前)|"
-    + r"just now|剛剛|"
-    + ABSOLUTE_DATE
+    + TIME_TAIL
     + ")$",
     re.I,
 )
@@ -58,8 +60,7 @@ TIME_REGEX = re.compile(
 TRADE_TIME_REGEX = re.compile(
     r"^(?:\d+\s*(?:秒|分鐘|小时|小時|天|週|周|個月|月|年)前|"
     r"(?:[a-z ]*)?(?:\d+|a|an) ?(?:second|minute|hour|day|week|month|year|s|m|h|d)s? ago|"
-    r"just now|剛剛|"
-    + ABSOLUTE_DATE
+    + TIME_TAIL
     + ")$",
     re.IGNORECASE,
 )
@@ -120,14 +121,9 @@ def _env_labels(low: str) -> tuple[str | None, str | None, str | None]:
 def _card_platform(mid_lower: str) -> str | None:
     """The platform of a card: the first of PC, Playstation, Xbox, Switch mentioned in its middle lines.
     Recent Trades reads a different rule (see `_trade_block`), so the two do not share this helper."""
-    if "pc" in mid_lower:
-        return "PC"
-    if "playstation" in mid_lower:
-        return "Playstation"
-    if "xbox" in mid_lower:
-        return "Xbox"
-    if "switch" in mid_lower:
-        return "Switch"
+    for needle, label in (("pc", "PC"), ("playstation", "Playstation"), ("xbox", "Xbox"), ("switch", "Switch")):
+        if needle in mid_lower:
+            return label
     return None
 
 
@@ -136,8 +132,9 @@ def _item_line(clean_prefix: list[str], item_name: str | None) -> tuple[str | No
     item_line = item_name
     item_idx = -1
     if item_name is not None:
+        name_lower = item_name.lower()
         for i, entry in enumerate(clean_prefix):
-            if item_name.lower() in entry.lower():
+            if name_lower in entry.lower():
                 item_line = entry
                 item_idx = i
                 break
@@ -167,11 +164,10 @@ def _home_seller(clean_prefix: list[str], item_idx: int) -> tuple[str | None, st
 
 def _card_stats(mid_lines: list[str], defense: int | None) -> list[str]:
     """The stat lines of a card: its defense line when it has one, then the middle lines that are item stats."""
-    stats_list = []
-    if defense is not None:
-        stats_list.append(f"{defense} Defense")
+    stats_list = [f"{defense} Defense"] if defense is not None else []
     for entry in mid_lines:
-        if any(term in entry.lower() for term in STAT_TERMS):
+        low = entry.lower()
+        if any(term in low for term in STAT_TERMS):
             stats_list.append(entry)
     return stats_list
 
@@ -192,14 +188,46 @@ def _ask_fields(clean_prefix: list[str], trade_idx: int, card: list[str]) -> tup
     return ask, high_rune_value
 
 
+def _tag_text(line: str) -> str:
+    """A tag line with its trailing bullet glyphs and surrounding whitespace removed."""
+    return line.rstrip("•").strip()
+
+
 def _card_affixes(mid_lines: list[str]) -> list[str]:
     """affixes: mid_lines excluding env/tag/quality words (mirrors the JS logic)"""
     affixes_list: list[str] = []
     for entry in mid_lines:
-        cleaned = entry.rstrip("•").strip()
+        cleaned = _tag_text(entry)
         if cleaned and cleaned.lower() not in CARD_ENV_TAGS:
             affixes_list.append(cleaned)
     return affixes_list
+
+
+def _trade_idx(clean_prefix: list[str]) -> int:
+    """The index of the card line ("Trading For" or "Make an Offer") that ends its item section; -1 when absent."""
+    for i, entry in enumerate(clean_prefix):
+        if entry in ("Trading For", "Make an Offer"):
+            return i
+    return -1
+
+
+def _card_seller_rating(
+    clean_prefix: list[str], item_name: str | None, item_idx: int
+) -> tuple[str | None, str | None] | None:
+    """The seller and rating of a card, or None when a home-page row has neither (so it is not a listing).
+
+    A card with a known `item_name` names its seller and rating on its first two lines. The home page has no known
+    name, so both are scanned backwards from the item line instead; a home row without either is not a listing."""
+    if item_name is None and item_idx != -1:
+        seller, rating = _home_seller(clean_prefix, item_idx)
+        if seller is None or rating is None:
+            return None
+        return seller, rating
+    seller = clean_prefix[0]
+    rating = None
+    if len(clean_prefix) > 1 and clean_prefix[1].startswith("(") and clean_prefix[1].endswith(")"):
+        rating = clean_prefix[1]
+    return seller, rating
 
 
 def _card_data(card: list[str], item_name: str) -> dict | None:
@@ -207,29 +235,17 @@ def _card_data(card: list[str], item_name: str) -> dict | None:
     clean_prefix = [entry for entry in card if entry.lower() not in LISTING_NOISE_LINES]
     if not clean_prefix:
         return None
-    seller = clean_prefix[0]
-    rating = None
-    if len(clean_prefix) > 1 and clean_prefix[1].startswith("(") and clean_prefix[1].endswith(")"):
-        rating = clean_prefix[1]
 
     posted_time = card[-1]
 
     item_line, item_idx = _item_line(clean_prefix, item_name)
 
-    # Find seller and rating — for home page (None item_name), scan backwards from item
-    if item_name is None and item_idx != -1:
-        # The backward scan is the only source on the home path: the pre-set seller/rating above belong to a card
-        # with a known item_name, where the seller is the first line and the rating is the second.
-        seller, rating = _home_seller(clean_prefix, item_idx)
-        # Real listings always have a seller and a rating on the home page; a row with neither is not a listing.
-        if seller is None or rating is None:
-            return None
+    seller_rating = _card_seller_rating(clean_prefix, item_name, item_idx)
+    if seller_rating is None:
+        return None
+    seller, rating = seller_rating
 
-    trade_idx = -1
-    for i, entry in enumerate(clean_prefix):
-        if entry in ("Trading For", "Make an Offer"):
-            trade_idx = i
-            break
+    trade_idx = _trade_idx(clean_prefix)
     mid_lines = clean_prefix[item_idx + 1:trade_idx] if (item_idx != -1 and trade_idx != -1) else []
     mid_text = " ".join(mid_lines)
     mid_lower = mid_text.lower()
@@ -267,13 +283,13 @@ def _card_data(card: list[str], item_name: str) -> dict | None:
     }
 
 
-def parse_trading_txt(txt_content: str, *, item_name: str = "Harlequin Crest") -> list[ListingCard]:
-    """Parse listing cards from Traderie trading page innerText."""
-    if not txt_content:
-        return []
+def _text_lines(text: str) -> list[str]:
+    """The non-empty, whitespace-trimmed lines of a page's text."""
+    return [line.strip() for line in text.splitlines() if line.strip()]
 
-    lines = [line.strip().replace("\xa0", " ") for line in txt_content.splitlines() if line.strip()]
 
+def _listing_bounds(lines: list[str]) -> tuple[int, int]:
+    """The half-open range of `lines` holding the listings: after the search banner, before the load-more prompt."""
     start = 0
     for i, line in enumerate(lines):
         if "Apply this search for all" in line:
@@ -285,7 +301,11 @@ def parse_trading_txt(txt_content: str, *, item_name: str = "Harlequin Crest") -
             end = i
             break
 
-    listing_lines = lines[start:end]
+    return start, end
+
+
+def _split_cards(listing_lines: list[str]) -> list[list[str]]:
+    """Group the listing area's lines into cards: each card ends at its own time line."""
     cards_raw: list[list[str]] = []
     current: list[str] = []
 
@@ -294,6 +314,19 @@ def parse_trading_txt(txt_content: str, *, item_name: str = "Harlequin Crest") -
         if TIME_REGEX.match(line):
             cards_raw.append(current)
             current = []
+
+    return cards_raw
+
+
+def parse_trading_txt(txt_content: str, *, item_name: str = "Harlequin Crest") -> list[ListingCard]:
+    """Parse listing cards from Traderie trading page innerText."""
+    if not txt_content:
+        return []
+
+    lines = [line.replace("\xa0", " ") for line in _text_lines(txt_content)]
+
+    start, end = _listing_bounds(lines)
+    cards_raw = _split_cards(lines[start:end])
 
     listings: list[ListingCard] = []
 
@@ -307,7 +340,7 @@ def parse_trading_txt(txt_content: str, *, item_name: str = "Harlequin Crest") -
 
 def _answer_token(line: str) -> str | None:
     """One wanted-tag line, cleaned; None for the environment words and the "Additional Item(s)" filler."""
-    content = line.rstrip("•").strip()
+    content = _tag_text(line)
     if not content or content.lower() in RECENT_ENV_TAGS or content == "Additional Item(s)":
         return None
     return content
@@ -420,12 +453,27 @@ def _marker_trades(lines: list[str]) -> list[TradeRecord]:
     return trades
 
 
+def _they_give_trades(lines: list[str]) -> list[TradeRecord]:
+    """Every finished trade in `lines`, read from its "They Give" block."""
+    trades: list[TradeRecord] = []
+    i = 0
+    while i < len(lines):
+        if lines[i].lower() == "they give":
+            record, i = _trade_block(lines, i)
+            if record:
+                trades.append(record)
+            continue
+        i += 1
+    return trades
+
+
 def parse_recent_trades(text_content: str) -> dict[str, Any]:
     """Parse Recent Trades view. Detects whether blocked by sign-in prompt or guard."""
     text = text_content or ""
+    low = text.lower()
     url = f"{TRADERIE_D2R_URL}/product/harlequin-crest/recent"
 
-    if SIGN_IN_PROMPT.lower() in text.lower() or "please sign in" in text.lower():
+    if SIGN_IN_PROMPT.lower() in low or "please sign in" in low:
         return {
             "code": "login_required",
             "mode": "B",
@@ -436,23 +484,15 @@ def parse_recent_trades(text_content: str) -> dict[str, Any]:
             "notice": "Traderie 成交紀錄頁面需要登入帳號方可查看。",
         }
 
-    trades: list[TradeRecord] = []
-    lines = [entry.strip() for entry in text.splitlines() if entry.strip()]
+    lines = _text_lines(text)
 
-    i = 0
-    while i < len(lines):
-        if lines[i].lower() == "they give":
-            record, i = _trade_block(lines, i)
-            if record:
-                trades.append(record)
-            continue
-        i += 1
+    trades = _they_give_trades(lines)
 
     if not trades:
         trades = _marker_trades(lines)
 
     if not trades:
-        if "sign in" in text.lower() or "login" in text.lower():
+        if "sign in" in low or "login" in low:
             return {
                 "code": "login_required",
                 "mode": "B",

@@ -47,7 +47,6 @@ def phase_finish_rule(load_more: int) -> tuple[str, int] | None:
     return (LOAD_MORE_LABEL, load_more) if load_more else None
 
 
-
 def build_goal(item_name: str, load_more: int = LOAD_MORE_LIMIT) -> str:
     """Construct natural-language goal for browser agent."""
     item = clean_item_name(item_name)
@@ -125,9 +124,7 @@ def traderie_scope_reason(url: str) -> str | None:
     path = path or "/"
     if "/login" in path or "/signup" in path:
         return "需要登入：請先執行 uv run python scripts/login.py 登入一次"
-    if path.rstrip("/") == ROOT_PATH:
-        return None
-    if PRODUCT_PATH.match(path) or SEARCH_PATH.match(path):
+    if path.rstrip("/") == ROOT_PATH or PRODUCT_PATH.match(path) or SEARCH_PATH.match(path):
         return None
     return f"超出 Traderie D2R 範圍：{path}"
 
@@ -144,8 +141,11 @@ def detect_guard(page: dict, browser) -> str | None:
         return reason
     text = page.get("text", "").lower()
     challenge_word = "captcha" in text and len(text) < CHALLENGE_TEXT_MAX
-    if "just a moment" in page.get("title", "").lower() or "verify you are human" in text or challenge_word:
-        return "防護頁/驗證碼"
-    if browser.evaluate(f"!!document.querySelector({CHALLENGE_FRAMES!r})"):
+    if (
+        "just a moment" in page.get("title", "").lower()
+        or "verify you are human" in text
+        or challenge_word
+        or browser.evaluate(f"!!document.querySelector({CHALLENGE_FRAMES!r})")
+    ):
         return "防護頁/驗證碼"
     return None

@@ -18,6 +18,11 @@ def _normalize_plan(goals):
     return [item for item in items if item]
 
 
+def _action_by_id(actions, action_id):
+    """The observed action with this id, or None when the page changed under the decision."""
+    return next((a for a in actions if a["id"] == action_id), None)
+
+
 REOBSERVE_ATTEMPTS = 3
 # Consecutive StalePage failures on one target on one page end the run: `_execute` pops a refused action from
 # `history`, so the step budget alone can never fire on a covered element (measured on the extension side: 1379
@@ -29,7 +34,6 @@ def scope_guard_for(url: str):
     """The scope guard of a run that starts at `url`: Traderie's rules for any Traderie host, none for other sites.
     One function decides; `traderie_scope_reason` itself says what is in scope inside that host."""
     return traderie_scope_reason if is_traderie_host(url) else None
-
 
 
 class Agent:
@@ -81,6 +85,9 @@ class Agent:
         started = self.state.get("started_at")
         return round((time.perf_counter() - started) * 1000) if started is not None else 0
 
+    def _sync_elapsed(self, state):
+        state["elapsed_ms"] = self._elapsed_ms()
+
     def _wait_until_ready(self, state):
         waiter = getattr(state["browser"], "wait_until_ready", None)
         if callable(waiter):
@@ -100,7 +107,7 @@ class Agent:
             except StalePage:
                 if attempt == REOBSERVE_ATTEMPTS - 1:
                     raise
-        state["elapsed_ms"] = self._elapsed_ms()
+        self._sync_elapsed(state)
         last = state["history"][-1] if state["history"] else None
         if last and last.get("url") is None:
             last["url"] = state["page"]["url"]  # the action whose result page could not be read at the time
@@ -111,14 +118,14 @@ class Agent:
         """Stop the run: blocked status, no pending handoff, elapsed time updated. Callers record their own reason."""
         state["status"] = "blocked"
         state["awaiting_handoff"] = False
-        state["elapsed_ms"] = self._elapsed_ms()
+        self._sync_elapsed(state)
 
     def _finish_run(self, state):
         """The last phase is over: done status, no pending handoff, elapsed time updated."""
         state["status"] = "done"
         state["plan_index"] = len(state["plan"]) - 1
         state["awaiting_handoff"] = False
-        state["elapsed_ms"] = self._elapsed_ms()
+        self._sync_elapsed(state)
 
     def _note_stale_failure(self, state) -> int:
         """One more consecutive stale failure on the same target on the same page; a new page or target starts over."""
@@ -153,6 +160,13 @@ class Agent:
             self._block(state)
         return reason
 
+    def _stop_if_off_scope(self, state) -> bool:
+        """True once the scope guard has blocked the run; the caller must then end the step."""
+        if not self._apply_scope_guard(state):
+            return False
+        self._sync_elapsed(state)
+        return True
+
     def _require_step_budget(self, state):
         if len(state["history"]) >= MAX_STEPS:
             state["status"] = "blocked"
@@ -161,12 +175,10 @@ class Agent:
     def _apply_verdict(self, state, selected):
         """A DONE or BLOCKED choice is a verdict about the view, not an input: ads may change the text between the
         decision and now, and the controller reads and checks the live page itself right after, so no freshness gate."""
-        if selected == "DONE" and self._advance_phase(state):
-            return
-        if selected == "DONE":
-            self._finish_run(state)
-        else:
+        if selected != "DONE":
             self._block(state)
+        elif not self._advance_phase(state):
+            self._finish_run(state)
 
     def _advance_phase(self, state):
         next_index = state["plan_index"] + 1
@@ -177,7 +189,7 @@ class Agent:
         state["phase"] = self.phase_names[next_index] if next_index < len(self.phase_names) else None
         state["status"] = "handoff"
         state["awaiting_handoff"] = True
-        state["elapsed_ms"] = self._elapsed_ms()
+        self._sync_elapsed(state)
         return True
 
     def _next_by_rule(self, state, phase_history):
@@ -190,7 +202,7 @@ class Agent:
         last = phase_history[-1]
         actions = state["page"]["actions"]
         if last["action"].casefold() == label:
-            return next((a for a in actions if a["id"] == "scroll_bottom"), None)
+            return _action_by_id(actions, "scroll_bottom")
         if last["choice"] == "scroll_bottom":
             return next((a for a in actions if a["kind"] == "click" and a["label"].casefold() == label), None)
         return None
@@ -245,7 +257,7 @@ class Agent:
         elif choice == "BLOCKED":
             label = "受阻"
         else:
-            action = next((a for a in state["page"]["actions"] if a["id"] == choice), None)
+            action = _action_by_id(state["page"]["actions"], choice)
             label = (action["label"] if action else choice).split(" → ")[0][:60]
         others = sorted(
             ((name, p) for name, p in decision["operation_probabilities"].items() if name != decision["operation"]),
@@ -306,15 +318,14 @@ class Agent:
         # target that keeps failing, and it must not be reported as if the screen had not changed.
         state["last_attempt"] = None
         state["decision"] = None
-        if self._apply_scope_guard(state):
-            state["elapsed_ms"] = self._elapsed_ms()
+        if self._stop_if_off_scope(state):
             return
         phase_history = state["history"][state["phase_start"] :]
         by_rule = self._next_by_rule(state, phase_history)
         if by_rule:
             state["decision"] = self._rule_decision(state, by_rule)
             state["status"] = "predicted"
-            state["elapsed_ms"] = self._elapsed_ms()
+            self._sync_elapsed(state)
             return
         state["decision"] = choose(state["page"], state["goal"], phase_history, self.text)
         state["decisions"].append(
@@ -334,7 +345,7 @@ class Agent:
         self._reobserve(state)
         state["awaiting_handoff"] = False
         state["phase_start"] = len(state["history"])  # the next phase counts its own actions from here
-        state["elapsed_ms"] = self._elapsed_ms()
+        self._sync_elapsed(state)
 
     def _off_scope_href(self, action):
         """The reason when a link would leave the allowed scope. Only real navigations are checked: a javascript:
@@ -377,7 +388,7 @@ class Agent:
         except BaseException:
             entry.update(outcome="unconfirmed", elapsed_ms=self._elapsed_ms())  # may have happened; never replayed
             raise
-        state["elapsed_ms"] = self._elapsed_ms()
+        self._sync_elapsed(state)
         entry.update(outcome="executed", executed_ms=state["elapsed_ms"], elapsed_ms=state["elapsed_ms"])
         try:
             state["page"] = state["browser"].observe(screenshot=self.screenshots)
@@ -394,11 +405,9 @@ class Agent:
         state["decision"] = None
         selected = decision["choice"]
         if selected in {"DONE", "BLOCKED"}:
-            # A verdict about the view, not an input: ads may change the text between the decision and now, and the
-            # controller reads and checks the live page itself right after, so no freshness gate here.
             self._apply_verdict(state, selected)
             return
-        action = next((a for a in page["actions"] if a["id"] == selected), None)
+        action = _action_by_id(page["actions"], selected)
         if action is None:
             raise StalePage("Chosen element is no longer available. Choose again.")
         state["last_attempt"] = {"choice": selected, "fingerprint": page["fingerprint"], "label": action["label"]}
@@ -416,18 +425,17 @@ class Agent:
                 raise ValueError("Supply the text to type: Agent(..., text=...)")
             text = self.text
         # Log the action before it can happen: if the browser call dies half-way, history still says it was tried.
-        state["elapsed_ms"] = self._elapsed_ms()
+        self._sync_elapsed(state)
         entry = self._history_entry(state, action, selected, decision, text, page)
         state["history"].append(entry)
         self._execute(state, entry, action, page, text)
-        state["elapsed_ms"] = self._elapsed_ms()
+        self._sync_elapsed(state)
         entry.update(
             page_changed=state["page"]["fingerprint"] != page["fingerprint"],
             url=state["page"]["url"],
             elapsed_ms=state["elapsed_ms"],
         )
-        if self._apply_scope_guard(state):
-            state["elapsed_ms"] = self._elapsed_ms()
+        if self._stop_if_off_scope(state):
             return
         repeated = state["history"][-3:]
         state["status"] = (

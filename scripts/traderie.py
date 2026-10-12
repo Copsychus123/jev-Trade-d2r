@@ -11,6 +11,28 @@ from jev_ultrafast.traderie.site import LOAD_MORE_LIMIT, phase_finish_rule
 from jev_ultrafast.usage import format_usd, usage_summary
 
 
+def _finish(agent, market, folder: Path, item_name: str, error: str, keep_open: bool) -> dict:
+    """Everything a finished (or failed) run owes: its verification, its report, its state and session files, then
+    stop the browser unless the run was asked to stay open. Returns the snapshot later lines still read."""
+    state = agent.snapshot()
+    if market["verification"] is None:
+        market["verification"] = {
+            "passed": False,
+            "item_name": item_name,
+            "error": error,
+            "failed_checks": ["run_incomplete"],
+        }
+    save_report(item_name, market, folder)
+    state["market"] = market
+    state["usage"] = usage_summary(state["decisions"], state["history"])
+    (folder / "state.json").write_text(json.dumps(state, indent=2))
+    (folder / "session.json").write_text(json.dumps({"target": agent.browser.target, "session": agent.browser.session}))
+    if not keep_open:
+        agent.close()
+        close_chrome()
+    return state
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("item_name", help="Traderie D2R item name to look up.")
@@ -37,24 +59,7 @@ def main():
         error = f"{type(exc).__name__}: {exc}"
         raise
     finally:
-        state = agent.snapshot()
-        if market["verification"] is None:
-            market["verification"] = {
-                "passed": False,
-                "item_name": args.item_name,
-                "error": error,
-                "failed_checks": ["run_incomplete"],
-            }
-        save_report(args.item_name, market, folder)
-        state["market"] = market
-        state["usage"] = usage_summary(state["decisions"], state["history"])
-        (folder / "state.json").write_text(json.dumps(state, indent=2))
-        (folder / "session.json").write_text(
-            json.dumps({"target": agent.browser.target, "session": agent.browser.session})
-        )
-        if not args.keep_open:
-            agent.close()
-            close_chrome()
+        state = _finish(agent, market, folder, args.item_name, error, args.keep_open)
     blocked = state.get("scope_blocked_reason") or ""
     if blocked:
         print(blocked)  # any stopped run owes the user its reason, not only the login one

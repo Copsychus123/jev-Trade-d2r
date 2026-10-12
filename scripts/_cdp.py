@@ -66,26 +66,28 @@ class Panel:
             await asyncio.sleep(step)
         raise Environment(f"等不到預期的畫面狀態（{seconds} 秒）：{await self.state()}")
 
-    async def wait_ready(self, message, tries=40):
-        """Wait up to `tries` half-seconds for READY_JS; raise Environment(`message`) when it never turns true."""
+    async def _poll_ready(self, message, tries: int, *, ignore_errors: bool = False) -> None:
+        """Poll READY_JS every half-second up to `tries` times; Environment(`message`) when it never turns true.
+        `ignore_errors` keeps polling through a page that is navigating (an evaluate that throws)."""
         for _ in range(tries):
-            if await self.evaluate(self.READY_JS):
-                return
+            try:
+                if await self.evaluate(self.READY_JS):
+                    return
+            except Exception:
+                if not ignore_errors:
+                    raise
             await asyncio.sleep(0.5)
         raise Environment(message)
+
+    async def wait_ready(self, message, tries=40):
+        """Wait up to `tries` half-seconds for READY_JS; raise Environment(`message`) when it never turns true."""
+        await self._poll_ready(message, tries)
 
     async def reload(self, message="側邊欄沒有重新載入"):
         """Reload the page and wait for READY_JS; raise Environment(`message`) when it never comes back."""
         await self.evaluate("location.reload()")
         await asyncio.sleep(1)
-        for _ in range(60):
-            try:
-                if await self.evaluate(self.READY_JS):
-                    return
-            except Exception:
-                pass
-            await asyncio.sleep(0.5)
-        raise Environment(message)
+        await self._poll_ready(message, 60, ignore_errors=True)
 
     async def hide_headless_label(self):
         """Headless Chrome names itself in the user agent, which some sites reject: report a plain Chrome instead.

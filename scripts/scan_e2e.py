@@ -36,11 +36,10 @@ from extension_e2e import (  # noqa: E402
     LOCAL_API,
     build_extension,
     cleanup,
-    free_profile,
-    launch_chrome,
-    load_extension,
+    environment_failure,
     open_panel,
     say,
+    start_chrome_with_extension,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -315,6 +314,30 @@ async def wait_for_fill(panel: Panel, seconds: int = 25) -> None:
         say(f"  等不到詞綴表單填好（{seconds} 秒），交給判定處理：{await panel.state()}")
 
 
+def _fuzzy_item_failures(fuzzy: dict | None) -> list[str]:
+    """The 模糊搜尋 assertions on a non-base record: it switches to the affix form, ticks a condition, and pre-fills
+    the base the same read produced (marked as coming from the capture), from the table's own suggestions."""
+    if not fuzzy or fuzzy["outcome"] != "clicked" or fuzzy["mode"] != "stats" or fuzzy["view"] != "ready":
+        return [f"暗金紀錄的「模糊搜尋」沒有切到詞綴表單：{fuzzy}"]
+    failures = []
+    if fuzzy["ticks"] < 1:
+        failures.append(f"暗金紀錄的「模糊搜尋」沒有勾選任何詞綴條件：{fuzzy}")
+    # A unique item's tooltip does not name its base, so the record carries the base candidate of the same read
+    # (scan/session.js baseCandidate) and 模糊搜尋 prefills it, marked as coming from the capture. The player can
+    # still edit it, and nothing is searched until they press start.
+    if not fuzzy["statsBase"]:
+        failures.append(f"暗金紀錄應預填同一輪讀到的底材候選，實際 {fuzzy['statsBase']!r}")
+    elif fuzzy.get("statsBaseFrom") != "ocr":
+        failures.append(f"預填的底材要標記為來自擷取，實際 from={fuzzy.get('statsBaseFrom')!r}")
+    elif not fuzzy.get("statsBaseMarked"):
+        failures.append(f"預填的底材看不出是擷取來的：marked={fuzzy.get('statsBaseMarked')!r}")
+    # The base is still required, but the form offers the shipped item types (a unique's tooltip never names its
+    # base): the datalist must be filled from the table, not from a list written in code.
+    if (fuzzy.get("baseOptions") or 0) < 50:
+        failures.append(f"底材欄沒有出貨清單的建議選項，實際 {fuzzy.get('baseOptions')!r}")
+    return failures
+
+
 def verdict(report: dict) -> list[str]:
     """The section-6 assertions; returns one Traditional Chinese message per failed one. Pure: no Chrome needed."""
     failures = []
@@ -336,25 +359,7 @@ def verdict(report: dict) -> list[str]:
             or click["item"] != click["name"]
         ):
             failures.append(f"「精準搜尋」（{click['name']}）沒有正確填入：{click}")
-    fuzzy = report.get("fuzzy_item")
-    if not fuzzy or fuzzy["outcome"] != "clicked" or fuzzy["mode"] != "stats" or fuzzy["view"] != "ready":
-        failures.append(f"暗金紀錄的「模糊搜尋」沒有切到詞綴表單：{fuzzy}")
-    else:
-        if fuzzy["ticks"] < 1:
-            failures.append(f"暗金紀錄的「模糊搜尋」沒有勾選任何詞綴條件：{fuzzy}")
-        # A unique item's tooltip does not name its base, so the record carries the base candidate of the same read
-        # (scan/session.js baseCandidate) and 模糊搜尋 prefills it, marked as coming from the capture. The player can
-        # still edit it, and nothing is searched until they press start.
-        if not fuzzy["statsBase"]:
-            failures.append(f"暗金紀錄應預填同一輪讀到的底材候選，實際 {fuzzy['statsBase']!r}")
-        elif fuzzy.get("statsBaseFrom") != "ocr":
-            failures.append(f"預填的底材要標記為來自擷取，實際 from={fuzzy.get('statsBaseFrom')!r}")
-        elif not fuzzy.get("statsBaseMarked"):
-            failures.append(f"預填的底材看不出是擷取來的：marked={fuzzy.get('statsBaseMarked')!r}")
-        # The base is still required, but the form offers the shipped item types (a unique's tooltip never names its
-        # base): the datalist must be filled from the table, not from a list written in code.
-        if (fuzzy.get("baseOptions") or 0) < 50:
-            failures.append(f"底材欄沒有出貨清單的建議選項，實際 {fuzzy.get('baseOptions')!r}")
+    failures += _fuzzy_item_failures(report.get("fuzzy_item"))
     base = report.get("fuzzy_base")
     if not base or base["outcome"] != "clicked" or base["mode"] != "stats" or base["view"] != "ready":
         failures.append(f"底材紀錄的「模糊搜尋」沒有切到詞綴表單：{base}")
@@ -386,17 +391,10 @@ def main() -> int:
     chrome = None
     try:
         build_extension(LOCAL_API)
-        free_profile()
-        chrome = launch_chrome(args.headed, EXTRA_ARGS)
-        ext_id = load_extension()
-        say(f"擴充功能已載入（{ext_id}）")
+        chrome, ext_id = start_chrome_with_extension(args.headed, EXTRA_ARGS)
         report = asyncio.run(drive(open_panel(ext_id), open_sim(), expects, item_name, base_name))
-    except Environment as error:
-        say(f"環境問題：{error}")
-        return 2
-    except subprocess.CalledProcessError:
-        say("環境問題：擴充功能打包失敗")
-        return 2
+    except (Environment, subprocess.CalledProcessError) as error:
+        return environment_failure(error)
     finally:
         cleanup(chrome, None)
     failures = verdict(report)

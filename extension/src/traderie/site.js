@@ -27,13 +27,15 @@ export function phaseFinishRule(loadMore) {
   return loadMore ? [LOAD_MORE_LABEL, loadMore] : null;
 }
 
+const isTraderie = (host) => TRADERIE_HOSTS.has(host.toLowerCase());
+
 export function isTraderieHost(url) {
-  return TRADERIE_HOSTS.has(urlparse(url).netloc.toLowerCase());
+  return isTraderie(urlparse(url).netloc);
 }
 
 function productMatch(url) {
   const { netloc, path } = urlparse(url);
-  return TRADERIE_HOSTS.has(netloc.toLowerCase()) ? PRODUCT_PATH.exec(path) : null;
+  return isTraderie(netloc) ? PRODUCT_PATH.exec(path) : null;
 }
 
 /** The product page address of a slug: the one place the product URL template is written. */
@@ -54,7 +56,7 @@ export function productSection(url) {
 export function traderieScopeReason(url) {
   const parsed = urlparse(url);
   const host = parsed.netloc.toLowerCase();
-  if (!TRADERIE_HOSTS.has(host)) return `離開 Traderie：${host || "(unknown host)"}`;
+  if (!isTraderie(host)) return `離開 Traderie：${host || "(unknown host)"}`;
 
   const path = parsed.path || "/";
   if (path.includes("/login") || path.includes("/signup")) return LOGIN_REASON;

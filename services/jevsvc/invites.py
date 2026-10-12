@@ -161,16 +161,21 @@ def delete(store, name) -> None:
     store.run("HDEL", NAME_INDEX, record["name"])
 
 
+def _count(record: dict, field: str) -> int:
+    """A stored counter as an int: a missing or unreadable value reads as 0."""
+    return int(record.get(field) or 0)
+
+
 def list_invites(store) -> list[dict]:
     return [
         {
             "name": r.get("name", ""),
-            "limit": int(r.get("limit") or 0),
+            "limit": _count(r, "limit"),
             "expires": r.get("expires", ""),
             "disabled": r.get("disabled") == "1",
-            "used": int(r.get("used") or 0),
-            "calls": int(r.get("calls") or 0),
-            "input_tokens": int(r.get("input_tokens") or 0),
+            "used": _count(r, "used"),
+            "calls": _count(r, "calls"),
+            "input_tokens": _count(r, "input_tokens"),
         }
         for r in _all(store)
     ]

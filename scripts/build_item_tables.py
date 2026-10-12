@@ -264,6 +264,10 @@ def read_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def write_json(path: Path, value) -> None:
+    write_text(path, json.dumps(value, ensure_ascii=False, indent=1) + "\n")
+
+
 class Tab(Panel):
     async def wait_for(self, expression, seconds=25, allow_empty=False):
         """Poll until `expression` gives the same truthy value twice in a row, PAGE_SETTLE_SECONDS apart.
@@ -323,8 +327,13 @@ async def read_traderie(tab: Tab) -> list[dict]:
 SET_NAME_MAX_CHARS = 12  # a set name, not a stat sentence
 
 
+def text_lines(text: str) -> list[str]:
+    """The page text as stripped, non-empty lines, with private-use glyphs (the site's own icons) removed."""
+    return [line.strip() for line in PRIVATE_USE.sub("", text).splitlines() if line.strip()]
+
+
 def pairs_from_text(text: str, set_list: bool = False) -> list[tuple[str, str]]:
-    lines = [line.strip() for line in PRIVATE_USE.sub("", text).splitlines() if line.strip()]
+    lines = text_lines(text)
     pairs = []
     for i, line in enumerate(lines):
         same = re.match(r"^(.+?)\s+\(([^()]+)\)$", line)
@@ -379,7 +388,7 @@ def pairs_from_translations(text: str) -> list[tuple[str, str]]:
 
     A set's title row is Chinese only and comes right after the last item of the previous set, so each English name
     takes at most two Chinese names (old and new); anything after that is a title, not a translation."""
-    lines = [line.strip() for line in PRIVATE_USE.sub("", text).splitlines() if line.strip()]
+    lines = text_lines(text)
     pairs, english, taken = [], None, 0
     for line in lines:
         if CJK.search(line):
@@ -405,8 +414,13 @@ async def read_translations(tab: Tab) -> list[tuple[str, str]]:
     return pairs
 
 
+def by_normalized_name(products: list[dict]) -> dict[str, dict]:
+    """Product by its normalised name: the key `find_product` looks a source name up with."""
+    return {normalize(p["name"]): p for p in products}
+
+
 def combine(products: list[dict], pairs: list[tuple[str, str]]) -> tuple[dict, dict]:
-    by_key = {normalize(p["name"]): p for p in products}
+    by_key = by_normalized_name(products)
     by_name = {p["name"]: p for p in products}
     zh: dict[str, str] = {}
     unmatched: dict[str, str] = {}
@@ -462,7 +476,7 @@ def find_product(english: str, by_key: dict) -> dict | None:
 def game_only(trusted: list[tuple[str, str]], products: list[dict]) -> list[str]:
     """English names the game data has but Traderie's catalog does not ("not on Traderie", not "typo"). Only the
     set list and the crafted page are trusted for this: other pages also carry footer and comment text."""
-    by_key = {normalize(p["name"]): p for p in products}
+    by_key = by_normalized_name(products)
     return sorted(
         {
             english
@@ -472,6 +486,26 @@ def game_only(trusted: list[tuple[str, str]], products: list[dict]) -> list[str]
             and not find_product(english, by_key)
         }
     )
+
+
+def build_table(
+    products: list[dict], pairs: list[tuple[str, str]], trusted: list[tuple[str, str]]
+) -> tuple[dict, dict]:
+    """The table's committed shape and the report of what did not match: the names a Chinese client may show, with
+    the shipped item types (EXTRA_ZH) folded in for the products that exist."""
+    zh, report = combine(products, pairs)
+    names = {p["name"] for p in products}
+    zh.update({chinese: english for chinese, english in EXTRA_ZH.items() if english in names})
+    bases = [p for p in products if p["category"] in BASE_CATEGORIES]
+    data = {
+        "sources": {"products": f"{TRADERIE}/products/<category>", "chinese": D2R_WORLD},
+        "products": sorted(products, key=lambda p: p["slug"]),
+        "zh": dict(sorted(zh.items())),
+        "bases": sorted({p["name"] for p in bases}),
+        # English names the game data has but Traderie's catalog does not: "not on Traderie" rather than "typo".
+        "game_only": game_only(trusted, products),
+    }
+    return data, report
 
 
 def category_counts(products: list[dict]) -> dict[str, int]:
@@ -509,7 +543,7 @@ def publish(data: dict, out: Path, force: bool = False) -> bool:
     """Write the candidate, check it, and only then replace `out` (atomically). False when it was refused."""
     existing = read_json(out) if out.exists() else None
     data = stamp(data, existing)
-    write_text(CANDIDATE, json.dumps(data, ensure_ascii=False, indent=1) + "\n")
+    write_json(CANDIDATE, data)
     problems = []
     if existing and not force:
         problems += shrink_problems(existing["products"], data["products"])
@@ -573,20 +607,9 @@ async def main_async(
             d2r_pairs, trusted = await read_d2r_world(tab)
             pairs = d2r_pairs + await read_translations(tab)
         save_pairs(pairs, trusted)
-    zh, report = combine(products, pairs)
-    names = {p["name"] for p in products}
-    zh.update({chinese: english for chinese, english in EXTRA_ZH.items() if english in names})
-    bases = [p for p in products if p["category"] in BASE_CATEGORIES]
-    data = {
-        "sources": {"products": f"{TRADERIE}/products/<category>", "chinese": D2R_WORLD},
-        "products": sorted(products, key=lambda p: p["slug"]),
-        "zh": dict(sorted(zh.items())),
-        "bases": sorted({p["name"] for p in bases}),
-        # English names the game data has but Traderie's catalog does not: "not on Traderie" rather than "typo".
-        "game_only": game_only(trusted, products),
-    }
-    write_text(REPORT, json.dumps(report, ensure_ascii=False, indent=1) + "\n")
-    print(f"商品 {len(products)} 筆，中文名 {len(zh)} 筆，底材 {len(data['bases'])} 筆")
+    data, report = build_table(products, pairs, trusted)
+    write_json(REPORT, report)
+    print(f"商品 {len(products)} 筆，中文名 {len(data['zh'])} 筆，底材 {len(data['bases'])} 筆")
     print(
         f"沒有中文名的商品 {len(report['products_without_chinese'])} 筆；"
         f"d2r.world 有、Traderie 沒有的 {len(report['chinese_pairs_not_on_traderie'])} 筆；"

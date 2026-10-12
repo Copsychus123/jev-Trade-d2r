@@ -20,6 +20,10 @@ const createSessions = async (providers, models) => {
   return sessions;
 };
 
+// The only error shape the panel reads: `id: null` means "the engine never started", otherwise it is the failed read.
+const postError = (id, message) => self.postMessage({ type: "error", id, message });
+const errorText = (error) => String(error.message || error);
+
 async function handleInit(message) {
   self.postMessage({ type: "status", stage: "loading" });
   ort.env.wasm.wasmPaths = message.wasmPaths; // resolved by the panel: no chrome.* inside a dedicated worker
@@ -27,12 +31,12 @@ async function handleInit(message) {
   try {
     sessions = await createSessions(message.providers, message.models);
   } catch (error) {
-    self.postMessage({ type: "error", id: null, message: String(error.message || error) });
+    postError(null, errorText(error));
     return;
   }
   const characters = buildCharacterList(new TextDecoder().decode(new Uint8Array(message.models.dict)));
   if (characters.length !== 18710) {
-    self.postMessage({ type: "error", id: null, message: `字元清單長度不對（${characters.length}，應為 18710）` });
+    postError(null, `字元清單長度不對（${characters.length}，應為 18710）`);
     return;
   }
   pipeline = new OcrPipeline(ort, sessions, characters);
@@ -41,7 +45,7 @@ async function handleInit(message) {
 
 async function handleRecognize(message) {
   if (!pipeline) {
-    self.postMessage({ type: "error", id: message.id, message: "辨識引擎尚未就緒" });
+    postError(message.id, "辨識引擎尚未就緒");
     return;
   }
   try {
@@ -53,7 +57,7 @@ async function handleRecognize(message) {
     const { lines } = await pipeline.recognizeImage(image);
     self.postMessage({ type: "result", id: message.id, text: lines.map((line) => line.text).join("\n") });
   } catch (error) {
-    self.postMessage({ type: "error", id: message.id, message: String(error.message || error) });
+    postError(message.id, errorText(error));
   }
 }
 

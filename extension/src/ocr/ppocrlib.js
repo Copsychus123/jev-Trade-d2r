@@ -81,51 +81,39 @@ export function imageDataToBgr(imageData) {
   return { data: out, w: width, h: height };
 }
 
+// cv2.resize INTER_LINEAR sample table for one axis: for each destination sample, the source index to read and the
+// blend fraction toward the next source sample. Clamped to the source bounds (srcLen < 2 -> index 0, fraction 0).
+function axisSamples(dstLen, srcLen) {
+  const idx = new Int32Array(dstLen);
+  const frac = new Float32Array(dstLen);
+  const scale = srcLen / dstLen;
+  for (let i = 0; i < dstLen; i++) {
+    let f = (i + 0.5) * scale - 0.5;
+    let j = Math.floor(f);
+    f -= j;
+    if (srcLen < 2) {
+      j = 0;
+      f = 0;
+    } else if (j < 0) {
+      j = 0;
+      f = 0;
+    } else if (j >= srcLen - 1) {
+      j = srcLen - 2;
+      f = 1;
+    }
+    idx[i] = j;
+    frac[i] = f;
+  }
+  return { idx, frac };
+}
+
 // cv2.resize(..., INTER_LINEAR) on an 8-bit 3-channel interleaved image.
 export function resizeLinear(img, dw, dh) {
   const { data: src, w: sw, h: sh } = img;
   if (dw === sw && dh === sh) return { data: src.slice(), w: dw, h: dh };
   const dst = new Uint8Array(dw * dh * 3);
-  const xs = new Int32Array(dw);
-  const xf = new Float32Array(dw);
-  const ys = new Int32Array(dh);
-  const yf = new Float32Array(dh);
-  const scaleX = sw / dw;
-  const scaleY = sh / dh;
-  for (let x = 0; x < dw; x++) {
-    let fx = (x + 0.5) * scaleX - 0.5;
-    let ix = Math.floor(fx);
-    fx -= ix;
-    if (sw < 2) {
-      ix = 0;
-      fx = 0;
-    } else if (ix < 0) {
-      ix = 0;
-      fx = 0;
-    } else if (ix >= sw - 1) {
-      ix = sw - 2;
-      fx = 1;
-    }
-    xs[x] = ix;
-    xf[x] = fx;
-  }
-  for (let y = 0; y < dh; y++) {
-    let fy = (y + 0.5) * scaleY - 0.5;
-    let iy = Math.floor(fy);
-    fy -= iy;
-    if (sh < 2) {
-      iy = 0;
-      fy = 0;
-    } else if (iy < 0) {
-      iy = 0;
-      fy = 0;
-    } else if (iy >= sh - 1) {
-      iy = sh - 2;
-      fy = 1;
-    }
-    ys[y] = iy;
-    yf[y] = fy;
-  }
+  const { idx: xs, frac: xf } = axisSamples(dw, sw);
+  const { idx: ys, frac: yf } = axisSamples(dh, sh);
   for (let y = 0; y < dh; y++) {
     const iy = ys[y];
     const fy = yf[y];
@@ -173,7 +161,8 @@ function toNormalizedCHW(img, mean, std) {
 // `classify` caps the width at the model's own input width; `recognize` uses the widest crop of the batch.
 function padCrop(crop, ic, ih, targetW) {
   const ratio = crop.w / crop.h;
-  const resizedW = Math.ceil(ih * ratio) > targetW ? targetW : trunc(Math.ceil(ih * ratio));
+  const wantW = Math.ceil(ih * ratio);
+  const resizedW = wantW > targetW ? targetW : trunc(wantW);
   const rs = resizeLinear(crop, resizedW, ih);
   const chw = toNormalizedCHW({ data: rs.data, w: resizedW, h: ih }, 0.5, 0.5);
   const pad = new Float32Array(ic * ih * targetW);
@@ -377,61 +366,50 @@ function orderPointsClockwise(pts) {
   return [left[0], right[0], right[1], left[1]];
 }
 
-// DBPostProcess.__call__ / boxes_from_bitmap / get_mini_boxes / unclip / filter_det_res
-export function dbPostprocess(prob, mapW, mapH, destW, destH) {
-  const cfg = CFG.det;
-  const bin = new Uint8Array(mapW * mapH);
-  for (let i = 0; i < bin.length; i++) bin[i] = prob[i] > cfg.thresh ? 1 : 0;
-
-  let mask = bin;
-  if (cfg.use_dilation) {
-    // cv2.dilate, kernel 2x2, default anchor (1,1); 0/1 values so the uint8
-    // border value 0 is equivalent to "ignore".
-    mask = new Uint8Array(mapW * mapH);
-    for (let y = 0; y < mapH; y++) {
-      for (let x = 0; x < mapW; x++) {
-        let m = bin[y * mapW + x];
-        if (x > 0 && bin[y * mapW + x - 1] > m) m = bin[y * mapW + x - 1];
-        if (y > 0 && bin[(y - 1) * mapW + x] > m) m = bin[(y - 1) * mapW + x];
-        if (x > 0 && y > 0 && bin[(y - 1) * mapW + x - 1] > m) m = bin[(y - 1) * mapW + x - 1];
-        mask[y * mapW + x] = m;
-      }
+// cv2.dilate, kernel 2x2, default anchor (1,1); 0/1 values so the uint8 border value 0 is equivalent to "ignore".
+function dilate2x2(bin, w, h) {
+  const mask = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let m = bin[y * w + x];
+      if (x > 0 && bin[y * w + x - 1] > m) m = bin[y * w + x - 1];
+      if (y > 0 && bin[(y - 1) * w + x] > m) m = bin[(y - 1) * w + x];
+      if (x > 0 && y > 0 && bin[(y - 1) * w + x - 1] > m) m = bin[(y - 1) * w + x - 1];
+      mask[y * w + x] = m;
     }
   }
+  return mask;
+}
 
-  const fg = componentsOf(mask, mapW, mapH, 1);
-  const bg = componentsOf(mask, mapW, mapH, 0, (touch) => !touch); // holes, as RETR_LIST yields them
-  const contours = fg.concat(bg).sort((a, b) => a.first - b.first);
+// One contour as a destination-space quad plus its score, or null when it fails a size/score test:
+// get_mini_boxes, box_score_fast, unclip, and the scaling back to the destination image.
+function detCandidateBox(contour, prob, mapW, mapH, destW, destH) {
+  const cfg = CFG.det;
+  const rect0 = minAreaRect(contour.pts);
+  if (Math.min(rect0.w, rect0.h) < cfg.min_size) return null;
+  const quad0 = rectCorners(rect0);
+  // config.yaml sets score_mode: fast -> box_score_fast over the minAreaRect quad
+  const score = boxScoreFast(prob, mapW, mapH, quad0);
+  if (cfg.box_thresh > score) return null;
 
-  const boxes = [];
-  const scores = [];
-  const maxCand = Math.min(contours.length, cfg.max_candidates);
-  for (let i = 0; i < maxCand; i++) {
-    const rect0 = minAreaRect(contours[i].pts);
-    if (Math.min(rect0.w, rect0.h) < cfg.min_size) continue;
-    const quad0 = rectCorners(rect0);
-    // config.yaml sets score_mode: fast -> box_score_fast over the minAreaRect quad
-    const score = boxScoreFast(prob, mapW, mapH, quad0);
-    if (cfg.box_thresh > score) continue;
+  // unclip: pyclipper round offset of a rectangle by d == rect inflated by d
+  // on both axes (corners rounded, so minAreaRect == w+2d x h+2d, same centre).
+  const area = rect0.w * rect0.h;
+  const perim = 2 * (rect0.w + rect0.h);
+  const d = (area * cfg.unclip_ratio) / perim;
+  const w2 = rect0.w + 2 * d;
+  const h2 = rect0.h + 2 * d;
+  if (Math.min(w2, h2) < cfg.min_size + 2) return null;
 
-    // unclip: pyclipper round offset of a rectangle by d == rect inflated by d
-    // on both axes (corners rounded, so minAreaRect == w+2d x h+2d, same centre).
-    const area = rect0.w * rect0.h;
-    const perim = 2 * (rect0.w + rect0.h);
-    const d = (area * cfg.unclip_ratio) / perim;
-    const w2 = rect0.w + 2 * d;
-    const h2 = rect0.h + 2 * d;
-    if (Math.min(w2, h2) < cfg.min_size + 2) continue;
+  const quad = rectCorners(rect0, w2, h2).map(([x, y]) => [
+    clamp(pyRound((x / mapW) * destW), 0, destW),
+    clamp(pyRound((y / mapH) * destH), 0, destH),
+  ]);
+  return { quad, score };
+}
 
-    const quad = rectCorners(rect0, w2, h2).map(([x, y]) => [
-      clamp(pyRound((x / mapW) * destW), 0, destW),
-      clamp(pyRound((y / mapH) * destH), 0, destH),
-    ]);
-    boxes.push(quad);
-    scores.push(score);
-  }
-
-  // filter_det_res
+// filter_det_res: round each box back to integer destination pixels and drop the ones too thin to be text.
+function filterDetBoxes(boxes, scores, destW, destH) {
   const outBoxes = [];
   const outScores = [];
   for (let i = 0; i < boxes.length; i++) {
@@ -448,10 +426,33 @@ export function dbPostprocess(prob, mapW, mapH, destW, destH) {
   return { boxes: outBoxes, scores: outScores };
 }
 
+// DBPostProcess.__call__ / boxes_from_bitmap / get_mini_boxes / unclip / filter_det_res
+export function dbPostprocess(prob, mapW, mapH, destW, destH) {
+  const cfg = CFG.det;
+  const bin = new Uint8Array(mapW * mapH);
+  for (let i = 0; i < bin.length; i++) bin[i] = prob[i] > cfg.thresh ? 1 : 0;
+
+  const mask = cfg.use_dilation ? dilate2x2(bin, mapW, mapH) : bin;
+
+  const fg = componentsOf(mask, mapW, mapH, 1);
+  const bg = componentsOf(mask, mapW, mapH, 0, (touch) => !touch); // holes, as RETR_LIST yields them
+  const contours = fg.concat(bg).sort((a, b) => a.first - b.first);
+
+  const boxes = [];
+  const scores = [];
+  const maxCand = Math.min(contours.length, cfg.max_candidates);
+  for (let i = 0; i < maxCand; i++) {
+    const found = detCandidateBox(contours[i], prob, mapW, mapH, destW, destH);
+    if (!found) continue;
+    boxes.push(found.quad);
+    scores.push(found.score);
+  }
+  return filterDetBoxes(boxes, scores, destW, destH);
+}
+
 // TextDetector.sorted_boxes (y bands of 10 px, then x within a band)
 export function sortedBoxes(boxes) {
-  const idx = boxes.map((_, i) => i);
-  const order = idx.slice().sort((a, b) => boxes[a][0][1] - boxes[b][0][1] || a - b);
+  const order = boxes.map((_, i) => i).sort((a, b) => boxes[a][0][1] - boxes[b][0][1] || a - b);
   const ys = order.map((i) => boxes[i][0][1]);
   const lineIds = [];
   let cur = 0;
@@ -524,6 +525,40 @@ function cubicWeight(x) {
   return 0;
 }
 
+// Writes one destination pixel (3 channels at `di`) by inverse-mapping `sx`, `sy` into the source:
+// cubic sampling when the source point is near the picture, the nearest border pixel when it is far
+// outside (BORDER_REPLICATE).
+function warpPixel(out, di, src, sw, sh, sx, sy) {
+  if (!(sx > -1 && sy > -1 && sx < sw + 1 && sy < sh + 1)) {
+    // far outside: replicate the nearest border pixel
+    const cx = clamp(Math.round(sx), 0, sw - 1);
+    const cy = clamp(Math.round(sy), 0, sh - 1);
+    out[di] = src[(cy * sw + cx) * 3];
+    out[di + 1] = src[(cy * sw + cx) * 3 + 1];
+    out[di + 2] = src[(cy * sw + cx) * 3 + 2];
+    return;
+  }
+  const ix = Math.floor(sx);
+  const iy = Math.floor(sy);
+  const fx = sx - ix;
+  const fy = sy - iy;
+  for (let c = 0; c < 3; c++) {
+    let acc = 0;
+    for (let m = -1; m <= 2; m++) {
+      const wy = cubicWeight(m - fy);
+      if (wy === 0) continue;
+      const yy = clamp(iy + m, 0, sh - 1);
+      for (let n = -1; n <= 2; n++) {
+        const wx = cubicWeight(n - fx);
+        if (wx === 0) continue;
+        const xx = clamp(ix + n, 0, sw - 1);
+        acc += wy * wx * src[(yy * sw + xx) * 3 + c];
+      }
+    }
+    out[di + c] = clamp(Math.round(acc), 0, 255);
+  }
+}
+
 // cv2.getRotateCropImage: warpPerspective INTER_CUBIC + BORDER_REPLICATE, then
 // np.rot90 when the crop is at least 1.5x taller than wide.
 export function getRotateCropImage(img, points) {
@@ -540,65 +575,35 @@ export function getRotateCropImage(img, points) {
   ];
   const M = invert3x3(perspectiveTransform(points, dstPts));
   const out = new Uint8Array(cw * ch * 3);
-  const baseX = new Int32Array(cw);
-  const fracX = new Float32Array(cw);
   for (let y = 0; y < ch; y++) {
     for (let x = 0; x < cw; x++) {
       const den = M[6] * x + M[7] * y + M[8];
       const sx = (M[0] * x + M[1] * y + M[2]) / den;
       const sy = (M[3] * x + M[4] * y + M[5]) / den;
-      const di = (y * cw + x) * 3;
-      if (!(sx > -1 && sy > -1 && sx < sw + 1 && sy < sh + 1)) {
-        // far outside: replicate the nearest border pixel
-        const cx = clamp(Math.round(sx), 0, sw - 1);
-        const cy = clamp(Math.round(sy), 0, sh - 1);
-        out[di] = src[(cy * sw + cx) * 3];
-        out[di + 1] = src[(cy * sw + cx) * 3 + 1];
-        out[di + 2] = src[(cy * sw + cx) * 3 + 2];
-        continue;
-      }
-      const ix = Math.floor(sx);
-      const iy = Math.floor(sy);
-      const fx = sx - ix;
-      const fy = sy - iy;
-      for (let c = 0; c < 3; c++) {
-        let acc = 0;
-        for (let m = -1; m <= 2; m++) {
-          const wy = cubicWeight(m - fy);
-          if (wy === 0) continue;
-          const yy = clamp(iy + m + 0, 0, sh - 1);
-          for (let n = -1; n <= 2; n++) {
-            const wx = cubicWeight(n - fx);
-            if (wx === 0) continue;
-            const xx = clamp(ix + n + 0, 0, sw - 1);
-            acc += wy * wx * src[(yy * sw + xx) * 3 + c];
-          }
-        }
-        out[di + c] = clamp(Math.round(acc), 0, 255);
-      }
+      warpPixel(out, (y * cw + x) * 3, src, sw, sh, sx, sy);
     }
   }
-  let res = { data: out, w: cw, h: ch };
-  if (ch / cw >= 1.5) {
-    // np.rot90: counter-clockwise
-    // out is (h=ch, w=cw); np.rot90 gives (h=cw, w=ch) with (x,y) -> (y, cw-1-x)
-    const rw2 = ch;
-    const rh2 = cw;
-    const r = new Uint8Array(cw * ch * 3);
-    for (let y = 0; y < ch; y++) {
-      for (let x = 0; x < cw; x++) {
-        const nx = y;
-        const ny = cw - 1 - x;
-        const si = (y * cw + x) * 3;
-        const di = (ny * rw2 + nx) * 3;
-        r[di] = out[si];
-        r[di + 1] = out[si + 1];
-        r[di + 2] = out[si + 2];
-      }
-    }
-    res = { data: r, w: rw2, h: rh2 };
-  }
+  const res = { data: out, w: cw, h: ch };
+  if (ch / cw >= 1.5) return rotate90(res);
   return res;
+}
+
+// np.rot90 (counter-clockwise): (h, w) -> (w, h) with (x, y) -> (y, h - 1 - x).
+function rotate90(img) {
+  const { data, w, h } = img;
+  const out = new Uint8Array(w * h * 3);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const nx = y;
+      const ny = h - 1 - x;
+      const si = (y * w + x) * 3;
+      const di = (ny * h + nx) * 3;
+      out[di] = data[si];
+      out[di + 1] = data[si + 1];
+      out[di + 2] = data[si + 2];
+    }
+  }
+  return { data: out, w: h, h: w };
 }
 
 function rotate180(img) {
@@ -617,35 +622,32 @@ function rotate180(img) {
 // ------------------------------------------------------- global preprocess
 
 // utils/process_img.py: reduce_max_side / increase_min_side / resize_image_within_bounds
+const roundTo32 = (v) => pyRound(v / 32) * 32;
+
+// Resize by `ratio`, rounding both sides to a multiple of 32 (the two bounds branches below).
+function resizedBy(img, ratio) {
+  const rh = roundTo32(trunc(img.h * ratio));
+  const rw = roundTo32(trunc(img.w * ratio));
+  return { img: resizeLinear(img, rw, rh), rh, rw };
+}
+
 function resizeWithinBounds(img, minSide, maxSide) {
   let { w, h } = img;
   let ratioH = 1;
   let ratioW = 1;
   if (Math.max(h, w) > maxSide) {
-    let ratio = 1;
-    if (h > w) ratio = maxSide / h;
-    else ratio = maxSide / w;
-    let rh = trunc(h * ratio);
-    let rw = trunc(w * ratio);
-    rh = pyRound(rh / 32) * 32;
-    rw = pyRound(rw / 32) * 32;
-    img = resizeLinear(img, rw, rh);
-    ratioH = h / rh;
-    ratioW = w / rw;
-    w = rw;
-    h = rh;
+    const r = resizedBy(img, maxSide / Math.max(h, w));
+    img = r.img;
+    ratioH = h / r.rh;
+    ratioW = w / r.rw;
+    w = r.rw;
+    h = r.rh;
   }
   if (Math.min(h, w) < minSide) {
-    let ratio = 1;
-    if (h < w) ratio = minSide / h;
-    else ratio = minSide / w;
-    let rh = trunc(h * ratio);
-    let rw = trunc(w * ratio);
-    rh = pyRound(rh / 32) * 32;
-    rw = pyRound(rw / 32) * 32;
-    img = resizeLinear(img, rw, rh);
-    ratioH = h / rh;
-    ratioW = w / rw;
+    const r = resizedBy(img, minSide / Math.min(h, w));
+    img = r.img;
+    ratioH = h / r.rh;
+    ratioW = w / r.rw;
   }
   return { img, ratioH, ratioW };
 }
@@ -673,10 +675,8 @@ function detInputSize(h, w) {
   } else {
     if (Math.min(h, w) < limit_side_len) ratio = limit_side_len / Math.min(h, w);
   }
-  let rh = trunc(h * ratio);
-  let rw = trunc(w * ratio);
-  rh = pyRound(rh / 32) * 32;
-  rw = pyRound(rw / 32) * 32;
+  const rh = roundTo32(trunc(h * ratio));
+  const rw = roundTo32(trunc(w * ratio));
   return { rh, rw };
 }
 
@@ -687,6 +687,41 @@ export function buildCharacterList(dictText) {
   chars.push(" "); // insert_special_char(character_list, " ", len)
   chars.unshift("blank"); // insert_special_char(character_list, "blank", 0)
   return chars;
+}
+
+// The highest-scoring column (character class) of one CTC time step, and its probability.
+function argmaxColumn(data, off, C) {
+  let index = 0;
+  let prob = data[off];
+  for (let c = 1; c < C; c++) {
+    const v = data[off + c];
+    if (v > prob) {
+      prob = v;
+      index = c;
+    }
+  }
+  return { index, prob };
+}
+
+// Both the classifier and the recogniser process crops shortest-wide-first.
+const sortedByAspect = (crops) =>
+  crops.map((_, i) => i).sort((a, b) => crops[a].w / crops[a].h - crops[b].w / crops[b].h);
+
+// The [beg, end) slices a batch loop runs over: `batchNum` crops at a time (cls_batch_num / rec_batch_num).
+function* batchRanges(count, batchNum) {
+  for (let beg = 0; beg < count; beg += batchNum) yield [beg, Math.min(count, beg + batchNum)];
+}
+
+// build_final_output: drop blank texts, then filter_by_text_score
+function finalLines(recOut) {
+  const lines = [];
+  for (let i = 0; i < recOut.length; i++) {
+    const t = recOut[i]?.text ?? "";
+    if (!t.trim()) continue;
+    if (recOut[i].score < CFG.text_score) continue;
+    lines.push({ text: t, score: recOut[i].score });
+  }
+  return lines;
 }
 
 export class OcrPipeline {
@@ -701,6 +736,13 @@ export class OcrPipeline {
     const name = session.inputNames[0];
     const out = await session.run({ [name]: tensor });
     return out[session.outputNames[0]];
+  }
+
+  // [N, ic, ih, w] float tensor from the batch's padded planes, laid out contiguously.
+  batchTensor(batch, ic, ih, w) {
+    const flat = new Float32Array(batch.length * ic * ih * w);
+    batch.forEach((b, i) => flat.set(b, i * ic * ih * w));
+    return new this.ort.Tensor("float32", flat, [batch.length, ic, ih, w]);
   }
 
   async detect(img) {
@@ -718,18 +760,15 @@ export class OcrPipeline {
   }
 
   async classify(crops) {
-    const idx = crops.map((_, i) => i).sort((a, b) => crops[a].w / crops[a].h - crops[b].w / crops[b].h);
+    const idx = sortedByAspect(crops);
     const [ic, ih, iw] = CFG.cls.shape;
     const out = crops.slice();
-    for (let beg = 0; beg < idx.length; beg += CFG.cls.batch_num) {
-      const end = Math.min(idx.length, beg + CFG.cls.batch_num);
+    for (const [beg, end] of batchRanges(idx.length, CFG.cls.batch_num)) {
       const batch = [];
       for (let i = beg; i < end; i++) {
         batch.push(padCrop(crops[idx[i]], ic, ih, iw));
       }
-      const flat = new Float32Array(batch.length * ic * ih * iw);
-      batch.forEach((b, i) => flat.set(b, i * ic * ih * iw));
-      const t = new this.ort.Tensor("float32", flat, [batch.length, ic, ih, iw]);
+      const t = this.batchTensor(batch, ic, ih, iw);
       const preds = await this.runSession(this.sessions.cls, t);
       const n = batch.length;
       for (let i = 0; i < n; i++) {
@@ -746,17 +785,14 @@ export class OcrPipeline {
   }
 
   async recognize(crops) {
-    const idx = crops.map((_, i) => i).sort((a, b) => crops[a].w / crops[a].h - crops[b].w / crops[b].h);
+    const idx = sortedByAspect(crops);
     const [ic, ih, iwBase] = CFG.rec.shape;
     const results = new Array(crops.length);
-    for (let beg = 0; beg < idx.length; beg += CFG.rec.batch_num) {
-      const end = Math.min(idx.length, beg + CFG.rec.batch_num);
+    for (const [beg, end] of batchRanges(idx.length, CFG.rec.batch_num)) {
       let maxWhRatio = iwBase / ih;
-      const ratios = [];
       for (let i = beg; i < end; i++) {
         const c = crops[idx[i]];
         const r = c.w / c.h;
-        ratios.push(r);
         if (r > maxWhRatio) maxWhRatio = r;
       }
       const imgW = trunc(ih * maxWhRatio);
@@ -764,9 +800,7 @@ export class OcrPipeline {
       for (let i = beg; i < end; i++) {
         batch.push(padCrop(crops[idx[i]], ic, ih, imgW));
       }
-      const flat = new Float32Array(batch.length * ic * ih * imgW);
-      batch.forEach((b, i) => flat.set(b, i * ic * ih * imgW));
-      const t = new this.ort.Tensor("float32", flat, [batch.length, ic, ih, imgW]);
+      const t = this.batchTensor(batch, ic, ih, imgW);
       const preds = await this.runSession(this.sessions.rec, t);
       const dims = preds.dims; // [N, T, C]
       const T = dims[1];
@@ -785,15 +819,7 @@ export class OcrPipeline {
     const probs = [];
     let prev = -1;
     for (let t = 0; t < T; t++) {
-      let best = 0;
-      let bestP = data[off + t * C];
-      for (let c = 1; c < C; c++) {
-        const v = data[off + t * C + c];
-        if (v > bestP) {
-          bestP = v;
-          best = c;
-        }
-      }
+      const { index: best, prob: bestP } = argmaxColumn(data, off + t * C, C);
       if (best === prev) continue; // remove_duplicate
       prev = best;
       if (best === 0) continue; // ignored token (ctc blank)
@@ -825,14 +851,7 @@ export class OcrPipeline {
     const recOut = await this.recognize(clsCrops);
     const tRec1 = performance.now();
 
-    // build_final_output: drop blank texts, then filter_by_text_score
-    const lines = [];
-    for (let i = 0; i < recOut.length; i++) {
-      const t = recOut[i]?.text ?? "";
-      if (!t.trim()) continue;
-      if (recOut[i].score < CFG.text_score) continue;
-      lines.push({ text: t, score: recOut[i].score });
-    }
+    const lines = finalLines(recOut);
     return {
       lines,
       preMs: tDet0 - tPre,

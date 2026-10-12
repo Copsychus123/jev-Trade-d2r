@@ -63,17 +63,23 @@ def duplicate_keys(products: list[dict]) -> dict[str, list[str]]:
     return {key: found for key, found in slugs.items() if len(found) > 1}
 
 
-def audit(data: dict) -> tuple[dict, list[str]]:
-    by_name = {p["name"]: p for p in data["products"]}
-    named = {normalize(english) for english in data["zh"].values()}
+def _coverage(products: list[dict], named: set[str]) -> dict[str, dict]:
+    """Per category: how many products it holds, how many have a Chinese name, and which ones do not."""
     coverage: dict[str, dict] = {}
-    for product in data["products"]:
+    for product in products:
         row = coverage.setdefault(product["category"], {"total": 0, "named": 0, "missing": []})
         row["total"] += 1
         if normalize(product["name"]) in named:
             row["named"] += 1
         else:
             row["missing"].append(product["name"])
+    return coverage
+
+
+def audit(data: dict) -> tuple[dict, list[str]]:
+    by_name = {p["name"]: p for p in data["products"]}
+    named = {normalize(english) for english in data["zh"].values()}
+    coverage = _coverage(data["products"], named)
 
     problems = []
     for category, minimum in MIN_PRODUCTS.items():

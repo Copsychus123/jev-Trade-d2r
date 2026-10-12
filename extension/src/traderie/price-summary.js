@@ -30,6 +30,16 @@ function rowValue(row) {
   return row.highRuneValue ?? row.high_rune_value;
 }
 
+/** The High Rune Values the batch carries, ascending; rows without a value are left out and no row is modified. */
+function pricedValues(rows) {
+  const values = [];
+  for (const row of rows) {
+    const value = highRuneValueOf(rowValue(row));
+    if (value !== null) values.push(value);
+  }
+  return values.sort((a, b) => a - b);
+}
+
 /**
  * A summary of the High Rune Values of a batch of listing rows: how many rows carried a price and, over those,
  * the minimum and the quartiles.
@@ -45,14 +55,8 @@ function rowValue(row) {
  *   q1: number|null, q3: number|null, unit: string}} `count` is rows.length; the rows are not modified.
  */
 export function priceSummary(rows) {
-  const values = [];
-  for (const row of rows) {
-    const value = highRuneValueOf(rowValue(row));
-    if (value !== null) values.push(value);
-  }
-
+  const values = pricedValues(rows);
   const priced = values.length;
-  values.sort((a, b) => a - b);
   const at = (rank, n) => values[Math.ceil(rank * n) - 1];
 
   return {

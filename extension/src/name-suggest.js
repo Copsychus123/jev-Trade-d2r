@@ -1,6 +1,29 @@
 // Autocomplete combobox for the item name field (name search). Pure DOM helpers: no chrome.*, no I/O.
 import { suggestNames } from "./traderie/lookup.js";
 
+/** One suggestion `<li>`: its label, its optional hint, and the mousedown that selects it (`onSelect`). */
+function optionElement(item, index, listId, onSelect) {
+  const li = document.createElement("li");
+  li.id = `${listId}-${index}`;
+  li.setAttribute("role", "option");
+  li.dataset.index = String(index);
+  li.setAttribute("aria-selected", "false");
+  const span = document.createElement("span");
+  span.textContent = item.label;
+  li.append(span);
+  if (item.hint) {
+    const hint = document.createElement("span");
+    hint.classList.add("suggest-hint");
+    hint.textContent = item.hint;
+    li.append(hint);
+  }
+  li.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+    onSelect(index);
+  });
+  return li;
+}
+
 /**
  * Sets up the name input as an ARIA combobox that shows suggestions from the item tables.
  * `getTables()` returns the indexed tables (or null before they load).
@@ -39,27 +62,7 @@ export function initNameSuggest({ input, list, getTables }) {
       close();
       return;
     }
-    for (let i = 0; i < items.length; i++) {
-      const li = document.createElement("li");
-      li.id = `${list.id}-${i}`;
-      li.setAttribute("role", "option");
-      li.dataset.index = String(i);
-      li.setAttribute("aria-selected", "false");
-      const span = document.createElement("span");
-      span.textContent = items[i].label;
-      li.append(span);
-      if (items[i].hint) {
-        const hint = document.createElement("span");
-        hint.classList.add("suggest-hint");
-        hint.textContent = items[i].hint;
-        li.append(hint);
-      }
-      li.addEventListener("mousedown", (event) => {
-        event.preventDefault();
-        select(i);
-      });
-      list.append(li);
-    }
+    for (let i = 0; i < items.length; i++) list.append(optionElement(items[i], i, list.id, select));
     list.hidden = false;
     input.setAttribute("aria-expanded", "true");
   }

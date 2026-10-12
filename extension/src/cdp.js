@@ -24,6 +24,19 @@ export const commandTimeoutMs = (method) => (method === "Page.navigate" ? NAVIGA
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** Runs a read that a navigation may interrupt; a StalePage means the old document is gone, not a failure. */
+const ignoringStalePage = async (read) => {
+  try {
+    return await read();
+  } catch (error) {
+    if (error instanceof StalePage) return null;
+    throw error;
+  }
+};
+
+/** Compares by value, never by identity: the page's own markers and guards are arrays. */
+const sameValue = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
 /** Runs a chrome.* call that may fail because the thing is already gone; never throws. */
 const quiet = async (call) => {
   try {
@@ -38,11 +51,13 @@ async function readWindows() {
   return Array.isArray(stored[WINDOWS_KEY]) ? stored[WINDOWS_KEY].filter(Number.isInteger) : [];
 }
 
-const rememberWindow = (id) =>
-  quiet(async () => chrome.storage.session.set({ [WINDOWS_KEY]: [...(await readWindows()), id] }));
+/** Rewrites the open-window list from its current value; a dead session storage is not an error. */
+const updateWindows = (change) =>
+  quiet(async () => chrome.storage.session.set({ [WINDOWS_KEY]: change(await readWindows()) }));
 
-const forgetWindow = (id) =>
-  quiet(async () => chrome.storage.session.set({ [WINDOWS_KEY]: (await readWindows()).filter((w) => w !== id) }));
+const rememberWindow = (id) => updateWindows((windows) => [...windows, id]);
+
+const forgetWindow = (id) => updateWindows((windows) => windows.filter((w) => w !== id));
 
 /**
  * Closes query windows left behind when the side panel died mid-run (session storage lives as long as the browser, so
@@ -272,13 +287,8 @@ export class Tab {
     const deadline = Date.now() + timeoutMs;
     let interactiveSince = null;
     while (Date.now() < deadline) {
-      let state;
-      try {
-        state = await this.evaluate("document.readyState", { retryable: true });
-      } catch (error) {
-        if (!(error instanceof StalePage)) throw error;
-        state = null; // the old document just went away: keep polling the new one
-      }
+      // The old document may go away mid-poll: ignore that and keep polling the new one.
+      const state = await ignoringStalePage(() => this.evaluate("document.readyState", { retryable: true }));
       if (state === "complete") return { how: "complete", ms: Math.round(performance.now() - started) };
       if (state === "interactive") {
         if (interactiveSince === null) interactiveSince = Date.now();
@@ -294,15 +304,34 @@ export class Tab {
   async waitUntilReady(timeoutMs = 2000, intervalMs = 50) {
     const deadline = Date.now() + Math.max(timeoutMs, 0);
     for (;;) {
-      try {
-        if (await this.evaluate("document.readyState === 'complete' && !!document.body", { retryable: true })) {
-          return true;
-        }
-      } catch (error) {
-        if (!(error instanceof StalePage)) throw error;
-      }
+      const complete = await ignoringStalePage(() =>
+        this.evaluate("document.readyState === 'complete' && !!document.body", { retryable: true }),
+      );
+      if (complete) return true;
       if (Date.now() >= deadline) return false;
       await sleep(intervalMs);
+    }
+  }
+
+  /**
+   * Runs the pending after-input read and clears it. Read-only, after execution was logged, so a navigation that
+   * interrupts it is ignored here rather than reported.
+   */
+  async _runAfterInput() {
+    const action = this.afterInput;
+    this.afterInput = null;
+    try {
+      await this.send(
+        "Runtime.evaluate",
+        {
+          expression: `${this.scripts.afterInput}(${JSON.stringify(action)})`,
+          awaitPromise: true,
+          returnByValue: true,
+        },
+        { retryable: true },
+      );
+    } catch (error) {
+      if (this.detached) throw error;
     }
   }
 
@@ -310,22 +339,7 @@ export class Tab {
     const started = performance.now();
     let afterInputMs = null;
     if (this.afterInput) {
-      const action = this.afterInput;
-      this.afterInput = null;
-      // Read-only, after execution was logged; navigation may interrupt it.
-      try {
-        await this.send(
-          "Runtime.evaluate",
-          {
-            expression: `${this.scripts.afterInput}(${JSON.stringify(action)})`,
-            awaitPromise: true,
-            returnByValue: true,
-          },
-          { retryable: true },
-        );
-      } catch (error) {
-        if (this.detached) throw error;
-      }
+      await this._runAfterInput();
       afterInputMs = Math.round(performance.now() - started);
     }
     const snapshotStarted = performance.now();
@@ -342,7 +356,6 @@ export class Tab {
         await sleep(20);
       }
     }
-    throw new StalePage("Page did not settle");
   }
 
   async fresh(page, action = null) {
@@ -354,10 +367,9 @@ export class Tab {
           `return c ? [c.pageKey(),c.guard(c.nodes.get(${node}))] : null; })()`,
         { retryable: true },
       );
-      return JSON.stringify(current) === JSON.stringify([page.page_key, page.guards[String(node)]]);
+      return sameValue(current, [page.page_key, page.guards[String(node)]]);
     }
-    // The marker is an array: compare by value, never by identity.
-    return JSON.stringify(await this.evaluate(this.marker, { retryable: true })) === JSON.stringify(page.marker);
+    return sameValue(await this.evaluate(this.marker, { retryable: true }), page.marker);
   }
 
   async act(action, page, text = null) {
@@ -381,9 +393,20 @@ export class Tab {
       return;
     }
     if (kind === "wait") return;
+    const target = await this._resolveTarget(action, kind);
+    if (kind === "select") return;
+    for (const type of ["mousePressed", "mouseReleased"]) {
+      await this.send("Input.dispatchMouseEvent", { type, x: target.x, y: target.y, button: "left", clickCount: 1 });
+    }
+    if (kind === "fill") await this._selectAllThenType(text);
+  }
+
+  /**
+   * The click point of the action's code-owned node id: actual observed elements, never model-generated selectors.
+   * The read is not retryable — it decides where the click lands, so a swapped target must go back to observe.
+   */
+  async _resolveTarget(action, kind) {
     if (!Number.isInteger(action.node)) throw new Error("Invalid observed node");
-    // Code-owned node ids refer to actual observed elements, never model-generated selectors.
-    // Not retryable: it decides where the click lands, so a swapped target must go back to observe.
     let target;
     try {
       target = await this.evaluate(`${this.scripts.resolveTarget}(${JSON.stringify(action)})`);
@@ -397,22 +420,21 @@ export class Tab {
       if (kind === "select") throw new Error("下拉選單操作無法確認，查詢已停止");
       throw new StalePage("Target changed or is covered. Observe again.");
     }
-    if (kind === "select") return;
-    for (const type of ["mousePressed", "mouseReleased"]) {
-      await this.send("Input.dispatchMouseEvent", { type, x: target.x, y: target.y, button: "left", clickCount: 1 });
-    }
-    if (kind === "fill") {
-      const modifiers = navigator.userAgentData?.platform === "macOS" ? 4 : 2;
-      await this.send("Input.dispatchKeyEvent", {
-        type: "keyDown",
-        key: "a",
-        code: "KeyA",
-        modifiers,
-        commands: ["selectAll"],
-      });
-      await this.send("Input.dispatchKeyEvent", { type: "keyUp", key: "a", code: "KeyA", modifiers });
-      await this.send("Input.insertText", { text });
-    }
+    return target;
+  }
+
+  /** Replaces the focused field's content: select everything first, then insert `text` as one paste-like event. */
+  async _selectAllThenType(text) {
+    const modifiers = navigator.userAgentData?.platform === "macOS" ? 4 : 2;
+    await this.send("Input.dispatchKeyEvent", {
+      type: "keyDown",
+      key: "a",
+      code: "KeyA",
+      modifiers,
+      commands: ["selectAll"],
+    });
+    await this.send("Input.dispatchKeyEvent", { type: "keyUp", key: "a", code: "KeyA", modifiers });
+    await this.send("Input.insertText", { text });
   }
 
   /**

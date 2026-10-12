@@ -2,7 +2,7 @@ import { chooseNext, pickBase, startRun } from "./api.js";
 import { Agent, newCallBudget } from "./agent.js";
 import { API_BASE } from "./config.js";
 import { Tab, closeStaleWindows, loadPageScripts } from "./cdp.js";
-import { ApiError } from "./errors.js";
+import { $, element } from "./dom.js";
 import { priceSummaryLine, sourceLine, statusLabel } from "./labels.js";
 import { describeRunError, guardProblem, judgeNameRun } from "./run-outcome.js";
 import { SECTION_NAMES, affixHandoff, deriveView, visibleSections } from "./panel-state.js";
@@ -34,8 +34,6 @@ import { createResultActions } from "./result-actions.js";
 import { judgeStats, runStatsFlow } from "./stats-query.js";
 import { initStatsForm } from "./stats-form.js";
 import { newTimeline, timed } from "./timeline.js";
-
-const $ = (id) => document.getElementById(id);
 
 const MODE_TEXT = {
   name: { title: "精準搜尋", help: "輸入裝備名稱就能查（暗金、套裝等固定名稱）" },
@@ -89,15 +87,17 @@ function renderMarket(key) {
   $(`${prefix}-count`).textContent = tabCount(view, total, filtersActive(filters));
   $(`${prefix}-mark`).textContent = view.status === "PASSED" ? "" : statusLabel(view.status);
   const note = viewNote(view, total);
-  $(`${prefix}-meta`).textContent = note;
-  $(`${prefix}-meta`).hidden = !note;
+  const meta = $(`${prefix}-meta`);
+  meta.textContent = note;
+  meta.hidden = !note;
   $(`${prefix}-clear`).hidden = !filteredAway(view, total);
   const page = clampPage(pages[key], total);
   pages[key] = page;
+  const count = pageCount(total);
   $(`${prefix}-pager`).hidden = total <= PAGE_SIZE;
-  $(`${prefix}-page`).textContent = `第 ${page} / ${pageCount(total)} 頁`;
+  $(`${prefix}-page`).textContent = `第 ${page} / ${count} 頁`;
   $(`${prefix}-prev`).disabled = page <= 1;
-  $(`${prefix}-next`).disabled = page >= pageCount(total);
+  $(`${prefix}-next`).disabled = page >= count;
   const body = $(`${prefix}-list`);
   const stamp = `${view.status}|${view.observed_at}|${view.rows.length}|${JSON.stringify(filters)}|${page}`;
   if (body.dataset.stamp === stamp) return;
@@ -155,6 +155,8 @@ function renderProgress() {
 // ---- screens ---------------------------------------------------------------------------------------------------
 
 const mask = (code) => (code ? `${"•".repeat(8)}${code.length > 8 ? code.slice(-4) : ""}` : "（還沒有邀請碼）");
+/** How many queries the code still allows; never negative. */
+const remainingQuota = (q) => Math.max(0, q.limit - q.used);
 
 /** Caption, summary line and tab labels of the results: the two search kinds name their list differently. */
 function renderResultsHeader(view) {
@@ -169,7 +171,8 @@ function renderResultsHeader(view) {
 
 /** The query form of the chosen search kind: name box or base box plus the affix part; locked while a query runs. */
 function renderModeForm() {
-  $("item").disabled = running;
+  const item = $("item");
+  item.disabled = running;
   const statsMode = queryMode === "stats";
   document.body.dataset.mode = queryMode ?? "";
   const text = MODE_TEXT[queryMode];
@@ -178,7 +181,7 @@ function renderModeForm() {
   $("mode-change").disabled = running;
   $("item-label").textContent = statsMode ? "底材名稱" : "裝備名稱";
   $("item-label").htmlFor = statsMode ? "stats-base" : "item";
-  $("item").hidden = statsMode;
+  item.hidden = statsMode;
   $("stats-base").hidden = !statsMode;
   $("item-help").textContent = statsMode ? "可輸入中文或英文裝備" : "中文或英文都可以，也可貼上截圖";
   $("part-stats").hidden = !statsMode;
@@ -196,20 +199,21 @@ function renderBanner(view) {
   $("banner-hint").hidden = !banner.hint;
   $("banner-open-site").hidden = !banner.site;
   $("banner-settings").hidden = !banner.settings;
-  $("banner-retry").hidden = !banner.retry;
-  $("banner-retry").textContent = banner.retry ?? "";
+  const retry = $("banner-retry");
+  retry.hidden = !banner.retry;
+  retry.textContent = banner.retry ?? "";
 }
 
 /** The quota line under the name field: used up while a query runs or has just ended, remaining before that. */
 function renderQuota(view) {
   const used = quota && ["running", "done", "problem", "stopped"].includes(view);
-  $("quota").textContent = !currentInvite()
-    ? ""
-    : used
-      ? `已用 ${quota.used}/${quota.limit}`
-      : quota
-        ? `剩 ${Math.max(0, quota.limit - quota.used)} 次`
-        : "已用 —";
+  let text = "";
+  if (currentInvite()) {
+    if (used) text = `已用 ${quota.used}/${quota.limit}`;
+    else if (quota) text = `剩 ${remainingQuota(quota)} 次`;
+    else text = "已用 —";
+  }
+  $("quota").textContent = text;
 }
 
 /** The invite area of the settings screen, and every settings control that a running query locks. */
@@ -222,7 +226,7 @@ function renderInvite() {
   $("invite-change").hidden = editingInvite;
   $("invite-note").textContent = "新的邀請碼要等下一次查詢成功，才會儲存。";
   $("invite-note").hidden = !pendingInvite;
-  $("invite-quota").textContent = quota ? `已用 ${quota.used} / ${quota.limit} 次（剩 ${Math.max(0, quota.limit - quota.used)} 次）` : "";
+  $("invite-quota").textContent = quota ? `已用 ${quota.used} / ${quota.limit} 次（剩 ${remainingQuota(quota)} 次）` : "";
   $("invite-quota").hidden = !quota;
 }
 
@@ -257,8 +261,9 @@ function renderChrome() {
 /** The settings selects mirror `filters`; they are locked like every other setting while a query runs. */
 function renderFilterFields() {
   for (const { key } of FILTER_FIELDS) {
-    $(`filter-${key}`).value = filters[key];
-    $(`filter-${key}`).disabled = running;
+    const select = $(`filter-${key}`);
+    select.value = filters[key];
+    select.disabled = running;
   }
   $("filter-preset").disabled = running;
   $("filter-clear").disabled = running || !filtersActive(filters);
@@ -348,7 +353,7 @@ function beginQuery(text) {
   pages.trading = 1;
   pages.recent_trades = 1;
   $("trust-more").open = false;
-  document.querySelectorAll("[data-stamp]").forEach((el) => delete el.dataset.stamp);
+  document.querySelectorAll("[data-stamp]").forEach((node) => delete node.dataset.stamp);
   running = true;
   render();
   return market;
@@ -502,12 +507,13 @@ function warmUpAffixForm() {
 function fillBaseOptions(options) {
   const list = $("stats-base-options");
   if (!list || !options.length) return;
-  list.replaceChildren(...options.map((name) => Object.assign(document.createElement("option"), { value: name })));
+  list.replaceChildren(...options.map((name) => element("option", { value: name })));
 }
 
 /** Where typing starts on the current screen. */
 function focusEntry() {
-  $(!queryMode ? "choose-name" : queryMode === "stats" ? "stats-base" : queryMode === "scan" ? "scan-start" : "item").focus();
+  const id = { stats: "stats-base", scan: "scan-start", name: "item" }[queryMode] ?? "choose-name";
+  $(id).focus();
 }
 
 /** The player picks (or changes back to the question with null); a later picture no longer switches the mode. */
@@ -562,8 +568,8 @@ function buildFilterFields() {
   const box = $("filter-fields");
   for (const field of FILTER_FIELDS) {
     const id = `filter-${field.key}`;
-    const label = Object.assign(document.createElement("label"), { htmlFor: id, textContent: field.label });
-    const select = Object.assign(document.createElement("select"), { id });
+    const label = element("label", { htmlFor: id, textContent: field.label });
+    const select = element("select", { id });
     select.append(new Option("不限", ""));
     for (const value of field.options) select.append(new Option(FILTER_OPTION_LABELS[value] ?? value, value));
     select.addEventListener("change", () => setFilters({ ...filters, [field.key]: select.value }));
@@ -585,6 +591,8 @@ async function isOnlyPanel() {
 
 function registerListeners() {
   const on = (id, handler) => $(id).addEventListener("click", handler);
+  // A command Chrome is slow to answer must not hold Stop or the panel close back.
+  const abortCurrent = () => current?.tab?.abort().catch(() => {});
 
   // The code is only held in memory here; it is stored once the backend accepts it (see rememberInvite).
   function wireInvite() {
@@ -646,7 +654,7 @@ function registerListeners() {
     on("stop", () => {
       stopRequested = true;
       setStatus("正在停止…");
-      current?.tab?.abort().catch(() => {}); // a command Chrome is slow to answer must not hold Stop back
+      abortCurrent();
     });
     on("part-requery", backToForm);
     on("fuzzy-handoff", () => {
@@ -669,16 +677,14 @@ function registerListeners() {
     on("result-copy", () => resultActions.copy(activeTab));
     on("result-open", () => resultActions.openSite(activeTab));
     for (const [key, config] of Object.entries(marketViews)) {
+      const turnPage = (delta) => {
+        pages[key] += delta;
+        renderMarket(key);
+      };
       on(`${config.prefix}-tab`, () => selectTab(key));
       // Paging only changes what the list shows; copy and CSV always take every row.
-      on(`${config.prefix}-prev`, () => {
-        pages[key] -= 1;
-        renderMarket(key);
-      });
-      on(`${config.prefix}-next`, () => {
-        pages[key] += 1;
-        renderMarket(key);
-      });
+      on(`${config.prefix}-prev`, () => turnPage(-1));
+      on(`${config.prefix}-next`, () => turnPage(1));
     }
   }
 
@@ -686,7 +692,7 @@ function registerListeners() {
     // Best effort: the panel is going away, so the query window must not stay open with the debugger attached.
     window.addEventListener("pagehide", () => {
       stopRequested = true;
-      current?.tab?.abort().catch(() => {});
+      abortCurrent();
     });
   }
 

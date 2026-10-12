@@ -102,23 +102,54 @@ function extractValueDigits(line) {
 }
 
 /**
+ * The ordered no-% repair ladder, first hit wins (every repaired value stays on the `confident: false` path):
+ *   a. a 3-digit value ending in 6 ("406"→40, "596"→59) — the "%" came out as the final digit;
+ *   b. a two-digit misread 96/06/09 ("2096"→20, "10509"→105, "2009"→20, "406" is caught by (a) first);
+ *   c. a single trailing 0/5 with 3+ digits ("205"→20, "110"→11), or 6/9 for a 4+ digit read ("1659"→165,
+ *      "34060"→3406) — the "%" came out as one digit. (c) only runs when a/b did not and a non-empty, >= 1 value
+ *      remains; a 2-digit read ("40") and a lone trailing 6/9 on a 3-digit read ("119") are left alone.
+ * Returns the digits (unchanged when no rung applied) and whether a rung applied.
+ */
+function repairPercentRead(digits) {
+  if (digits.length === 3 && digits.endsWith("6")) return { digits: digits.slice(0, 2), repaired: true };
+  const ending = MISREAD_PERCENT.find((e) => digits.length >= 3 && digits.endsWith(e));
+  if (ending) return { digits: digits.slice(0, -ending.length), repaired: true };
+  if (digits.length >= 3 && "0569".includes(digits.slice(-1))) {
+    const rest = digits.slice(0, -1);
+    // A trailing 0/5 repairs at any length >= 3, but a trailing 6/9 only when the raw read is 4+ digits: a
+    // 3-digit value such as "119" is a plausible flat read (pinned by the ring fixture), while "1659" is not.
+    // Under 3 digits ("40") a plausible read is left untouched rather than degraded to "4".
+    const ambiguous = /[69]/u.test(digits.slice(-1));
+    if (Number(rest) >= 1 && (!ambiguous || digits.length >= 4)) return { digits: rest, repaired: true };
+  }
+  return { digits, repaired: false };
+}
+
+/**
+ * Continuation, no-% path only: a ladder-repaired value still above the affix's ceiling means the "%" became even
+ * more glyphs than the ladder assumed ("+20096" is a real 20%). Strip one more trailing digit and re-check, at most
+ * twice, stopping once the value fits the ceiling or drops below 1. Only a value the ladder actually repaired
+ * continues; a raw read with no applying rung ("+1332") is left as is rather than inventing a rung, and a value read
+ * with a literal "%" ("855%") never reaches here at all.
+ */
+function stripToCeiling(digits, ceiling) {
+  for (let extra = 0; extra < 2 && Number(digits) > ceiling; extra++) {
+    const shorter = digits.slice(0, -1);
+    if (shorter === "" || Number(shorter) < 1) break;
+    digits = shorter;
+  }
+  return digits;
+}
+
+/**
  * { min, confident } for a line of `entry`. A value that had to be repaired, or is above the affix's generous
  * ceiling (carried on the entry as `ceiling`, null for `bool`), is marked unsure.
  * A non-bool affix always prints a number, so a keyword match with `min: null` is a title/type line (e.g.
  * "生命之寶藍"), not an affix: the caller drops it silently and never adds it to `unmapped` (which is only for lines
  * that matched no dictionary entry).
  * When a percent affix prints no "%", the reader turned the glyph into trailing digits; the repair ladder is
- * ordered, first hit wins, and every repaired value stays on the `confident: false` path:
- *   a. a 3-digit value ending in 6 ("406"→40, "596"→59) — the "%" came out as the final digit;
- *   b. a two-digit misread 96/06/09 ("2096"→20, "10509"→105, "2009"→20, "406" is caught by (a) first);
- *   c. a single trailing 0/5 with 3+ digits ("205"→20, "110"→11), or 6/9 for a 4+ digit read ("1659"→165,
- *      "34060"→3406) — the "%" came out as one digit. (c) only runs when a/b did not and a non-empty, >= 1 value
- *      remains; a 2-digit read ("40") and a lone trailing 6/9 on a 3-digit read ("119") are left alone.
- *   d. continuation: a value the ladder actually repaired that is still above the affix's ceiling ("20096"→200,
- *      "34060"→3406, "1790"→179) came from an even longer glyph run, so one more trailing digit is stripped, at
- *      most twice, until the value fits the ceiling ("20096"→20, "34060"→34, "1790"→17). A raw read with no
- *      applying rung ("1332") is left as is. Only the no-% path continues; a value read with a literal "%"
- *      ("855%") is never stripped.
+ * ordered, first hit wins (repairPercentRead), and a repaired value still above the ceiling loses one more digit at
+ * a time (stripToCeiling). Every repaired value stays on the `confident: false` path.
  */
 function readNumber(entry, line) {
   if (entry.kind === "bool") return { min: null, confident: true };
@@ -127,38 +158,9 @@ function readNumber(entry, line) {
   let confident = true;
   if (entry.kind === "percent" && !line.includes("%")) {
     confident = false;
-    let repaired = false;
-    if (digits.length === 3 && digits.endsWith("6")) {
-      digits = digits.slice(0, 2);
-      repaired = true;
-    } else {
-      const ending = MISREAD_PERCENT.find((e) => digits.length >= 3 && digits.endsWith(e));
-      if (ending) {
-        digits = digits.slice(0, -ending.length);
-        repaired = true;
-      } else if (digits.length >= 3 && "0569".includes(digits.slice(-1))) {
-        const rest = digits.slice(0, -1);
-        // A trailing 0/5 repairs at any length >= 3, but a trailing 6/9 only when the raw read is 4+ digits: a
-        // 3-digit value such as "119" is a plausible flat read (pinned by the ring fixture), while "1659" is not.
-        // Under 3 digits ("40") a plausible read is left untouched rather than degraded to "4".
-        const ambiguous = /[69]/u.test(digits.slice(-1));
-        if (Number(rest) >= 1 && (!ambiguous || digits.length >= 4)) {
-          digits = rest;
-          repaired = true;
-        }
-      }
-    }
-    // Continuation, no-% path only: a ladder-repaired value still above the affix's ceiling means the "%" became
-    // even more glyphs than the ladder assumed ("+20096" is a real 20%). Strip one more trailing digit and re-check,
-    // at most twice, stopping once the value fits the ceiling or drops below 1. Only a value the ladder actually
-    // repaired continues; a raw read with no applying rung ("+1332") is left as is rather than inventing a rung.
-    if (repaired && entry.ceiling != null) {
-      for (let extra = 0; extra < 2 && Number(digits) > entry.ceiling; extra++) {
-        const shorter = digits.slice(0, -1);
-        if (shorter === "" || Number(shorter) < 1) break;
-        digits = shorter;
-      }
-    }
+    const fixed = repairPercentRead(digits);
+    digits = fixed.digits;
+    if (fixed.repaired && entry.ceiling != null) digits = stripToCeiling(digits, entry.ceiling);
   }
   const min = Number(digits);
   // A repaired read is already unsure; on top of that, a value above the affix's ceiling cannot be a real roll, so

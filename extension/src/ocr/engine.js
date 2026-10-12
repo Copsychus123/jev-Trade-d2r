@@ -33,16 +33,18 @@ export function createEngineCache({ create, idleMs = ENGINE_IDLE_MS, setTimer = 
   let active = 0; // reads in progress: the idle countdown only runs while there are none
 
   const stop = (entry) => entry.promise.then((engine) => engine.terminate(), () => {});
-  const release = () => {
+  const stopTimer = () => {
     clearTimer(timer);
     timer = null;
+  };
+  const release = () => {
+    stopTimer();
     const entry = current;
     current = null;
     return entry ? stop(entry) : Promise.resolve();
   };
   function engineFor(capability) {
-    clearTimer(timer);
-    timer = null;
+    stopTimer();
     if (current?.capability === capability) return current.promise;
     const previous = current;
     const entry = { capability, promise: null };
@@ -66,7 +68,7 @@ export function createEngineCache({ create, idleMs = ENGINE_IDLE_MS, setTimer = 
       } finally {
         active -= 1;
         if (!active && current) {
-          clearTimer(timer);
+          stopTimer();
           timer = setTimer(release, idleMs);
         }
       }
@@ -76,17 +78,13 @@ export function createEngineCache({ create, idleMs = ENGINE_IDLE_MS, setTimer = 
 }
 
 /**
- * 一個 PP-OCR 引擎：把 worker 包成 { recognize, terminate }。
- * `models` 是 { det, rec, cls, dict } 四個 Uint8Array（從 IndexedDB 讀出），用 transfer 零拷貝交給 worker。
- * `providers` 省略時自己呼叫 chooseProviders()。`onStatus(text)` 在引擎一建好就開始收 worker 的階段訊息，
- * 所以冷啟動的「正在準備辨識引擎…」不會漏掉（不要等到 recognize 才掛）。
+ * The worker's message protocol as one promise: `ready` resolves on the worker's "ready" status, a "result"/"error"
+ * message settles the read that waits under its id, and a worker-level error rejects the engine and every read still
+ * waiting. `waiting` is the id -> { resolve, reject } map of the reads in flight; `onStatus(text)` gets the phase
+ * text ("正在準備辨識引擎…" while loading, otherwise "正在辨識文字…").
  */
-export async function createOcrEngine({ models, providers, onStatus = () => {}, createWorker = loadWorker } = {}) {
-  const eps = providers ?? (await chooseProviders());
-  const worker = createWorker();
-  let nextId = 1;
-  const waiting = new Map(); // id -> { resolve, reject }
-  const ready = new Promise((resolve, reject) => {
+function connectWorker(worker, waiting, onStatus) {
+  return new Promise((resolve, reject) => {
     worker.addEventListener("message", (event) => {
       const message = event.data;
       if (message.type === "status") {
@@ -111,6 +109,20 @@ export async function createOcrEngine({ models, providers, onStatus = () => {}, 
       waiting.clear();
     });
   });
+}
+
+/**
+ * 一個 PP-OCR 引擎：把 worker 包成 { recognize, terminate }。
+ * `models` 是 { det, rec, cls, dict } 四個 Uint8Array（從 IndexedDB 讀出），用 transfer 零拷貝交給 worker。
+ * `providers` 省略時自己呼叫 chooseProviders()。`onStatus(text)` 在引擎一建好就開始收 worker 的階段訊息，
+ * 所以冷啟動的「正在準備辨識引擎…」不會漏掉（不要等到 recognize 才掛）。
+ */
+export async function createOcrEngine({ models, providers, onStatus = () => {}, createWorker = loadWorker } = {}) {
+  const eps = providers ?? (await chooseProviders());
+  const worker = createWorker();
+  let nextId = 1;
+  const waiting = new Map(); // id -> { resolve, reject }
+  const ready = connectWorker(worker, waiting, onStatus);
   ready.catch(() => {}); // 不讓沒人 await 的 init reject 變成 unhandled rejection
   // The worker has no chrome.* (extension APIs are not exposed to dedicated workers), so the panel resolves the
   // extension-local ORT address and hands it over.

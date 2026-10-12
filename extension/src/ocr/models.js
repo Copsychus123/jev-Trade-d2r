@@ -68,6 +68,29 @@ export function idbStore() {
 /** A download that receives nothing for this long is given up (the user can then try again). */
 const STALL_MS = 30_000;
 
+/** An AbortController that also aborts when the caller's `signal` does; `cleanup()` detaches it again. */
+function linkedAbort(signal) {
+  const controller = new AbortController();
+  const cancel = () => controller.abort();
+  signal?.addEventListener("abort", cancel, { once: true });
+  return { controller, cleanup: () => signal?.removeEventListener("abort", cancel) };
+}
+
+/** The download stall timer: `watch()` (after every chunk) restarts it, `stop()` clears it, `fired()` says whether
+ * it ever ran out. Each time it runs out it calls `onStall()` once. */
+function stallTimer(stallMs, onStall) {
+  let timer;
+  let fired = false;
+  const watch = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      fired = true;
+      onStall();
+    }, stallMs);
+  };
+  return { watch, stop: () => clearTimeout(timer), fired: () => fired };
+}
+
 export function createModelManager({
   files = PPOCR,
   order = PPOCR_FILES,
@@ -171,26 +194,17 @@ export function createModelManager({
     async download(name, { onProgress = () => {}, signal } = {}) {
       const { url, bytes: expected } = files[name];
       if (signal?.aborted) throw new ModelError("cancelled", "已取消下載");
-      const controller = new AbortController();
+      const { controller, cleanup } = linkedAbort(signal);
       const cancel = () => controller.abort();
-      signal?.addEventListener("abort", cancel, { once: true });
-      let stalled = false;
-      let timer;
-      const watch = () => {
-        clearTimeout(timer);
-        timer = setTimeout(() => {
-          stalled = true;
-          controller.abort();
-        }, stallMs);
-      };
+      const stall = stallTimer(stallMs, cancel);
       const failed = (what, error) => {
         if (signal?.aborted) return new ModelError("cancelled", "已取消下載");
-        if (stalled) return new ModelError("network", `模型下載停住：超過 ${Math.round(stallMs / 1000)} 秒沒有收到資料`);
+        if (stall.fired()) return new ModelError("network", `模型下載停住：超過 ${Math.round(stallMs / 1000)} 秒沒有收到資料`);
         return new ModelError("network", `${what}：${error?.message || error}`);
       };
       let bytes;
       try {
-        watch();
+        stall.watch();
         let response;
         try {
           response = await fetchFn(url, { signal: controller.signal });
@@ -199,13 +213,13 @@ export function createModelManager({
         }
         if (!response.ok) throw new ModelError("network", `模型下載失敗（HTTP ${response.status}）`);
         try {
-          bytes = await streamResponse(name, response, expected, { onProgress, watch, abort: () => controller.abort() });
+          bytes = await streamResponse(name, response, expected, { onProgress, watch: stall.watch, abort: cancel });
         } catch (error) {
           throw error instanceof ModelError ? error : failed("模型下載中斷", error);
         }
       } finally {
-        clearTimeout(timer);
-        signal?.removeEventListener("abort", cancel);
+        stall.stop();
+        cleanup();
       }
       await keep(name, bytes);
     },

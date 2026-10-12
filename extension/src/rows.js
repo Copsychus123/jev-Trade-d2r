@@ -2,7 +2,7 @@
 // The two-line rows are built from the SAME cells arrays that CSV and TSV use (`tradingCells`, `recentCells`), found
 // by column name, so the screen, the copy button and the CSV file cannot drift apart.
 
-const isEmpty = (value) => value === null || value === undefined || value === "";
+export const isEmpty = (value) => value === null || value === undefined || value === "";
 export const dash = (value) => (isEmpty(value) ? "—" : String(value));
 
 /** Which column goes where in a listing row: line 1 is price + seller, line 2 the small grey details. */
@@ -29,27 +29,26 @@ function reader(head, cells) {
 
 const detailsOf = (at, names) => names.map(at).filter((value) => !isEmpty(value)).map(String);
 
+/** One row per `layout`: every named field dashed, the non-empty details left as a list. */
+function shape(head, cells, layout) {
+  const at = reader(head, cells);
+  const row = {};
+  for (const [key, name] of Object.entries(layout)) if (key !== "details") row[key] = dash(at(name));
+  row.details = detailsOf(at, layout.details);
+  return row;
+}
+
 /**
  * `head` is the column names (TRADING_COLUMNS) and `cells` one row of `tradingCells(row)`.
  * Empty price/seller show as "—"; empty details are left out instead of showing "—".
  */
 export function listingRow(head, cells) {
-  const at = reader(head, cells);
-  return {
-    price: dash(at(LISTING_LAYOUT.price)),
-    seller: dash(at(LISTING_LAYOUT.seller)),
-    details: detailsOf(at, LISTING_LAYOUT.details),
-  };
+  return shape(head, cells, LISTING_LAYOUT);
 }
 
 /** `head` is RECENT_COLUMNS and `cells` one row of `recentCells(row)`; same rules as `listingRow`. */
 export function recentRow(head, cells) {
-  const at = reader(head, cells);
-  return {
-    title: dash(at(RECENT_LAYOUT.title)),
-    price: dash(at(RECENT_LAYOUT.price)),
-    details: detailsOf(at, RECENT_LAYOUT.details),
-  };
+  return shape(head, cells, RECENT_LAYOUT);
 }
 
 /** The same for a listing of the stats search: the item is line 1 with the price, the seller next to it. */
@@ -57,13 +56,7 @@ export const STATS_LAYOUT = { title: "物品", price: "要價", seller: "賣家"
 
 /** `head` is STATS_COLUMNS and `cells` one row of `statsCells(row)`; same rules as `listingRow`. */
 export function statsRow(head, cells) {
-  const at = reader(head, cells);
-  return {
-    title: dash(at(STATS_LAYOUT.title)),
-    price: dash(at(STATS_LAYOUT.price)),
-    seller: dash(at(STATS_LAYOUT.seller)),
-    details: detailsOf(at, STATS_LAYOUT.details),
-  };
+  return shape(head, cells, STATS_LAYOUT);
 }
 
 /** True when the view read rows but the filter keeps none of them. */

@@ -71,13 +71,13 @@ def run(args, store) -> None:
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
-    try:
-        if args.command == "add":  # check the input before asking for the database
+    if args.command == "add":  # check the input before asking for the database
+        try:
             invites.parse_expires(args.expires)
             invites.check_limit(args.limit)
-    except ValueError as exc:
-        print(exc)
-        return 1
+        except ValueError as exc:
+            print(exc)
+            return 1
     load_dotenv()
     url, token = os.environ.get("KV_REST_API_URL"), os.environ.get("KV_REST_API_TOKEN")
     if not url or not token:

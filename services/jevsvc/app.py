@@ -87,6 +87,18 @@ def _start_reply(secret, payload, used, limit):
     }
 
 
+def _remembered_start(store, saved_key, secret):
+    """The answer a repeated start already got (same request_id), or None when there is none to replay."""
+    saved = store.run("GET", saved_key) if saved_key else None
+    if not saved:
+        return None
+    try:
+        payload, used, limit = json.loads(saved)
+        return 200, _start_reply(secret, payload, used, limit)
+    except (ValueError, TypeError, KeyError):
+        return None  # unreadable: start again
+
+
 def run_start(body, ip, store, secret, now):
     if err := _request_prelude(body):
         return err
@@ -105,13 +117,8 @@ def run_start(body, ip, store, secret, now):
     invite = invite if isinstance(invite, str) else ""
     # A client that repeats a start it never got an answer for (same request_id) gets the same answer, uncounted.
     saved_key = None if request_id is None else f"start:{invites.code_hash(invite)}:{request_id}"
-    saved = store.run("GET", saved_key) if saved_key else None
-    if saved:
-        try:
-            payload, used, limit = json.loads(saved)
-            return 200, _start_reply(secret, payload, used, limit)
-        except (ValueError, TypeError, KeyError):
-            pass  # unreadable: start again below
+    if reply := _remembered_start(store, saved_key, secret):
+        return reply
     found = invites.check_and_count(store, invite, ip, now)
     payload = {
         "rid": uuid.uuid4().hex,
@@ -136,6 +143,17 @@ def _text(value, limit, *, cut=True):
     return value[:limit]
 
 
+_ACTION_KEYS = (
+    # (key, limit, cut): the short keys are refused when too long, `value`/`current_value` are cut down instead.
+    ("role", MAX_FIELD, False),
+    ("checked", MAX_FIELD, False),
+    ("selected", MAX_FIELD, False),
+    ("expanded", MAX_FIELD, False),
+    ("value", MAX_VALUE, True),
+    ("current_value", MAX_VALUE, True),
+)
+
+
 def _clean_action(action):
     """The keys action_space reads, typed and bounded; None when the action is not usable. Everything else the page
     sent (rect, delta, ...) is dropped."""
@@ -151,17 +169,13 @@ def _clean_action(action):
         if type(node) is not int and _text(node, MAX_FIELD, cut=False) is None:
             return None
         clean["node"] = node
-    for key in ("role", "checked", "selected", "expanded"):
-        if key in action:
-            if _text(action[key], MAX_FIELD, cut=False) is None:
-                return None
-            clean[key] = action[key]
-    for key in ("value", "current_value"):
-        if key in action:
-            value = _text(action[key], MAX_VALUE)
-            if value is None:
-                return None
-            clean[key] = value
+    for key, limit, cut in _ACTION_KEYS:
+        if key not in action:
+            continue
+        value = _text(action[key], limit, cut=cut)
+        if value is None:
+            return None
+        clean[key] = value
     if kind == "select" and "value" not in clean:
         return None
     return clean
@@ -191,14 +205,17 @@ def _clean_history(history):
             return None
         cleaned = {}
         for key, limit in limits.items():
-            if entry.get(key) is not None:
-                if not isinstance(entry[key], str):
-                    return None
-                cleaned[key] = entry[key][:limit]
-        if entry.get("page_changed") is not None:
-            if not isinstance(entry["page_changed"], bool):
+            value = entry.get(key)
+            if value is None:
+                continue
+            if not isinstance(value, str):
                 return None
-            cleaned["page_changed"] = entry["page_changed"]
+            cleaned[key] = value[:limit]
+        changed = entry.get("page_changed")
+        if changed is not None:
+            if not isinstance(changed, bool):
+                return None
+            cleaned["page_changed"] = changed
         clean.append(cleaned)
     return clean
 
@@ -276,23 +293,24 @@ def _step_claims(body, secret, now):
     return time.monotonic() + REQUEST_BUDGET, _claims(tokens.verify(secret, body.get("run_token"), now.timestamp()))
 
 
+def _who(claims) -> str:
+    """The who of one Jev log line: the invitation and run ids, shortened."""
+    return f"inv={claims['inv'][:12]} rid={claims['rid'][:8]}"
+
+
 def _log_usage(stage, claims, usage, extra=""):
     """One line per answered Jev step: who, which stage, and what it cost."""
     print(
-        f"{stage} inv={claims['inv'][:12]} rid={claims['rid'][:8]}{extra} "
-        f"in={usage.get('input_tokens')} out={usage.get('output_tokens')}",
+        f"{stage} {_who(claims)}{extra} in={usage.get('input_tokens')} out={usage.get('output_tokens')}",
         flush=True,
     )
 
 
-def _require_model_key(override=None):
+def _reserve_call_budget(store, claims, count, override=None):
+    """The run's call key once the model key is configured and `count` Jev calls are reserved, else the refusal."""
     if override is None and not _model_configured():
         print("missing env: TYPESAFE_API_KEY", flush=True)
-        return _error(500, **NOT_CONFIGURED)
-    return None
-
-
-def _reserve_call_budget(store, claims, count):
+        return None, _error(500, **NOT_CONFIGURED)
     run_key = f"run:{claims['rid']}"
     if not _reserve(store, run_key, count):
         msg = f"這次查詢的 Jev 呼叫次數已達上限（{MAX_MODEL_CALLS} 次），請重新開始"
@@ -315,11 +333,9 @@ def choose_step(body, store, secret, now, chooser=None):
         model.action_space(page["actions"])
     except (KeyError, TypeError, ValueError, AttributeError):
         return _error(400, BAD_PAGE, "bad_page")
-    if err := _require_model_key(chooser):
-        return err
     # run:{rid} counts model calls. A request may cost two (re-ask), so both are reserved up front and one is handed
     # back when it was not needed: a run never makes more than MAX_MODEL_CALLS calls.
-    run_key, err = _reserve_call_budget(store, claims, 2)
+    run_key, err = _reserve_call_budget(store, claims, 2, chooser)
     if err:
         return err
     try:
@@ -330,7 +346,7 @@ def choose_step(body, store, secret, now, chooser=None):
             page, goal, history, claims["item"], timeout=CALL_TIMEOUT, deadline=deadline, **extra
         )
     except MODEL_ERRORS as exc:
-        print(f"choose failed inv={claims['inv'][:12]} rid={claims['rid'][:8]} {_brief(exc)}", flush=True)
+        print(f"choose failed {_who(claims)} {_brief(exc)}", flush=True)
         _after_failure(store, claims, run_key)
         return _error(502, "Jev 暫時無法回應，這一步沒有執行，請重新開始查詢", "model_unavailable")
     calls = min(2, max(1, int(decision.get("model_calls") or 1)))
@@ -368,15 +384,13 @@ def pick_base_step(body, store, secret, now, picker=None):
         if not isinstance(given, str) or given not in BASES:
             return _error(400, "底材不在清單裡", "bad_base")
         return 200, _base_reply(secret, claims, given, None, {})
-    if err := _require_model_key(picker):
-        return err
-    run_key, err = _reserve_call_budget(store, claims, 1)
+    run_key, err = _reserve_call_budget(store, claims, 1, picker)
     if err:
         return err
     try:
         picked = (picker or model.pick_base)(claims["item"], list(BASES), timeout=CALL_TIMEOUT, deadline=deadline)
     except MODEL_ERRORS as exc:
-        print(f"base failed inv={claims['inv'][:12]} rid={claims['rid'][:8]} {_brief(exc)}", flush=True)
+        print(f"base failed {_who(claims)} {_brief(exc)}", flush=True)
         return _error(502, "Jev 暫時無法回應，請重新開始查詢", "model_unavailable")
     base = picked.get("base")
     if base not in BASES:

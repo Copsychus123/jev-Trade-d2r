@@ -14,6 +14,11 @@ export const newCallBudget = () => ({ used: 0 });
 
 const now = () => performance.now();
 
+/** Counts one stale event by its reason (measurement only). */
+const countStale = (state, reason) => {
+  state.stale_events[reason] = (state.stale_events[reason] ?? 0) + 1;
+};
+
 export class Agent {
   constructor({ tab, phases, text, finishPhaseAfter, choose, vetoBlocked, callBudget }) {
     this.tab = tab;
@@ -77,8 +82,7 @@ export class Agent {
 
   /** Counts a stale page by its reason (measurement only), then hands it back to be thrown. */
   _stale(state, error) {
-    const reason = error?.message || "stale";
-    state.stale_events[reason] = (state.stale_events[reason] ?? 0) + 1;
+    countStale(state, error?.message || "stale");
     return error;
   }
 
@@ -117,7 +121,7 @@ export class Agent {
     state.awaiting_handoff = false;
     state.scope_blocked_reason = reason;
     state.rule_events.push({ step: state.history.length, phase: state.phase, label, stale: true, count });
-    state.stale_events[reason] = (state.stale_events[reason] ?? 0) + 1;
+    countStale(state, reason);
     state.elapsed_ms = this._elapsedMs();
   }
 
@@ -133,6 +137,24 @@ export class Agent {
     state.page = await this.tab.observe();
     state.status = "ready";
     state.elapsed_ms = this._elapsedMs();
+  }
+
+  /**
+   * Runs one read the page may interrupt: a navigation that killed it re-observes first, so the caller's retry starts
+   * from a current page. The error is handed back unchanged either way: the step decides what it means.
+   */
+  async _readThroughStale(read) {
+    try {
+      return await read();
+    } catch (error) {
+      if (error instanceof StalePage) await this._refreshForRetry(this.state);
+      throw error;
+    }
+  }
+
+  /** Whether the page (and optionally one action) still matches; a navigation that kills the read re-observes first. */
+  async _isFresh(page, action = null) {
+    return this._readThroughStale(() => this.tab.fresh(page, action));
   }
 
   _applyScopeGuard(state) {
@@ -365,14 +387,7 @@ export class Agent {
   /** A DONE or BLOCKED choice is a verdict about the page: it only stands while the page is still the same one. */
   async _finishByVerdict(selected, page) {
     const state = this.state;
-    let isFresh;
-    try {
-      isFresh = await this.tab.fresh(page);
-    } catch (error) {
-      if (error instanceof StalePage) await this._refreshForRetry(state);
-      throw error;
-    }
-    if (!isFresh) {
+    if (!(await this._isFresh(page))) {
       state.status = "ready";
       await this._refreshForRetry(state);
       throw new StalePage("Page changed since the decision. Choose again.");
@@ -399,14 +414,7 @@ export class Agent {
     }
     let text = null;
     if (action.kind === "fill") {
-      let isFresh;
-      try {
-        isFresh = await this.tab.fresh(page, action);
-      } catch (error) {
-        if (error instanceof StalePage) await this._refreshForRetry(state);
-        throw error;
-      }
-      if (!isFresh) {
+      if (!(await this._isFresh(page, action))) {
         await this._refreshForRetry(state);
         throw new StalePage("Page changed before typing. Choose again.");
       }
@@ -419,15 +427,30 @@ export class Agent {
   /** Run the action and read the page it produced, keeping its history entry truthful at every step. */
   async _runAction(action, page, decision, selected, text) {
     const state = this.state;
+    await this._readThroughStale(() => this.tab.act(action, page, text));
+    state.elapsed_ms = this._elapsedMs();
+    // Record execution before observing. A stale post-action observation must not erase the action.
+    const entry = this._recordExecution(state, action, page, decision, selected, text);
     try {
-      await this.tab.act(action, page, text);
+      state.page = await this.tab.observe();
     } catch (error) {
-      if (error instanceof StalePage) await this._refreshForRetry(state);
+      if (error instanceof StalePage) {
+        await this._refreshForRetry(state);
+        Object.assign(entry, { page_changed: true, url: state.page.url, elapsed_ms: state.elapsed_ms });
+      }
       throw error;
     }
     state.elapsed_ms = this._elapsedMs();
-    // Record execution before observing. A stale post-action observation must not erase the action.
-    state.history.push({
+    Object.assign(entry, {
+      page_changed: state.page.fingerprint !== page.fingerprint,
+      url: state.page.url,
+      elapsed_ms: state.elapsed_ms,
+    });
+  }
+
+  /** The history entry for an executed action, pushed before the result is observed so nothing can erase it. */
+  _recordExecution(state, action, page, decision, selected, text) {
+    const entry = {
       step: state.history.length + 1,
       action: action.label,
       kind: action.kind,
@@ -444,23 +467,9 @@ export class Agent {
       by_rule: Boolean(decision.by_rule),
       executed_ms: this._elapsedMs(),
       elapsed_ms: state.elapsed_ms,
-    });
-    const entry = state.history[state.history.length - 1];
-    try {
-      state.page = await this.tab.observe();
-    } catch (error) {
-      if (error instanceof StalePage) {
-        await this._refreshForRetry(state);
-        Object.assign(entry, { page_changed: true, url: state.page.url, elapsed_ms: state.elapsed_ms });
-      }
-      throw error;
-    }
-    state.elapsed_ms = this._elapsedMs();
-    Object.assign(entry, {
-      page_changed: state.page.fingerprint !== page.fingerprint,
-      url: state.page.url,
-      elapsed_ms: state.elapsed_ms,
-    });
+    };
+    state.history.push(entry);
+    return entry;
   }
 
   async close() {

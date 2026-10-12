@@ -31,11 +31,13 @@ from extension_e2e import (  # noqa: E402
     SNAPSHOT,
     build_extension,
     cleanup,
+    environment_failure,
     free_profile,
     launch_chrome,
     load_extension,
     open_panel,
     say,
+    timed_out,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -104,12 +106,16 @@ async def run_case(panel: BatchPanel, case: dict, invites: dict) -> dict:
         if snap["idle"] and time.time() - started > 4:
             break
     else:
-        if result is None:
-            raise Environment("讀不到側邊欄的狀態")
-        result["timeout"] = True
+        result = timed_out(result)
     result["seconds"] = round(time.time() - started, 1)
     result["urls"] = await panel.evaluate(OPEN_URLS)
     return result
+
+
+def quota_used(quota: str) -> int | None:
+    """The used-calls count the panel shows ("已用 N/M"), or None when the line does not carry one."""
+    found = re.search(r"已用 (\d+)/", quota)
+    return int(found.group(1)) if found else None
 
 
 def judge(case: dict, result: dict, last_used: int | None) -> tuple[str, str]:
@@ -151,8 +157,7 @@ def judge(case: dict, result: dict, last_used: int | None) -> tuple[str, str]:
     if case["load_more"] and not result["rows"][0] > 50:
         problems.append(f"載入更多 {case['load_more']} 次，掛單只有 {result['rows'][0]} 筆")
     if case.get("double_click") and last_used is not None:
-        used = re.search(r"已用 (\d+)/", result["quota"])
-        if not used or int(used.group(1)) != last_used + 1:
+        if quota_used(result["quota"]) != last_used + 1:
             problems.append(f"連按兩次開始，額度應只加 1：之前 {last_used}，現在 {result['quota']!r}")
     return ("FAIL", "；".join(problems)) if problems else ("PASS", "")
 
@@ -170,9 +175,9 @@ async def drive(ws_url: str, cases: list[dict], invites: dict, done: dict, rerun
                 result = await run_case(panel, case, invites)
                 verdict, reason = judge(case, result, last_used)
                 attempts.append({"verdict": verdict, "reason": reason, "result": result})
-                used = re.search(r"已用 (\d+)/", result["quota"])
-                if used:
-                    last_used = int(used.group(1))
+                used = quota_used(result["quota"])
+                if used is not None:
+                    last_used = used
                 if verdict != "FAIL":
                     break
                 await panel.screenshot(OUT / f"{case['id']}-try{attempt + 1}.png")
@@ -245,12 +250,8 @@ def main() -> int:
         ext_id = load_extension()
         say(f"擴充功能已載入（{ext_id}），共 {len(cases)} 組")
         code = asyncio.run(drive(open_panel(ext_id), cases, invites, done, args.rerun_failed))
-    except Environment as error:
-        say(f"環境問題：{error}")
-        return 2
-    except subprocess.CalledProcessError:
-        say("環境問題：擴充功能打包失敗")
-        return 2
+    except (Environment, subprocess.CalledProcessError) as error:
+        return environment_failure(error)
     finally:
         cleanup(chrome, None)
     rows = list(load_done().values())

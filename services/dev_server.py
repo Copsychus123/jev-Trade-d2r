@@ -37,10 +37,15 @@ def make_server(store, routes=ROUTES) -> ThreadingHTTPServer:
     return ThreadingHTTPServer((HOST, PORT), Handler)
 
 
-def main() -> None:
-    load_dotenv()
+def ensure_run_secret() -> None:
+    """Replace a missing or too-short RUN_TOKEN_SECRET with a fresh random one (local dev and the stub backend)."""
     if len(os.environ.get("RUN_TOKEN_SECRET", "")) < 32:
         os.environ["RUN_TOKEN_SECRET"] = secrets.token_hex(32)
+
+
+def main() -> None:
+    load_dotenv()
+    ensure_run_secret()
     store = MemoryStore()
     code = invites.add(store, "dev")
     print(f"開發用邀請碼：{code}", flush=True)

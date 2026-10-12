@@ -132,7 +132,8 @@ def read_view(browser, item_name: str, view: str) -> dict[str, Any]:
         result["settled"] = False
         return _fail(result, "unsettled", "頁面一直沒有載入完成")
     text = page["text"]
-    result.update(url=page["url"], title=page.get("title", ""), text=text, settled=page.get("settled"))
+    title = page.get("title", "")
+    result.update(url=page["url"], title=title, text=text, settled=page.get("settled"))
 
     reason = detect_guard(page, browser)
     if reason:
@@ -140,7 +141,7 @@ def read_view(browser, item_name: str, view: str) -> dict[str, Any]:
 
     if not product_root_url(page["url"]) or product_section(page["url"]) != VIEW_SECTIONS[view]:
         return _fail(result, "wrong_view", f"Agent 停在的不是{'掛單' if trading else '近期成交'}頁：{page['url']}")
-    if not page_matches_item(item_name, page.get("title", ""), text):
+    if not page_matches_item(item_name, title, text):
         return _fail(result, "wrong_item", f"頁面不是 {item_name} 的商品頁")
     if result["settled"] is False:
         return _fail(result, "unsettled", "頁面在時限內沒有穩定下來，讀到的筆數不可信")
@@ -239,9 +240,13 @@ def _recent_cells(row: dict[str, Any]) -> list[str]:
     return [row.get("buyer_or_seller"), row.get("price"), row.get("trade_time")]
 
 
+def _row(cells) -> str:
+    return "| " + " | ".join(cells) + " |"
+
+
 def _table(columns: tuple[str, ...], rows: list[list[Any]]) -> list[str]:
-    lines = ["| " + " | ".join(columns) + " |", "|" + "---|" * len(columns)]
-    lines += ["| " + " | ".join(_cell(c) for c in row) + " |" for row in rows]
+    lines = [_row(columns), "|" + "---|" * len(columns)]
+    lines += [_row(_cell(c) for c in row) for row in rows]
     return lines
 
 
@@ -284,14 +289,15 @@ def save_report(item_name: str, market: dict[str, Any], output_dir: Path) -> str
     """Write verification always; tables and report only when every check passed."""
     verification = market["verification"]
     fs.write_text(output_dir / "verification.json", json.dumps(verification, indent=2, ensure_ascii=False))
-    paths = [output_dir / "market.json", output_dir / "market_report.md"]
+    market_path = output_dir / "market.json"
+    report_path = output_dir / "market_report.md"
     if not verification["passed"]:
-        for path in paths:
+        for path in (market_path, report_path):
             path.unlink(missing_ok=True)
         return None
     fields = ("status", "reason_code", "url", "title", "observed_at", "has_more", "settled", "rows")
     data = {key: {k: market[key][k] for k in fields} for key in ("trading", "recent_trades")}
-    fs.write_text(paths[0], json.dumps(data, indent=2, ensure_ascii=False))
+    fs.write_text(market_path, json.dumps(data, indent=2, ensure_ascii=False))
     report = _markdown(item_name, market)
-    fs.write_text(paths[1], report)
+    fs.write_text(report_path, report)
     return report

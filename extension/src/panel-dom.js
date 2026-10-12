@@ -1,5 +1,6 @@
 // DOM drawing helpers for the side panel. Page text is untrusted: every value is written with textContent, never
 // innerHTML. The data (cells, rows, steps) is worked out elsewhere; nothing here decides what is true.
+import { $, element } from "./dom.js";
 import { progressSteps, verificationSummary } from "./labels.js";
 import { listingRow, recentRow, statsRow } from "./rows.js";
 import {
@@ -12,12 +13,8 @@ import {
 } from "./traderie/controller.js";
 import { LAYER_LABELS } from "./traderie/finder.js";
 
-const $ = (id) => document.getElementById(id);
-
 export const clock = (iso) =>
   iso ? new Date(iso).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }) : "";
-
-const element = (tag, props = {}) => Object.assign(document.createElement(tag), props);
 
 function drawTwoLine(list, first, second, details) {
   const li = element("li");
@@ -56,33 +53,41 @@ export function drawRecent(list, rows) {
 /** The trust line (checked: how it was found and when) or the expandable list of what did not pass. */
 export function drawTrust(market) {
   const summary = verificationSummary(market.verification);
-  $("trust").dataset.kind = summary.kind;
-  $("trust").dataset.layer = market.lookup?.layer ?? ""; // how the product was found (the end-to-end checks read it)
+  const ok = summary.kind === "ok";
+  const warn = summary.kind === "warn";
+  const trust = $("trust");
+  trust.dataset.kind = summary.kind;
+  trust.dataset.layer = market.lookup?.layer ?? ""; // how the product was found (the end-to-end checks read it)
   const line = $("trust-line");
-  line.hidden = summary.kind !== "ok";
-  $("trust-more").hidden = summary.kind !== "warn";
-  line.textContent =
-    summary.kind === "ok"
-      ? [`✔ ${summary.headline}`, LAYER_LABELS[market.lookup?.layer], clock(market.verification.observed_at)]
-          .filter(Boolean)
-          .join(" · ")
-      : "";
-  $("trust-head").textContent = summary.kind === "warn" ? `⚠ ${summary.headline} ›` : "";
+  line.hidden = !ok;
+  $("trust-more").hidden = !warn;
+  line.textContent = ok
+    ? [`✔ ${summary.headline}`, LAYER_LABELS[market.lookup?.layer], clock(market.verification.observed_at)]
+        .filter(Boolean)
+        .join(" · ")
+    : "";
+  $("trust-head").textContent = warn ? `⚠ ${summary.headline} ›` : "";
   $("trust-reasons").replaceChildren(...summary.reasons.map((reason) => element("li", { textContent: reason })));
 }
 
-const MARKS = { done: "✔", active: "●", pending: "○", failed: "✖" };
-const STATE_NAMES = { done: "完成", active: "進行中", pending: "還沒開始", failed: "失敗" };
+/** Each step's mark and its screen-reader name in one table: a new state cannot reach one of them and not the other. */
+const STEP_STATES = {
+  done: { mark: "✔", name: "完成" },
+  active: { mark: "●", name: "進行中" },
+  pending: { mark: "○", name: "還沒開始" },
+  failed: { mark: "✖", name: "失敗" },
+};
 
 /** The four steps of a query, and the current status line under them. */
 export function drawProgress({ market, phase, running, statusText }) {
   $("steps").replaceChildren(
     ...progressSteps({ market, phase, running }).map((step) => {
-      const mark = element("span", { className: "mark", textContent: MARKS[step.state] });
+      const state = STEP_STATES[step.state];
+      const mark = element("span", { className: "mark", textContent: state.mark });
       mark.setAttribute("aria-hidden", "true");
       const li = element("li");
       li.dataset.state = step.state;
-      li.append(mark, element("span", { textContent: step.label }), element("span", { className: "sr", textContent: `（${STATE_NAMES[step.state]}）` }));
+      li.append(mark, element("span", { textContent: step.label }), element("span", { className: "sr", textContent: `（${state.name}）` }));
       if (step.detail) li.append(element("small", { textContent: step.detail }));
       return li;
     }),

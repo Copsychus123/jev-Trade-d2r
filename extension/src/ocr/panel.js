@@ -3,9 +3,8 @@
 import { createEngineCache, createOcrEngine, readPixels, OCR_CAPABILITY } from "./engine.js";
 import { buildMatchIndex, matchOcrText } from "./match.js";
 import { ModelError, PPOCR, createModelManager, formatMB, idbStore } from "./models.js";
+import { $ } from "../dom.js";
 import { labelWithChinese } from "../traderie/lookup.js";
-
-const $ = (id) => document.getElementById(id);
 
 export function initOcrPanel({ tables, onPick, onText = () => {}, onImage, isBusy }) {
   const manager = createModelManager({ store: idbStore() });
@@ -29,14 +28,17 @@ export function initOcrPanel({ tables, onPick, onText = () => {}, onImage, isBus
     pictureVersion += 1;
     downloading?.abort();
   };
-  const showPreview = (blob) => {
+  const revokePreview = () => {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
+  };
+  const showPreview = (blob) => {
+    revokePreview();
     previewUrl = URL.createObjectURL(blob);
     preview.src = previewUrl;
     preview.hidden = false;
   };
   const clearPreview = () => {
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    revokePreview();
     previewUrl = null;
     preview.removeAttribute("src");
     preview.hidden = true;
@@ -46,6 +48,9 @@ export function initOcrPanel({ tables, onPick, onText = () => {}, onImage, isBus
     $("ocr-status").textContent = text;
     $("ocr-status").dataset.kind = kind;
   };
+
+  /** The candidate name buttons belong to one read: a new picture, a close and a fresh read all drop them. */
+  const clearCandidates = () => $("ocr-candidates").replaceChildren();
 
   // Hands the name (and whether it is an item or only a base) to the form, which may refuse it while a query runs or
   // when it has no field for it, and marks it as coming from a picture.
@@ -70,7 +75,7 @@ export function initOcrPanel({ tables, onPick, onText = () => {}, onImage, isBus
     image = blob;
     region = null;
     box.hidden = true;
-    $("ocr-candidates").replaceChildren();
+    clearCandidates();
     showPreview(blob);
     $("ocr-panel").hidden = false;
     $("ocr-go").disabled = false;
@@ -175,7 +180,7 @@ export function initOcrPanel({ tables, onPick, onText = () => {}, onImage, isBus
       clearPreview();
       $("ocr-panel").hidden = true;
       $("ocr-go").disabled = true;
-      $("ocr-candidates").replaceChildren();
+      clearCandidates();
       $("ocr-file").value = "";
     };
     $("ocr-close").addEventListener("click", closePanel);
@@ -279,7 +284,7 @@ export function initOcrPanel({ tables, onPick, onText = () => {}, onImage, isBus
 
   function showCandidates(candidates) {
     const list = $("ocr-candidates");
-    list.replaceChildren();
+    clearCandidates();
     // Exposed for the end-to-end check: the kind is not readable from the label any more.
     list.dataset.firstKind = candidates[0]?.kind ?? "";
     list.dataset.firstName = candidates[0]?.name ?? "";
@@ -297,14 +302,15 @@ export function initOcrPanel({ tables, onPick, onText = () => {}, onImage, isBus
     );
     if (candidates.length < 2) return;
     for (const candidate of candidates) {
+      const label = labelWithChinese(candidate.name, tables, candidate.matched);
       const button = document.createElement("button");
       button.type = "button";
       button.dataset.kind = candidate.kind;
       button.dataset.name = candidate.name;
-      button.textContent = labelWithChinese(candidate.name, tables, candidate.matched);
+      button.textContent = label;
       button.addEventListener("click", () => {
         fill(candidate.name, candidate.kind);
-        say(`已改填「${labelWithChinese(candidate.name, tables, candidate.matched)}」。請確認後自己按「開始查詢」。`, "ok");
+        say(`已改填「${label}」。請確認後自己按「開始查詢」。`, "ok");
       });
       list.append(button);
     }
@@ -314,7 +320,7 @@ export function initOcrPanel({ tables, onPick, onText = () => {}, onImage, isBus
     $("ocr-panel").classList.remove("done");
     $("ocr-time").textContent = "";
     $("ocr-text").textContent = "";
-    $("ocr-candidates").replaceChildren();
+    clearCandidates();
     const pixels = await readPixels(blob, area);
     reading = true;
     say("辨識中…");

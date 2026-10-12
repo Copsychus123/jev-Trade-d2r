@@ -10,17 +10,17 @@
 // (a switched-on condition has no property at Traderie; nothing was searched).
 import { TimeoutError, StalePage } from "../errors.js";
 import { readStatsView, verifyStats } from "./controller.js";
-import { loadProperties, propertyLabel } from "./properties.js";
+import { loadProperties, numberConditionLabels } from "./properties.js";
 import { TRADERIE_D2R_URL, detectGuard } from "./site.js";
 import { timed } from "../timeline.js";
 import {
   MAX_CONDITIONS,
-  QUALITIES,
   buildStatsUrl,
   describeConditions,
   mapConditions,
   mapQuality,
   parseItemTypes,
+  qualityChoice,
   typeForBase,
 } from "./stats.js";
 
@@ -55,6 +55,25 @@ async function readHomeItemTypes({ openTab, session, onStatus }) {
 }
 
 /**
+ * The sentences the panel needs about the filters that did not apply: a chosen quality or a base type Traderie's own
+ * list cannot filter on. In the order of `lookup.notes`.
+ */
+function filterNotes({ quality, chosenQuality, base, type }) {
+  const notes = [];
+  if (quality !== "any" && !chosenQuality) {
+    notes.push("未依品質篩選（Traderie 的屬性清單裡找不到這個品質）");
+  }
+  if (base) {
+    notes.push(
+      type
+        ? `網站已依類型「${type}」篩選，再只列名稱是「${base}」的掛單`
+        : `「${base}」不是網站的物品類型，只在顯示時依名稱篩選（只看網站回傳的這一頁）`,
+    );
+  }
+  return notes;
+}
+
+/**
  * Step 2: map the conditions the player confirmed onto Traderie's own property list (kept for a week), write down
  * what could not be filtered, and build the address of the filtered home page. Returns `{ url, conditions }`, or
  * `{ unmapped }` when a switched-on condition has no property at Traderie.
@@ -78,23 +97,14 @@ async function planStatsSearch({ conditions, base, quality, itemTypes, scripts, 
   if (mapped.length > MAX_CONDITIONS) throw new Error(`條件最多 ${MAX_CONDITIONS} 條，請取消一些`);
 
   const chosenQuality = mapQuality(quality, properties);
-  if (quality !== "any" && !chosenQuality) {
-    lookup.notes.push("未依品質篩選（Traderie 的屬性清單裡找不到這個品質）");
-  }
   const type = typeForBase(base, itemTypes);
-  if (base) {
-    lookup.notes.push(
-      type
-        ? `網站已依類型「${type}」篩選，再只列名稱是「${base}」的掛單`
-        : `「${base}」不是網站的物品類型，只在顯示時依名稱篩選（只看網站回傳的這一頁）`,
-    );
-  }
+  lookup.notes.push(...filterNotes({ quality, chosenQuality, base, type }));
   if (!mapped.length && !chosenQuality && !type) {
     throw new Error("這個底材網站沒有對應的物品類型，請至少勾選一個詞綴條件或選一種品質");
   }
 
   const url = buildStatsUrl({ mapped, quality: chosenQuality, type });
-  const qualityLabel = QUALITIES.find((q) => q.key === quality)?.label;
+  const qualityLabel = qualityChoice(quality)?.label;
   const parts = [describeConditions(mapped), chosenQuality ? qualityLabel : null, type ? `類型 ${type}` : null];
   Object.assign(lookup, {
     stage: "read",
@@ -115,7 +125,7 @@ async function readFilteredRows({ url, conditions, base, market, session, lookup
   await timed(session, "navigate", () => session.tab.navigate(url), (r) => r ?? {});
   await timed(session, "settle", () => session.tab.settle(), (r) => r ?? {});
   onStatus("讀取符合條件的掛單…");
-  const shown = conditions.filter((m) => m.type === "number").map((m) => propertyLabel(m.name));
+  const shown = numberConditionLabels(conditions);
   market.trading = await readStatsView(session.tab, url, { expectText: shown, session });
 
   if (base && market.trading.status === "PASSED") {

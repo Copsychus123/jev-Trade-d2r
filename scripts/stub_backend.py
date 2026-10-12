@@ -8,7 +8,6 @@ touched, and the paid API is unreachable from here on purpose.
 
 import os
 import re
-import secrets
 import sys
 import time
 from pathlib import Path
@@ -17,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "services"))
 sys.path.insert(0, str(ROOT / "src"))
 
-from dev_server import HOST, PORT, make_server  # noqa: E402
+from dev_server import HOST, PORT, ensure_run_secret, make_server  # noqa: E402
 from jev_ultrafast.traderie.site import product_section  # noqa: E402
 from jevsvc import invites  # noqa: E402
 from jevsvc.app import ROUTES, choose_step  # noqa: E402
@@ -171,8 +170,7 @@ def serve_stub_backend() -> None:
     the chooser could not spend anything, and the log would say so.
     """
     os.environ.pop("TYPESAFE_API_KEY", None)
-    if len(os.environ.get("RUN_TOKEN_SECRET", "")) < 32:
-        os.environ["RUN_TOKEN_SECRET"] = secrets.token_hex(32)
+    ensure_run_secret()
     store = MemoryStore()
     print(f"開發用邀請碼：{invites.add(store, 'dev')}", flush=True)
     print(f"Jev backend: http://{HOST}:{PORT}（stub 選擇器：這支後端不會呼叫 Jev）", flush=True)

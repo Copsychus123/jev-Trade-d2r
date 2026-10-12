@@ -106,6 +106,11 @@ def post_json(url, key, body, *, timeout=None, deadline=None):
     raise RuntimeError(f"Model unavailable after {len(attempts)} attempts: {'; '.join(attempts)}")
 
 
+def _is_number(value):
+    """A real, finite number as the provider may send it. `bool` is not a number here."""
+    return type(value) in (int, float) and math.isfinite(value)
+
+
 def check_provider_result(result):
     """The provider's reply must be a dict with a dict of answers and numeric usage values. Anything else is the
     provider's fault (RuntimeError), never something to blame on the caller."""
@@ -115,7 +120,7 @@ def check_provider_result(result):
         not isinstance(result, dict)
         or not isinstance(result.get("answers"), dict)
         or not isinstance(usage, dict)
-        or not all(type(n) in (int, float) and math.isfinite(n) for n in usage.values())
+        or not all(_is_number(n) for n in usage.values())
     ):
         raise RuntimeError("Invalid TypeSafe response shape; no action executed.")
     return result
@@ -128,7 +133,7 @@ def validate_choice(answer, ids):
         valid = (
             answer["choice"] in ids
             and set(probabilities) == set(ids)
-            and all(type(n) in (int, float) and math.isfinite(n) and 0 <= n <= 1 for n in numbers)
+            and all(_is_number(n) and 0 <= n <= 1 for n in numbers)
             and abs(sum(probabilities.values()) - 1) < 0.02
             and probabilities[answer["choice"]] >= max(probabilities.values()) - 1e-6
         )
@@ -186,6 +191,21 @@ def action_space(actions):
 MIN_TARGET_PROBABILITY = 0.5
 
 
+def _target_question(goal, operation, candidates):
+    """The question that picks the target of `operation`. The details (label, role, value, state) are already in
+    `state.elements`, and repeating them per option only costs tokens, so an option is just the element index."""
+    return {
+        "type": "choice",
+        "criteria": {index: None for index in candidates},
+        "instructions": {
+            "goal": goal,
+            "operation": operation,
+            "options": "Each option is the index of an entry in `elements`.",
+            "rules": TARGET,
+        },
+    }
+
+
 def _request(state, goal, history, elements, targets, controls, allow_blocked=True):
     labels = {
         "CLICK": "Click an element, button, menu option, autocomplete suggestion, or calendar day.",
@@ -201,18 +221,7 @@ def _request(state, goal, history, elements, targets, controls, allow_blocked=Tr
         "operation": {"type": "choice", "criteria": operations, "instructions": {"goal": goal, "rules": NEXT_ACTION}}
     }
     for operation, candidates in targets.items():
-        questions[operation.lower() + "_target"] = {
-            "type": "choice",
-            # The details (label, role, value, state) are already in `state.elements`; repeating them per option
-            # only costs tokens, so an option is just the element index.
-            "criteria": {index: None for index in candidates},
-            "instructions": {
-                "goal": goal,
-                "operation": operation,
-                "options": "Each option is the index of an entry in `elements`.",
-                "rules": TARGET,
-            },
-        }
+        questions[operation.lower() + "_target"] = _target_question(goal, operation, candidates)
     body = {
         "model": get_settings().typesafe_model,
         "state": {

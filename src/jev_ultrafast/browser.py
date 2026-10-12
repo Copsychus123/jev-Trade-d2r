@@ -49,6 +49,11 @@ def evaluation_error(details):
     return RuntimeError(f"Page script failed: {message}")
 
 
+def _cdp_call(session, method, _response_timeout=30.0, **params):
+    """One CDP call on an attached session: the single place the session id is bound."""
+    return cdp(method, session_id=session, _response_timeout=_response_timeout, **params)
+
+
 class Browser:
     def __init__(self, url, *, images=True):
         """Open an owned tab. A headless Chrome's self-declared "HeadlessChrome" label is
@@ -96,7 +101,7 @@ class Browser:
         self.evaluate(f"{SETTLE}({quiet_ms}, {timeout_ms}, {min_chars})", await_promise=True)
 
     def call(self, method, _response_timeout=30.0, **params):
-        return cdp(method, session_id=self.session, _response_timeout=_response_timeout, **params)
+        return _cdp_call(self.session, method, _response_timeout, **params)
 
     def evaluate(self, expression, *, await_promise=False):
         response = self.call(
@@ -129,7 +134,6 @@ class Browser:
                     return
             time.sleep(0.02)
         raise TimeoutError(f"Navigation to {url} did not finish")
-
 
     def wait_until_ready(self, *, timeout=2.0, interval=0.05):
         """Poll document readiness before stale-page recovery observation."""
@@ -219,12 +223,37 @@ def _type_into_target(call, text, select_all_modifier):
     call("Input.insertText", text=text)
 
 
+def _act_operation(call, evaluate, request):
+    """Run one input operation on its resolved target. `call`/`evaluate` are the session-bound helpers; a target
+    that cannot be resolved is a stale page (or, for a dropdown, an execution that was not confirmed)."""
+    action = request["action"]
+    kind = action["kind"]
+    if kind == "scroll":
+        call("Input.dispatchMouseEvent", type="mouseWheel", x=550, y=650, deltaX=0, deltaY=action["delta"])
+    elif kind != "wait":
+        if type(action["node"]) is not int:
+            raise ValueError("Invalid observed node")
+        # Code-owned node IDs refer to actual observed elements, never model-generated selectors.
+        target = evaluate(f"{RESOLVE_TARGET}({json.dumps(action)})")
+        if target is None:
+            if kind == "select":
+                raise RuntimeError("Dropdown execution was not confirmed; inspect before retrying.")
+            raise StalePage("Target changed or is covered. Observe again.")
+        if kind != "select":
+            x, y = target["x"], target["y"]
+            for event in ("mousePressed", "mouseReleased"):
+                call("Input.dispatchMouseEvent", type=event, x=x, y=y, button="left", clickCount=1)
+            if kind == "fill":
+                _type_into_target(call, request["text"], 4 if sys.platform == "darwin" else 2)
+    return {"executed": action["id"]}
+
+
 def browser_operation(request):
     operation = request["operation"]
     session = request["session"]
 
     def call(method, _response_timeout=30.0, **params):
-        return cdp(method, session_id=session, _response_timeout=_response_timeout, **params)
+        return _cdp_call(session, method, _response_timeout, **params)
 
     def evaluate(expression):
         result = call("Runtime.evaluate", expression=expression, returnByValue=True)
@@ -236,26 +265,7 @@ def browser_operation(request):
         return result.get("result", {}).get("value")
 
     if operation == "act":
-        action = request["action"]
-        kind = action["kind"]
-        if kind == "scroll":
-            call("Input.dispatchMouseEvent", type="mouseWheel", x=550, y=650, deltaX=0, deltaY=action["delta"])
-        elif kind != "wait":
-            if type(action["node"]) is not int:
-                raise ValueError("Invalid observed node")
-            # Code-owned node IDs refer to actual observed elements, never model-generated selectors.
-            target = evaluate(f"{RESOLVE_TARGET}({json.dumps(action)})")
-            if target is None:
-                if kind == "select":
-                    raise RuntimeError("Dropdown execution was not confirmed; inspect before retrying.")
-                raise StalePage("Target changed or is covered. Observe again.")
-            if kind != "select":
-                x, y = target["x"], target["y"]
-                for event in ("mousePressed", "mouseReleased"):
-                    call("Input.dispatchMouseEvent", type=event, x=x, y=y, button="left", clickCount=1)
-                if kind == "fill":
-                    _type_into_target(call, request["text"], 4 if sys.platform == "darwin" else 2)
-        return {"executed": action["id"]}
+        return _act_operation(call, evaluate, request)
 
     info = evaluate(READ_STATE)
     if info is None:

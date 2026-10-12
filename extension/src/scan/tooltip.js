@@ -170,6 +170,19 @@ function panelColumns(inside, width, y0, y1) {
   return run && run[2] >= MIN_RUN * width ? { x: run[0], width: run[2] } : null;
 }
 
+/** A row belongs to a panel of this column `span` when it is at least MIN_DENSITY "inside" across it. */
+function denseRow(inside, width, y, span) {
+  let n = 0;
+  for (let x = span.x; x < span.x + span.width; x++) if (inside[y * width + x]) n += 1;
+  return n >= MIN_DENSITY * span.width;
+}
+
+/** Does the box hold a tooltip's mix: dark enough, with a little (2..35 %) bright text in it? */
+function looksLikePanel(img, box) {
+  const { dark, bright } = ratios(img, box);
+  return dark >= DARK_RATIO && bright >= BRIGHT_RANGE[0] && bright <= BRIGHT_RANGE[1];
+}
+
 /**
  * The panel one seed band grows into, or null when it is not a tooltip: rows as dense as the panel are added, the
  * loose rows of the seed itself are dropped, and the columns are measured again every round until nothing moves.
@@ -181,11 +194,7 @@ function panelFromSeed(seed, img, inside, minHeight) {
   let top = seed.y0;
   let bottom = seed.y1;
   for (let round = 0; round < REFINE_ROUNDS; round++) {
-    const dense = (y) => {
-      let n = 0;
-      for (let x = span.x; x < span.x + span.width; x++) if (inside[y * width + x]) n += 1;
-      return n >= MIN_DENSITY * span.width;
-    };
+    const dense = (y) => denseRow(inside, width, y, span);
     // Grow over the rows that are as dense as the panel, then drop the loose rows the seed itself ends with.
     while (top > 0 && dense(top - 1)) top -= 1;
     while (bottom < height - 1 && dense(bottom + 1)) bottom += 1;
@@ -199,9 +208,7 @@ function panelFromSeed(seed, img, inside, minHeight) {
   }
   if (top > bottom) return null;
   const box = { x: span.x, y: top, width: span.width, height: bottom - top + 1 };
-  if (box.height < minHeight) return null;
-  const { dark, bright } = ratios(img, box);
-  if (dark < DARK_RATIO || bright < BRIGHT_RANGE[0] || bright > BRIGHT_RANGE[1]) return null;
+  if (box.height < minHeight || !looksLikePanel(img, box)) return null;
   return box;
 }
 
@@ -218,6 +225,25 @@ export function findTooltip(img) {
   return best;
 }
 
+/** The bounding box of the DARK pixels in the rectangle [x0,x1) x [y0,y1); maxX stays < 0 when there are none. */
+function darkBounds(img, x0, y0, x1, y1) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      if (maxChannel(img.data, (y * img.width + x) * 4) <= DARK_MAX) {
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  return { minX, minY, maxX, maxY };
+}
+
 /**
  * The panel's own extent: the bbox of the DARK pixels in a window around the detector's box. The panel is the only
  * dark thing near it, so this is the panel's own rectangle. It matters because the detector's box is not stable -- it
@@ -229,22 +255,13 @@ export function findTooltip(img) {
 function panelRegion(img, box) {
   const ex = Math.round(KEY_EXPAND * box.width);
   const ey = Math.round(KEY_EXPAND * box.height);
-  const x1 = Math.min(img.width, box.x + box.width + ex);
-  const y1 = Math.min(img.height, box.y + box.height + ey);
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -1;
-  let maxY = -1;
-  for (let y = Math.max(0, box.y - ey); y < y1; y++) {
-    for (let x = Math.max(0, box.x - ex); x < x1; x++) {
-      if (maxChannel(img.data, (y * img.width + x) * 4) <= DARK_MAX) {
-        if (x < minX) minX = x;
-        if (y < minY) minY = y;
-        if (x > maxX) maxX = x;
-        if (y > maxY) maxY = y;
-      }
-    }
-  }
+  const { minX, minY, maxX, maxY } = darkBounds(
+    img,
+    Math.max(0, box.x - ex),
+    Math.max(0, box.y - ey),
+    Math.min(img.width, box.x + box.width + ex),
+    Math.min(img.height, box.y + box.height + ey),
+  );
   const width = maxX - minX + 1;
   const height = maxY - minY + 1;
   if (maxX < 0 || width < 0.5 * box.width || height < 0.5 * box.height) return box;
@@ -264,6 +281,21 @@ function cellMean(img, x0, x1, y0, y1) {
     }
   }
   return n ? sum / n : 0;
+}
+
+/** The mean grey of each cell of an `n`×`n` grid over [x0,x0+w) x [y0,y0+h), row-major. */
+function gridCells(img, x0, y0, w, h, n) {
+  const cells = [];
+  for (let j = 0; j < n; j++) {
+    const cy0 = y0 + Math.floor((j * h) / n);
+    const cy1 = y0 + Math.floor(((j + 1) * h) / n);
+    for (let i = 0; i < n; i++) {
+      const cx0 = x0 + Math.floor((i * w) / n);
+      const cx1 = x0 + Math.floor(((i + 1) * w) / n);
+      cells.push(cellMean(img, cx0, cx1, cy0, cy1));
+    }
+  }
+  return cells;
 }
 
 /**
@@ -288,36 +320,19 @@ export function boxKey(img, box) {
   const height = Math.max(1, Math.min(region.height, Math.round(KEY_ASPECT * region.width)));
   const insetX = Math.round(KEY_INSET * region.width);
   const insetY = Math.round(KEY_INSET * height);
-  const x0 = region.x + insetX;
-  const y0 = region.y + insetY;
   const w = Math.max(1, region.width - 2 * insetX);
   const h = Math.max(1, height - 2 * insetY);
   const step = 256 / KEY_LEVELS;
   let key = "";
-  for (let j = 0; j < KEY_GRID; j++) {
-    const cy0 = y0 + Math.floor((j * h) / KEY_GRID);
-    const cy1 = y0 + Math.floor(((j + 1) * h) / KEY_GRID);
-    for (let i = 0; i < KEY_GRID; i++) {
-      const cx0 = x0 + Math.floor((i * w) / KEY_GRID);
-      const cx1 = x0 + Math.floor(((i + 1) * w) / KEY_GRID);
-      key += Math.min(KEY_LEVELS - 1, Math.floor(cellMean(img, cx0, cx1, cy0, cy1) / step));
-    }
+  for (const cell of gridCells(img, region.x + insetX, region.y + insetY, w, h, KEY_GRID)) {
+    key += Math.min(KEY_LEVELS - 1, Math.floor(cell / step));
   }
   return key;
 }
 
 /** 8×8 mean-grey hash of `box` in `img` as a 64-char "0"/"1" string. */
 export function boxHash(img, box) {
-  const cells = [];
-  for (let j = 0; j < 8; j++) {
-    const y0 = box.y + Math.floor((j * box.height) / 8);
-    const y1 = box.y + Math.floor(((j + 1) * box.height) / 8);
-    for (let i = 0; i < 8; i++) {
-      const x0 = box.x + Math.floor((i * box.width) / 8);
-      const x1 = box.x + Math.floor(((i + 1) * box.width) / 8);
-      cells.push(cellMean(img, x0, x1, y0, y1));
-    }
-  }
+  const cells = gridCells(img, box.x, box.y, box.width, box.height, 8);
   // A tooltip panel is far darker than any fixed cut-off, so each cell is compared with the panel's
   // own mean: same crop -> same pattern, a moved line shifts which cells sit above it.
   const mean = cells.reduce((a, b) => a + b, 0) / cells.length;

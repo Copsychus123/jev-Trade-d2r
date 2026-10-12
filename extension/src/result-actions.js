@@ -2,12 +2,11 @@
 // filter keeps, in the same cells as the on-screen list, so the file and the clipboard cannot drift from what the
 // player sees. `deps`: getMarket(), rowsOf(key) (the kept rows of a list), getItemName() and getActiveTab().
 import { csvFileName, toCsv } from "./csv.js";
+import { $ } from "./dom.js";
 import { saveText } from "./download.js";
 import { verificationSummary } from "./labels.js";
 import { openable, viewConfigFor } from "./result-views.js";
 import { toTsv } from "./tsv.js";
-
-const $ = (id) => document.getElementById(id);
 
 export function createResultActions({ getMarket, rowsOf, getItemName, getActiveTab }) {
   let copyTimer = null;
@@ -35,33 +34,47 @@ export function createResultActions({ getMarket, rowsOf, getItemName, getActiveT
     $("result-note").hidden = false;
   }
 
+  /**
+   * The rows an export of `key` sends: its view config and the kept rows, or null when it is refused (a failed check)
+   * or there is nothing to send. The refusal sentence is shown.
+   */
+  function exportRows(key) {
+    const blockedText = exportBlocked();
+    if (blockedText) {
+      blocked(blockedText);
+      return null;
+    }
+    $("result-note").hidden = true;
+    const rows = rowsOf(key);
+    return rows.length ? { config: viewConfigFor(getMarket(), key), rows } : null;
+  }
+
   /** Opens the page this table was read from, in a normal tab (the query window is already closed by then). */
   function openSite(key) {
     const url = getMarket()[key].url;
     if (openable(url)) chrome.tabs.create({ url });
   }
 
+  /** The kept rows as the view's cell lists: the CSV file and the clipboard both send exactly these. */
+  function exportCells({ config, rows }) {
+    return rows.map(config.cells);
+  }
+
   function download(key) {
-    const blockedText = exportBlocked();
-    if (blockedText) return blocked(blockedText);
-    $("result-note").hidden = true;
-    const config = viewConfigFor(getMarket(), key);
-    const rows = rowsOf(key);
-    if (!rows.length) return;
-    saveText(csvFileName(getItemName(), config.label), toCsv(config.head, rows.map(config.cells)), "text/csv;charset=utf-8");
+    const target = exportRows(key);
+    if (!target) return;
+    const { config } = target;
+    saveText(csvFileName(getItemName(), config.label), toCsv(config.head, exportCells(target)), "text/csv;charset=utf-8");
   }
 
   async function copy(key) {
-    const blockedText = exportBlocked();
-    if (blockedText) return blocked(blockedText);
-    $("result-note").hidden = true;
-    const config = viewConfigFor(getMarket(), key);
-    const rows = rowsOf(key);
-    if (!rows.length) return;
+    const target = exportRows(key);
+    if (!target) return;
+    const { config, rows } = target;
     let label;
     try {
       // Tab separated so a spreadsheet pastes it into columns.
-      await navigator.clipboard.writeText(toTsv(config.head, rows.map(config.cells)));
+      await navigator.clipboard.writeText(toTsv(config.head, exportCells(target)));
       label = `已複製 ${rows.length} 筆`;
     } catch {
       label = "複製失敗";

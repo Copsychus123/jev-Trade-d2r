@@ -108,8 +108,11 @@ def scan_state() -> dict:
 def serve(port: int = 0) -> tuple[ThreadingHTTPServer, int]:
     """The demo's static files plus the four endpoints the page asks for; nothing is authenticated."""
     static = {
-        "/": "index.html", "/style.css": "style.css", "/app.js": "app.js", "/csv.js": "csv.js",
-        "/tokens.css": "tokens.css",
+        "/": ("index.html", "text/html"),
+        "/style.css": ("style.css", "text/css"),
+        "/app.js": ("app.js", "text/javascript"),
+        "/csv.js": ("csv.js", "text/javascript"),
+        "/tokens.css": ("tokens.css", "text/css"),
     }
 
     class Handler(BaseHTTPRequestHandler):
@@ -126,11 +129,8 @@ def serve(port: int = 0) -> tuple[ThreadingHTTPServer, int]:
         def do_GET(self):  # noqa: N802 - the base class's name
             path = self.path.split("?")[0]
             if path in static:
-                name = static[path]
+                name, mime = static[path]
                 text = (ROOT / "src" / "jev_ultrafast" / "static" / name).read_text(encoding="utf-8")
-                mime = "text/css" if name.endswith(".css") else (
-                    "text/html" if name.endswith(".html") else "text/javascript"
-                )
                 return self._send(text.replace("__TOKEN__", "demo-e2e").encode("utf-8"), mime)
             if path == "/api/state":
                 return self._send(json.dumps(scan_state()).encode("utf-8"), "application/json")
@@ -165,6 +165,31 @@ def read_page(url: str) -> dict:
     return report
 
 
+def _two_table_failures(left: dict, right: dict) -> list[str]:
+    """The layout, column and row assertions of the two side-by-side tables (掛單 left, 成交 right)."""
+    failures = []
+    if left["width"] < right["width"]:
+        failures.append(f"寬版排版應該掛單在左且較寬：{left['width']} / {right['width']}")
+    if len(left["rows"][0]) != 7 or len(right["rows"][0]) != 5:
+        failures.append(f"欄數應為 7 與 5，實際 {len(left['rows'][0])} 與 {len(right['rows'][0])}")
+    if len(left["rows"]) != 4 or len(right["rows"]) != 3:
+        failures.append(f"列數應為 4（含標題）與 3，實際 {len(left['rows'])} 與 {len(right['rows'])}")
+    head = left["rows"][0]
+    # The narrow-layout rule keeps every column in the DOM: the price cell carries both names, and the row still
+    # has seven cells (the extra one is hidden by CSS in the wide layout, and the CSV still exports it).
+    if head[0] != "賣家" or "高符文價值" not in head[1] or len(left["rows"][1]) != 7:
+        failures.append(f"掛單表的欄位不對：{head}")
+    seller = left["rows"][1][0]
+    if seller != "a|b\nc":  # the raw text, so markup and mangling would both show up here
+        failures.append(f"賣家名的 | 與換行應以文字呈現，實際 {seller!r}")
+    if left["rows"][2][4] != "—" or left["rows"][3][4] != "Playstation / Hardcore / Ladder":
+        empty, joined = left["rows"][2][4], left["rows"][3][4]
+        failures.append(f"環境欄應在沒有值時顯示 —、有值時以 / 連接：{empty!r} / {joined!r}")
+    if right["rows"][1][3] != "PC / Softcore / Ladder" or right["rows"][2][3] != "Xbox / Hardcore / Non Ladder":
+        failures.append(f"成交表的環境欄不對：{right['rows'][1][3]!r} / {right['rows'][2][3]!r}")
+    return failures
+
+
 def verdict(report: dict) -> list[str]:
     """The assertions above; returns one Traditional Chinese message per failed one. Pure: no Chrome needed."""
     failures = []
@@ -176,25 +201,7 @@ def verdict(report: dict) -> list[str]:
         failures.append(f"應該有兩張表，實際 {len(tables)} 張")
     else:
         left, right = tables
-        if left["width"] < right["width"]:
-            failures.append(f"寬版排版應該掛單在左且較寬：{left['width']} / {right['width']}")
-        if len(left["rows"][0]) != 7 or len(right["rows"][0]) != 5:
-            failures.append(f"欄數應為 7 與 5，實際 {len(left['rows'][0])} 與 {len(right['rows'][0])}")
-        if len(left["rows"]) != 4 or len(right["rows"]) != 3:
-            failures.append(f"列數應為 4（含標題）與 3，實際 {len(left['rows'])} 與 {len(right['rows'])}")
-        head = left["rows"][0]
-        # The narrow-layout rule keeps every column in the DOM: the price cell carries both names, and the row still
-        # has seven cells (the extra one is hidden by CSS in the wide layout, and the CSV still exports it).
-        if head[0] != "賣家" or "高符文價值" not in head[1] or len(left["rows"][1]) != 7:
-            failures.append(f"掛單表的欄位不對：{head}")
-        seller = left["rows"][1][0]
-        if seller != "a|b\nc":  # the raw text, so markup and mangling would both show up here
-            failures.append(f"賣家名的 | 與換行應以文字呈現，實際 {seller!r}")
-        if left["rows"][2][4] != "—" or left["rows"][3][4] != "Playstation / Hardcore / Ladder":
-            empty, joined = left["rows"][2][4], left["rows"][3][4]
-            failures.append(f"環境欄應在沒有值時顯示 —、有值時以 / 連接：{empty!r} / {joined!r}")
-        if right["rows"][1][3] != "PC / Softcore / Ladder" or right["rows"][2][3] != "Xbox / Hardcore / Non Ladder":
-            failures.append(f"成交表的環境欄不對：{right['rows'][1][3]!r} / {right['rows'][2][3]!r}")
+        failures += _two_table_failures(left, right)
     if "通過檢查" not in (report.get("status") or ""):
         failures.append(f"上方狀態列應說明兩段都通過檢查，實際 {report.get('status')!r}")
     merged = report.get("merged") or []
@@ -222,7 +229,6 @@ def main() -> int:
         report = read_page(url)
     except Exception as error:  # environment: the dedicated Chrome is busy, missing, or the page never loaded
         print(f"環境問題：{error}", file=sys.stderr)
-        server.shutdown()
         return 2
     finally:
         server.shutdown()

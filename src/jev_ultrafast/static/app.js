@@ -32,13 +32,13 @@ const token = document.querySelector('meta[name="demo-token"]').content;
 let state = null,
   busy = false,
   automatic = false;
+// The run is over in these states: the automatic loop stops and the "live page" checks fail.
+const STOPPED_STATUSES = ["done", "blocked"];
 const escape = (value) =>
   String(value ?? "").replace(
     /[&<>"]/g,
     (c) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
-        c
-      ],
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c],
   );
 const percent = (value) => `${(value * 100).toFixed(value < 0.01 ? 1 : 0)}%`;
 const statusDot = $("status-dot");
@@ -67,12 +67,10 @@ const OPERATION_NAMES = {
 };
 const operationName = (name) => OPERATION_NAMES[name] || name;
 const formatNumber = (value) => Number(value || 0).toLocaleString("en-US");
+// The plain dollar amount, without the "約 … 美分" note for values below one cent.
+const usdShort = (value) => (!(value > 0) ? "$0" : `$${value.toFixed(value >= 0.01 ? 2 : 4)}`);
 const formatUsd = (value) =>
-  !(value > 0)
-    ? "$0"
-    : value >= 0.01
-      ? `$${value.toFixed(2)}`
-      : `$${value.toFixed(4)}（約 ${(value * 100).toFixed(2)} 美分）`;
+  usdShort(value) + (!(value > 0) || value >= 0.01 ? "" : `（約 ${(value * 100).toFixed(2)} 美分）`);
 
 // Every cell is written with textContent: labels and page text are untrusted.
 function renderUsage(usage) {
@@ -118,8 +116,11 @@ function renderPlan() {
   $("goal-details").hidden = !(state.plan || []).length;
 }
 
+// The phase's display label, `undefined` when the phase is unknown.
+const phaseLabelAt = (phase) => (state.phase_labels || [])[["trading", "recent_trades"].indexOf(phase)];
+
 function phaseLabelOf(phase) {
-  return (state.phase_labels || [])[["trading", "recent_trades"].indexOf(phase)] || phase;
+  return phaseLabelAt(phase) || phase;
 }
 
 // A rule finished a phase without asking Jev: show it between the decisions around it.
@@ -139,7 +140,7 @@ function decisionRow(d, i, next, executedSteps) {
   const executed = next ? next.step > d.step : executedSteps > d.step;
   const finishes = d.operation === "DONE" || d.operation === "BLOCKED";
   const alternatives = (d.alternatives || []).slice(0, 2);
-  const phaseLabel = (state.phase_labels || [])[["trading", "recent_trades"].indexOf(d.phase)];
+  const phaseLabel = phaseLabelAt(d.phase);
   const what = finishes && d.operation === "DONE" ? phaseLabel || "完成階段" : d.label || d.choice;
   const chosen =
     d.probability == null
@@ -182,6 +183,8 @@ function renderDecisions(decisions, executedSteps, ruleEvents = []) {
   });
   log.replaceChildren(...rows, ...pending.map(ruleRow));
 }
+// The three platform parts joined for a cell, empty parts dropped.
+const platformText = (r) => [r.platform, r.mode, r.ladder].filter(Boolean).join(" / ");
 const marketViews = {
   trading: {
     prefix: "trading",
@@ -193,7 +196,7 @@ const marketViews = {
       r.ask,
       r.high_rune_value,
       r.posted_time,
-      [r.platform, r.mode, r.ladder].filter(Boolean).join(" / "),
+      platformText(r),
       r.defense,
       r.game_version,
     ],
@@ -207,7 +210,7 @@ const marketViews = {
       r.buyer_or_seller,
       r.price,
       r.trade_time,
-      [r.platform, r.mode, r.ladder].filter(Boolean).join(" / "),
+      platformText(r),
       r.game_version,
     ],
     label: "近期成交",
@@ -223,15 +226,16 @@ for (const [key, config] of Object.entries(marketViews)) {
   });
 }
 
-let activeTab = "run";
 let userPickedTab = false;
 let resultsSeen = false;
 let resultsViewed = false;
 
+// The tab buttons, in document order: keyboard navigation wraps around this list.
+const allTabs = () => [...document.querySelectorAll('[role="tab"]')];
+
 function showTab(name, { user = false } = {}) {
   if (user) userPickedTab = true;
-  activeTab = name;
-  for (const tab of document.querySelectorAll('[role="tab"]')) {
+  for (const tab of allTabs()) {
     const on = tab.dataset.tab === name;
     tab.setAttribute("aria-selected", String(on));
     tab.tabIndex = on ? 0 : -1;
@@ -254,12 +258,12 @@ function renderTabs() {
     results += `（掛單 ${trading.rows.length}・成交 ${recent.rows.length}）`;
   } else if (trading.status === "PASSED") {
     results += `（掛單 ${trading.rows.length}・成交讀取中…）`;
-  } else if (state?.page && !["done", "blocked"].includes(state.status)) {
+  } else if (state?.page && !STOPPED_STATUSES.includes(state.status)) {
     results += "（讀取中…）";
   }
   $("tab-results-label").textContent = results;
   $("tab-usage-label").textContent = state?.usage?.calls
-    ? `用量與決策（${formatUsd(state.usage.cost_usd).split("（")[0]}）`
+    ? `用量與決策（${usdShort(state.usage.cost_usd)}）`
     : "用量與決策";
   // Switch to the answer once when the run finishes, unless the user already chose a tab.
   if (market.verification && !resultsSeen) {
@@ -270,10 +274,10 @@ function renderTabs() {
   if (resultsSeen && !resultsViewed) $("tab-results-dot").hidden = false;
 }
 
-for (const tab of document.querySelectorAll('[role="tab"]')) {
+for (const tab of allTabs()) {
   tab.addEventListener("click", () => showTab(tab.dataset.tab, { user: true }));
   tab.addEventListener("keydown", (event) => {
-    const tabs = [...document.querySelectorAll('[role="tab"]')];
+    const tabs = allTabs();
     const step = { ArrowRight: 1, ArrowLeft: -1 }[event.key];
     if (!step) return;
     const next = tabs[(tabs.indexOf(tab) + step + tabs.length) % tabs.length];
@@ -299,6 +303,11 @@ function fillMarketTable(table, view, config) {
     return;
   }
   table.hidden = false;
+  fillMarketHead(table, config);
+  fillMarketBody(table, view, config);
+}
+
+function fillMarketHead(table, config) {
   const headRow = table.createTHead().insertRow();
   config.head.forEach((name, i) => {
     const th = document.createElement("th");
@@ -312,6 +321,9 @@ function fillMarketTable(table, view, config) {
     }
     headRow.append(th);
   });
+}
+
+function fillMarketBody(table, view, config) {
   const body = table.createTBody();
   for (const row of view.rows) {
     const tr = body.insertRow();
@@ -354,14 +366,20 @@ function renderMarket(key) {
   if (raw.parentElement.open) loadRaw(key);
 }
 
+// Fetch a URL and return its text, or null when the server answered with an error.
+async function fetchText(url) {
+  const response = await fetch(url);
+  return response.ok ? await response.text() : null;
+}
+
 // The raw page text is not part of the state: fetch it only when its details block is open.
 async function loadRaw(key) {
   const raw = $(`${marketViews[key].prefix}-raw`);
   if (raw.dataset.loaded || !state?.market?.[key]?.text_length) return;
   raw.dataset.loaded = "1";
-  const response = await fetch("/api/raw?view=" + key);
-  raw.textContent = response.ok ? await response.text() : "";
-  if (!response.ok) delete raw.dataset.loaded;
+  const text = await fetchText("/api/raw?view=" + key);
+  raw.textContent = text ?? "";
+  if (text === null) delete raw.dataset.loaded;
 }
 
 for (const key of Object.keys(marketViews)) {
@@ -377,8 +395,7 @@ let reportFetching = false;
 async function fetchReport() {
   reportFetching = true;
   try {
-    const response = await fetch("/api/report");
-    reportText = response.ok ? await response.text() : null;
+    reportText = await fetchText("/api/report");
   } finally {
     reportFetching = false;
   }
@@ -428,6 +445,12 @@ async function call(name, body = {}) {
   return data;
 }
 
+// Re-read the current state from the server and show it (the page's only source of truth).
+async function refreshState() {
+  state = await fetch("/api/state").then((r) => r.json());
+  render();
+}
+
 function controls() {
   $("start").disabled = busy;
   if ($("goal")) $("goal").disabled = busy;
@@ -438,14 +461,14 @@ function controls() {
 }
 
 async function runAutomaticLoop() {
-  const live = state?.page && !["done", "blocked"].includes(state.status);
+  const live = state?.page && !STOPPED_STATUSES.includes(state.status);
   if (!live) return;
   automatic = true;
   controls();
   for (let i = 0; i < state.max_steps * 2 && automatic; i++) {
     $("status").textContent = "正在執行探索…";
     await call("tick");
-    if (["done", "blocked"].includes(state.status)) break;
+    if (STOPPED_STATUSES.includes(state.status)) break;
   }
   automatic = false;
 }
@@ -461,8 +484,7 @@ async function perform(fn, label) {
   } catch (error) {
     automatic = false;
     try {
-      state = await fetch("/api/state").then((r) => r.json());
-      render();
+      await refreshState();
     } catch {
       /* Preserve the original failure if the server disconnected. */
     }
@@ -527,9 +549,12 @@ function targetProbability(d, e) {
     Math.max(-1, ...(e.options || []).map(o=>d?.target_probabilities?.[o.index] ?? -1));
 }
 
+// The decision's selected target index, as the string the element list and overlays compare with.
+const selectedTarget = (d) => d?.target?.split(":")[0];
+
 // The element list, best target first; returns the decision's selected target index for the overlay.
 function renderChoices(elements, d) {
-  const selectedIndex = d?.target?.split(':')[0];
+  const selectedIndex = selectedTarget(d);
   if (d && elements.length) elements.sort((a,b)=>targetProbability(d,b)-targetProbability(d,a));
   $("choices").innerHTML = elements.length
     ? elements.map(e => {
@@ -639,7 +664,7 @@ $("overlays").addEventListener("change", () => {
 
 // Mark the hovered choice (if any) and the target the decision picked.
 function highlightTargets(hovered) {
-  const selected = state?.decision?.target?.split(":")[0];
+  const selected = selectedTarget(state?.decision);
   document
     .querySelectorAll(".target")
     .forEach((t) =>
@@ -665,15 +690,9 @@ function downloadTrace() {
 
 $("download").addEventListener("click", downloadTrace);
 
-fetch("/api/state")
-  .then((r) => r.json())
-  .then((s) => {
-    state = s;
-    render();
-  })
-  .catch(() => {
-    $("status").textContent = "無法連線至本機 Demo 伺服器";
-  });
+refreshState().catch(() => {
+  $("status").textContent = "無法連線至本機 Demo 伺服器";
+});
 
 // Save the markdown the server generated for a finished run.
 async function downloadReportFile() {

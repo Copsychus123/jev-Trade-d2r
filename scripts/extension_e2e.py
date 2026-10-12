@@ -48,6 +48,15 @@ def say(message: str) -> None:
     print(message, flush=True)
 
 
+def environment_failure(error: Exception) -> int:
+    """The exit every Chrome script takes when something outside the extension is wrong: report it and return 2.
+
+    A failed extension build carries no message of its own, so it gets its own line.
+    """
+    say(f"環境問題：{error}" if isinstance(error, Environment) else "環境問題：擴充功能打包失敗")
+    return 2
+
+
 def _version(port: int) -> dict | None:
     try:
         return httpx.get(f"http://127.0.0.1:{port}/json/version", timeout=1).json()
@@ -235,6 +244,15 @@ def open_panel(ext_id: str) -> str:
     return httpx.put(f"http://127.0.0.1:{DEBUG_PORT}/json/new?{url}").json()["webSocketDebuggerUrl"]
 
 
+def start_chrome_with_extension(headed: bool, extra_args: tuple[str, ...] = ()) -> tuple[subprocess.Popen, str]:
+    """Free the dedicated profile, start Chrome on it and load the extension just built; returns both."""
+    free_profile()
+    chrome = launch_chrome(headed, extra_args)
+    ext_id = load_extension()
+    say(f"擴充功能已載入（{ext_id}）")
+    return chrome, ext_id
+
+
 HOOKS = """(() => {
   window.__blobs = [];
   const original = URL.createObjectURL;
@@ -362,15 +380,25 @@ CLEAR_FILTER = """(() => {
 })()"""
 
 
+async def csv_blob(evaluate) -> str:
+    """Click 匯出 CSV on the selected tab and return the text of the file it produced (HOOKS captures the blob)."""
+    await evaluate("window.__blobs.length = 0")
+    await evaluate("document.getElementById('result-csv').click()")
+    await asyncio.sleep(0.5)
+    return await evaluate("window.__blobs[0] || ''")
+
+
+def csv_lines(text: str) -> list[str]:
+    """The CSV's rows: a trailing CRLF (the last line's terminator) must not leave an empty row behind."""
+    return text.split("\r\n")[:-1] if text.endswith("\r\n") else text.split("\r\n")
+
+
 async def check_filter(evaluate) -> dict:
     """A display filter (platform PC) changes the visible count without a new query; CSV rows are the kept rows."""
     active = await evaluate(SET_FILTER)
     kept, _, read = active.partition("/")
-    await evaluate("window.__blobs.length = 0")
-    await evaluate("document.getElementById('result-csv').click()")
-    await asyncio.sleep(0.5)
-    text = await evaluate("window.__blobs[0] || ''")
-    lines = text.split("\r\n")[:-1] if text.endswith("\r\n") else text.split("\r\n")
+    text = await csv_blob(evaluate)
+    lines = csv_lines(text)
     cleared = await evaluate(CLEAR_FILTER)
     return {
         "active_count": active,
@@ -398,6 +426,76 @@ OPEN_URLS = """(async () => {
 })()"""
 
 
+def timed_out(result: dict | None) -> dict:
+    """A wait-loop that ran out: nothing read is an environment problem, otherwise the last sample is marked."""
+    if result is None:
+        raise Environment("讀不到側邊欄的狀態")
+    result["timeout"] = True
+    return result
+
+
+async def _read_paging(evaluate, prefix: str, rows: str) -> dict:
+    """First page, then the second page and back: the three reads `check` compares for one tab's paging."""
+    first = await evaluate(f"document.querySelector('{rows}').textContent")
+    await evaluate(f"document.getElementById('{prefix}-next').click()")
+    page2 = await evaluate(
+        f"JSON.stringify({{page: document.getElementById('{prefix}-page').textContent,"
+        f" shown: document.querySelectorAll('{rows}').length,"
+        f" first: document.querySelector('{rows}').textContent,"
+        f" prev: !document.getElementById('{prefix}-prev').disabled}})"
+    )
+    await evaluate(f"document.getElementById('{prefix}-prev').click()")
+    back = await evaluate(f"document.getElementById('{prefix}-page').textContent")
+    return {"first": first, "page2": json.loads(page2), "back": back}
+
+
+async def _sample_until_idle(evaluate, timeout: int) -> tuple[dict, bool | None, int, int]:
+    """Poll the side panel every 3 s until the query ends or `timeout` runs out, printing a line whenever a sample
+    changes something. Returns (last state, locked while running, samples read, samples that failed to answer)."""
+    started, result, locked = time.time(), None, None
+    seen = None
+    samples_ok = samples_failed = 0
+    while time.time() - started < timeout:
+        await asyncio.sleep(3)
+        parsed = parse_sample(await evaluate(SNAPSHOT))
+        if parsed is None:  # the panel did not answer, or answered with something that is not JSON
+            samples_failed += 1
+            if samples_failed == 1:
+                say(
+                    f"  [{int(time.time() - started):>3d}s] 取樣失敗："
+                    "側邊欄沒有回應或回傳的不是 JSON（之後只記錄次數）"
+                )
+            continue
+        samples_ok += 1
+        result = parsed
+        sample = progress_key(result)
+        if sample != seen:  # only the samples that changed something get a line
+            seen = sample
+            say(f"  [{int(time.time() - started):>3d}s] {progress_fields(result)}")
+        if locked is None and not result["idle"]:
+            locked = result["locked"]  # the first look while the query is running
+        if result["idle"] and time.time() - started > 10:
+            break
+    else:
+        result = timed_out(result)
+        say(f"最後一次看到的狀態：{progress_fields(result)}")
+    return result, locked, samples_ok, samples_failed
+
+
+async def _collect_csv(evaluate, prefixes) -> dict:
+    """For each filled tab: 匯出 CSV and 複製 must produce the same rows. Returns each tab's name, text and copy."""
+    csv: dict = {}
+    for prefix in prefixes:
+        await evaluate(f"document.getElementById('{prefix}-tab').click()")  # the buttons act on the selected tab
+        text = await csv_blob(evaluate)
+        csv[prefix] = {"name": await evaluate("window.__dl"), "text": text}
+        await evaluate("window.__copied.length = 0")
+        await evaluate("document.getElementById('result-copy').click()")
+        await asyncio.sleep(0.3)
+        csv[prefix]["copied"] = await evaluate("window.__copied[0] || ''")
+    return csv
+
+
 async def drive(ws_url: str, code: str, item: str, load_more: int, timeout: int) -> dict:
     async with attach(ws_url) as panel:
         evaluate = panel.evaluate
@@ -420,35 +518,7 @@ async def drive(ws_url: str, code: str, item: str, load_more: int, timeout: int)
         )
         await evaluate("document.getElementById('start').click()")
         say("查詢中…")
-        started, result, locked = time.time(), None, None
-        seen = None
-        samples_ok = samples_failed = 0
-        while time.time() - started < timeout:
-            await asyncio.sleep(3)
-            parsed = parse_sample(await evaluate(SNAPSHOT))
-            if parsed is None:  # the panel did not answer, or answered with something that is not JSON
-                samples_failed += 1
-                if samples_failed == 1:
-                    say(
-                        f"  [{int(time.time() - started):>3d}s] 取樣失敗："
-                        "側邊欄沒有回應或回傳的不是 JSON（之後只記錄次數）"
-                    )
-                continue
-            samples_ok += 1
-            result = parsed
-            sample = progress_key(result)
-            if sample != seen:  # only the samples that changed something get a line
-                seen = sample
-                say(f"  [{int(time.time() - started):>3d}s] {progress_fields(result)}")
-            if locked is None and not result["idle"]:
-                locked = result["locked"]  # the first look while the query is running
-            if result["idle"] and time.time() - started > 10:
-                break
-        else:
-            if result is None:
-                raise Environment("讀不到側邊欄的狀態")
-            result["timeout"] = True
-            say(f"最後一次看到的狀態：{progress_fields(result)}")
+        result, locked, samples_ok, samples_failed = await _sample_until_idle(evaluate, timeout)
         result["samples_ok"], result["samples_failed"] = samples_ok, samples_failed
         result["locked_while_running"], result["locked_after"] = locked, result["locked"]
         report_timing(result.get("run"))
@@ -459,30 +529,8 @@ async def drive(ws_url: str, code: str, item: str, load_more: int, timeout: int)
         result["paging"] = {}
         filled = [prefix for prefix, n in zip(("trading", "recent-trades"), result["rows"], strict=True) if n]
         for prefix in filled:
-            rows = ROW_SELECTOR[prefix]
-            first = await evaluate(f"document.querySelector('{rows}').textContent")
-            await evaluate(f"document.getElementById('{prefix}-next').click()")
-            page2 = await evaluate(
-                f"JSON.stringify({{page: document.getElementById('{prefix}-page').textContent,"
-                f" shown: document.querySelectorAll('{rows}').length,"
-                f" first: document.querySelector('{rows}').textContent,"
-                f" prev: !document.getElementById('{prefix}-prev').disabled}})"
-            )
-            await evaluate(f"document.getElementById('{prefix}-prev').click()")
-            back = await evaluate(f"document.getElementById('{prefix}-page').textContent")
-            result["paging"][prefix] = {"first": first, "page2": json.loads(page2), "back": back}
-        result["csv"] = {}
-        for prefix in filled:
-            await evaluate(f"document.getElementById('{prefix}-tab').click()")  # the buttons act on the selected tab
-            await evaluate("window.__blobs.length = 0")
-            await evaluate("document.getElementById('result-csv').click()")
-            await asyncio.sleep(0.5)
-            text = await evaluate("window.__blobs[0] || ''")
-            result["csv"][prefix] = {"name": await evaluate("window.__dl"), "text": text}
-            await evaluate("window.__copied.length = 0")
-            await evaluate("document.getElementById('result-copy').click()")
-            await asyncio.sleep(0.3)
-            result["csv"][prefix]["copied"] = await evaluate("window.__copied[0] || ''")
+            result["paging"][prefix] = await _read_paging(evaluate, prefix, ROW_SELECTOR[prefix])
+        result["csv"] = await _collect_csv(evaluate, filled)
         if "trading" in filled:
             result["filter"] = await check_filter(evaluate)
         return result
@@ -535,7 +583,7 @@ def check(
         if not rows:
             continue
         csv = result["csv"][prefix]
-        lines = csv["text"].split("\r\n")[:-1] if csv["text"].endswith("\r\n") else csv["text"].split("\r\n")
+        lines = csv_lines(csv["text"])
         if len(lines) != rows + 1:
             failures.append(f"{label} CSV 有 {len(lines)} 行，應為 {rows + 1}")
         copied = csv["copied"].rstrip("\n").split("\n") if csv["copied"] else []
@@ -600,20 +648,13 @@ def main() -> int:
             raise Environment("--stub-chooser 只適用本機後端，不能和 --api 一起用")
         build_extension(args.api or LOCAL_API)
         backend, code, backend_log = (None, args.invite, None) if args.api else start_backend(args.stub_chooser)
-        free_profile()
-        chrome = launch_chrome(args.headed)
-        ext_id = load_extension()
-        say(f"擴充功能已載入（{ext_id}）")
+        chrome, ext_id = start_chrome_with_extension(args.headed)
         result = asyncio.run(drive(open_panel(ext_id), code, args.item, args.load_more, args.timeout))
         if args.hold:
             say(f"查詢結束，視窗保留 {args.hold} 秒…")
             time.sleep(args.hold)
-    except Environment as error:
-        say(f"環境問題：{error}")
-        return 2
-    except subprocess.CalledProcessError:
-        say("環境問題：擴充功能打包失敗")
-        return 2
+    except (Environment, subprocess.CalledProcessError) as error:
+        return environment_failure(error)
     finally:
         cleanup(chrome, backend)
         if backend_log is not None:

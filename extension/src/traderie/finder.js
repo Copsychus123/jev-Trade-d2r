@@ -100,6 +100,21 @@ async function baseFallback({ resolved, tables, session, lookup, run, foundNothi
 }
 
 /**
+ * Resolves the typed name, starts the run and records the lookup the panel shows, ready for the layers below.
+ * `session` receives the run and the item name; `market.lookup` is the record the later layers keep filling in.
+ */
+async function prepareLookup({ rawItem, tables, loadMore, startRun, market, session }) {
+  const resolved = resolveInput(rawItem, tables);
+  const lookup = { typed: resolved.typed, requested: resolved.query, used: resolved.query, layer: null, notes: [] };
+  market.lookup = lookup;
+  if (resolved.translated) lookup.notes.push(`「${resolved.typed}」對照為 ${resolved.query}`);
+
+  session.run = await timed(session, "start_run", () => startRun({ itemName: resolved.query, loadMore }));
+  session.itemName = session.run.item_name;
+  return { resolved, lookup };
+}
+
+/**
  * Finds the product and reads both views. `session` receives tab, agent, run and itemName as they are created.
  * Resolves with "ran" (the agent finished or stopped; the caller judges the result), "guard" (site challenge)
  * or "not_found" (all layers tried).
@@ -121,13 +136,7 @@ export async function findAndRead({
   onStatus = () => {},
   tableStats = { jumps: 0, misses: 0 },
 }) {
-  const resolved = resolveInput(rawItem, tables);
-  const lookup = { typed: resolved.typed, requested: resolved.query, used: resolved.query, layer: null, notes: [] };
-  market.lookup = lookup;
-  if (resolved.translated) lookup.notes.push(`「${resolved.typed}」對照為 ${resolved.query}`);
-
-  session.run = await timed(session, "start_run", () => startRun({ itemName: resolved.query, loadMore }));
-  session.itemName = session.run.item_name;
+  const { resolved, lookup } = await prepareLookup({ rawItem, tables, loadMore, startRun, market, session });
 
   const product = findProduct(resolved.query, tables);
   if (product) {

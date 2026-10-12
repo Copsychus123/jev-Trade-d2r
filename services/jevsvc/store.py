@@ -119,13 +119,14 @@ class MemoryStore:
         if name == "GET":
             return data.get(args[0])
         if name == "SET":
-            options = [a.upper() for a in args[2:]]
+            rest = args[2:]
+            options = [a.upper() for a in rest]
             if "NX" in options and args[0] in data:
                 return None
             data[args[0]] = args[1]
             self.expiry.pop(args[0], None)  # SET replaces the value and its lifetime
             if "EX" in options:
-                self.expiry[args[0]] = self.clock() + int(args[2:][options.index("EX") + 1])
+                self.expiry[args[0]] = self.clock() + int(rest[options.index("EX") + 1])
             return "OK"
         if name in ("INCR", "DECR", "INCRBY", "DECRBY"):
             step = int(args[1]) if name.endswith("BY") else 1

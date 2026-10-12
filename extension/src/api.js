@@ -20,12 +20,7 @@ async function post(base, path, payload) {
   } finally {
     clearTimeout(timer);
   }
-  let body = null;
-  try {
-    body = await response.json();
-  } catch {
-    body = null;
-  }
+  const body = await response.json().catch(() => null);
   if (!response.ok) throw new ApiError(response.status, body?.error || "伺服器沒有回應");
   if (body === null) throw new ApiError(response.status, "伺服器沒有回應");
   return body;
