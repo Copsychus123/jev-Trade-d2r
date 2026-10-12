@@ -260,18 +260,17 @@ def _after_success(store, claims, run_key, *, spare, calls, usage):
         print(f"usage not recorded: {exc}", flush=True)
 
 
-def _after_failure(store, claims, run_key):
-    """Keep one reserved call for the attempt and hand the other back. If this run never got a single answer, the
-    start use it cost is given back too, once: nobody pays for Jev being down."""
+def _after_failure(store, claims, run_key, *, spare=1):
+    """Keep the attempt's own reserved call and hand `spare` back. If this run never got a single answer, the start
+    use it cost is given back too, once: nobody pays for Jev being down."""
     rid = claims["rid"]
+    commands = [("GET", f"ok:{rid}")]
+    if spare:
+        commands.append(("DECRBY", run_key, spare))
+    commands.append(("SET", f"refund:{rid}", "1", "NX", "EX", tokens.RUN_SECONDS))
     try:
-        _, answered, first = store.pipeline(
-            [
-                ("DECRBY", run_key, 1),
-                ("GET", f"ok:{rid}"),
-                ("SET", f"refund:{rid}", "1", "NX", "EX", tokens.RUN_SECONDS),
-            ]
-        )
+        results = store.pipeline(commands)
+        answered, first = results[0], results[-1]  # the GET is first, the SET that claims the refund is always last
         record = invites.record_key(claims["inv"])
         if answered is None and first == "OK" and len(claims["inv"]) == 64 and store.run("HEXISTS", record, "limit"):
             store.run("HINCRBY", record, "used", -1)
@@ -373,9 +372,11 @@ def pick_base_step(body, store, secret, now, picker=None):
     """Jev picks the plain item type behind the wanted item from the server's fixed list (or none of them). A list
     in the request is ignored: the client does not get to decide what Jev may choose from.
 
-    Counts as one model call of the same run. A pick returns a new run token for the base name, same run id and
-    expiry, so later choose calls get a goal for the base and share the call limit. When the client already matched
-    the base itself it sends `base`: no model call, same new token, only if it is on the list."""
+    Counts as one model call of the same run; a failed pick settles exactly like a failed choose (that one call stays
+    as the attempt's cost, and the run's start use comes back when the run never got an answer). A pick returns a new
+    run token for the base name, same run id and expiry, so later choose calls get a goal for the base and share the
+    call limit. When the client already matched the base itself it sends `base`: no model call, same new token, only if
+    it is on the list."""
     if err := _request_prelude(body):
         return err
     deadline, claims = _step_claims(body, secret, now)
@@ -391,6 +392,7 @@ def pick_base_step(body, store, secret, now, picker=None):
         picked = (picker or model.pick_base)(claims["item"], list(BASES), timeout=CALL_TIMEOUT, deadline=deadline)
     except MODEL_ERRORS as exc:
         print(f"base failed {_who(claims)} {_brief(exc)}", flush=True)
+        _after_failure(store, claims, run_key, spare=0)  # the one reserved call is this attempt's cost
         return _error(502, "Jev 暫時無法回應，請重新開始查詢", "model_unavailable")
     base = picked.get("base")
     if base not in BASES:

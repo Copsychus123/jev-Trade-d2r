@@ -249,6 +249,70 @@ def test_base_picking_uses_the_run_call_limit_and_rejects_bad_lists(store, code)
     assert pick(store, fresh, lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("down")))[0] == 502
 
 
+def test_a_failed_base_pick_keeps_its_call_and_gives_the_start_use_back_once(store, code):
+    """A pick Jev cannot answer still costs the run the call it reserved, and — since the run got no answer at all —
+    the start use comes back once: the counter stays at one while the invitation's `used` drops by one."""
+    token = token_for(store, code)
+    rid = tokens.verify(SECRET, token, NOW.timestamp())["rid"]
+    record = invites.record_key(invites.code_hash(code))
+
+    def down(*args, **kw):
+        raise RuntimeError("jev down")
+
+    status, reply = pick(store, token, down)
+    assert (status, reply["code"]) == (502, "model_unavailable")
+    assert store.run("GET", f"run:{rid}") == "1"  # the reserved call is this attempt's cost, not handed back
+    assert store.run("HGET", record, "used") == "0"  # but the start use of the unanswered run came back
+    assert store.run("GET", f"refund:{rid}") == "1"  # claimed, so no later step of the run refunds again
+
+
+def test_a_second_failed_base_pick_in_a_run_does_not_give_the_start_use_back_again(store, code):
+    """The refund is claimed once per run: Jev failing twice keeps both attempts' calls, but the start use goes back
+    on the first failure only (`refund:{rid}` is set with NX)."""
+    token = token_for(store, code)
+    rid = tokens.verify(SECRET, token, NOW.timestamp())["rid"]
+    record = invites.record_key(invites.code_hash(code))
+
+    def down(*args, **kw):
+        raise RuntimeError("jev down")
+
+    assert pick(store, token, down)[0] == 502
+    assert pick(store, token, down)[0] == 502
+    assert store.run("GET", f"run:{rid}") == "2"  # each attempt kept its own reserved call
+    assert store.run("HGET", record, "used") == "0"  # one start use given back, not two
+    assert store.run("GET", f"refund:{rid}") == "1"
+
+
+def test_a_failed_base_pick_after_an_answered_step_keeps_the_start_use(store, code):
+    """Once any step of the run was answered (the `ok:{rid}` marker), a later base pick that fails costs only its own
+    call: the start use stays counted, because the run did get an answer."""
+    token = token_for(store, code)
+    rid = tokens.verify(SECRET, token, NOW.timestamp())["rid"]
+    record = invites.record_key(invites.code_hash(code))
+    assert choose(store, token, lambda *a, **k: {"operation": "CLICK", "usage": {}})[0] == 200
+
+    def down(*args, **kw):
+        raise RuntimeError("jev down")
+
+    assert pick(store, token, down)[0] == 502
+    assert store.run("GET", f"run:{rid}") == "2"  # the answered choose kept one of two, the pick kept its one
+    assert store.run("HGET", record, "used") == "1"  # no refund: this run already got an answer
+
+
+def test_a_successful_base_pick_costs_one_call_and_hands_nothing_back(store, code):
+    """A pick Jev answers is exactly the one call it reserved and nothing else: no spare exists to hand back, and the
+    start use stays counted (the person got their answer)."""
+    token = token_for(store, code)
+    rid = tokens.verify(SECRET, token, NOW.timestamp())["rid"]
+    record = invites.record_key(invites.code_hash(code))
+
+    status, body = pick(store, token, lambda item, options, **kw: {"base": "Ring", "probability": 0.9, "usage": {}})
+    assert status == 200 and body["base"] == "Ring"
+    assert store.run("GET", f"run:{rid}") == "1"  # exactly one call, nothing handed back
+    assert store.run("HGET", record, "used") == "1"
+    assert store.run("GET", f"refund:{rid}") is None
+
+
 def test_invite_management(store):
     code = invites.add(store, "bob", limit=5)
     with pytest.raises(ValueError, match="已經有邀請碼"):
