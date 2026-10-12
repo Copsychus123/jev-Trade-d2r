@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>D2R-SIM</title>
+<!--
+  scan_e2e.py's stand-in for the game window.
+
+  Opened as file:///…/scripts/data/scan_sim.html, so every picture is loaded with a plain relative name
+  (image-14.png and friends live next to this file). A file:// page cannot fetch() a sibling, but it can still
+  load one with <img>, and this page only ever drawImage()s them into the canvas — it never calls getImageData()
+  on the shared canvas — so the file:// "tainted canvas" rule never comes up. Do not add a pixel read here.
+
+  It is a 1280x720 canvas on a mid-grey background, deterministic (seeded 32-bit LCG) so every run is identical.
+  Each of the four tooltip pictures is shown at its own position for 600 ms, then only the background for 300 ms;
+  the whole list is played twice and document.title becomes "D2R-SIM-DONE" at the end.
+
+  window.D2R_SIM is the state the driver reads: { file, step, total, cycle, done, error, started, restart() }.
+  `restart()` resets the sweep and starts it again — the driver calls it once the panel is really capturing,
+  so the sweep cannot race the getDisplayMedia() prompt. `step`/`total` tell a slow sweep from a finished one.
+-->
+<style>
+  html, body { margin: 0; padding: 0; background: #707070; overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="stage" width="1920" height="1080"></canvas>
+<script>
+(() => {
+  "use strict";
+
+  const FILES = ["image-14.png", "image-15.png", "image-17.png", "image-18.png"];
+  const CYCLES = 2;
+  const SHOW_MS = 1800;   // a tooltip stays put long enough for two processed frames (the scanner needs 2)
+  const GAP_MS = 900;    // background only, so one stop is one crop
+  // One distinct spot per appearance (8 of them). Kept inside 1280x720 for the tallest/widest picture.
+  const POSITIONS = [
+    [24, 24], [430, 24], [64, 150], [800, 24],
+    [250, 60], [640, 150], [40, 140], [840, 120],
+  ];
+
+  const canvas = document.getElementById("stage");
+  const ctx = canvas.getContext("2d");
+
+  // Seeded 32-bit LCG (Math.imul keeps it exact): every pixel is a grey between 70 and 160.
+  const background = document.createElement("canvas");
+  background.width = canvas.width;
+  background.height = canvas.height;
+  const bg = background.getContext("2d");
+  const noise = bg.createImageData(background.width, background.height);
+  let seed = 123456789 >>> 0;
+  for (let i = 0; i < noise.data.length; i += 4) {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    const value = 70 + (seed % 91);
+    noise.data[i] = value;
+    noise.data[i + 1] = value;
+    noise.data[i + 2] = value;
+    noise.data[i + 3] = 255;
+  }
+  bg.putImageData(noise, 0, 0);
+
+  const images = {};
+  const state = {
+    file: null,     // file name drawn right now, null during the background-only gap
+    step: 0,        // appearances started so far, 0..8
+    total: FILES.length * CYCLES,
+    cycle: 0,       // 1-based cycle in progress, 0 before the first tooltip
+    done: false,
+    error: null,
+    started: null,
+  };
+
+  function paint(file, position) {
+    ctx.drawImage(background, 0, 0);
+    const picture = file && images[file];
+    if (picture) ctx.drawImage(picture, position[0], position[1]);
+  }
+
+  // The tooltip window is drawn again every REPAINT_MS, the way a real game keeps rendering. Without this the page
+  // would only produce a frame when the tooltip changes (~2 fps), and the detector needs two identical frames in a
+  // row (STABLE_FRAMES), so every crop would be missed.
+  const REPAINT_MS = 66;  // about 15 fps, the rate the panel asks getDisplayMedia for
+  let timer = null;
+  let repaint = null;
+
+  function clearTimer() {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    if (repaint !== null) {
+      clearInterval(repaint);
+      repaint = null;
+    }
+  }
+
+  function run() {
+    state.started = Date.now();
+    let step = 0;
+    let current = { file: null, position: null };
+    repaint = setInterval(() => paint(current.file, current.position), REPAINT_MS);
+    const tick = () => {
+      if (step >= state.total) {
+        state.file = null;
+        state.cycle = CYCLES;
+        state.done = true;
+        current = { file: null, position: null };
+        paint(null, null);
+        clearTimer();
+        document.title = "D2R-SIM-DONE";
+        return;
+      }
+      const file = FILES[step % FILES.length];
+      state.file = file;
+      state.step = step + 1;
+      state.cycle = Math.floor(step / FILES.length) + 1;
+      current = { file, position: POSITIONS[step] };
+      paint(file, POSITIONS[step]);
+      timer = setTimeout(() => {
+        state.file = null;
+        current = { file: null, position: null };
+        paint(null, null);
+        timer = setTimeout(() => { step += 1; tick(); }, GAP_MS);
+      }, SHOW_MS);
+    };
+    tick();
+  }
+
+  state.restart = () => {
+    clearTimer();
+    state.file = null;
+    state.step = 0;
+    state.cycle = 0;
+    state.done = false;
+    state.error = null;
+    state.started = null;
+    document.title = "D2R-SIM";
+    paint(null, null);
+    run();
+  };
+  window.D2R_SIM = state;
+
+  let pending = FILES.length;
+  FILES.forEach((file) => {
+    const picture = new Image();
+    picture.onload = () => {
+      images[file] = picture;
+      pending -= 1;
+      if (pending === 0) state.restart();
+    };
+    picture.onerror = () => {
+      state.error = file;
+      document.title = "D2R-SIM-ERROR";
+    };
+    picture.src = file;  // relative to this page; works under file:// because the picture sits beside it
+  });
+})();
+</script>
+</body>
+</html>
