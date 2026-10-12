@@ -131,6 +131,9 @@ class FakeWorker {
   emit(data) {
     for (const fn of this.listeners.get("message") ?? []) fn({ data });
   }
+  emitError(message) {
+    for (const fn of this.listeners.get("error") ?? []) fn({ message });
+  }
 }
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
@@ -174,4 +177,130 @@ test("createOcrEngine posts init and resolves a read with the worker's text, and
   engine.terminate();
   assert.equal(worker.posted.at(-1).message.type, "close");
   assert.equal(worker.terminated, true);
+});
+
+// --- the worker message protocol `connectWorker` implements: which message settles which promise ---
+
+const MODELS = () => ({
+  det: new Uint8Array([1]),
+  rec: new Uint8Array([2, 2]),
+  cls: new Uint8Array([3, 3, 3]),
+  dict: new Uint8Array([4, 4, 4, 4]),
+});
+
+async function runningEngine(worker, statuses = []) {
+  const engine = await createOcrEngine({
+    models: MODELS(),
+    providers: ["wasm"],
+    createWorker: () => worker,
+    onStatus: (text) => statuses.push(text),
+  });
+  return engine;
+}
+
+/** Watches a promise without awaiting it, so a test can say exactly which state it is in. */
+function watch(promise) {
+  const state = { status: "pending", value: undefined };
+  promise.then(
+    (value) => { state.status = "resolved"; state.value = value; },
+    (error) => { state.status = "rejected"; state.value = error.message; },
+  );
+  return state;
+}
+
+const types = (worker) => worker.posted.map((p) => p.message.type);
+
+test("a worker error message rejects the read waiting under its id and leaves the others alone", async () => {
+  const worker = new FakeWorker();
+  const engine = await runningEngine(worker);
+  worker.emit({ type: "status", stage: "ready" });
+
+  const first = watch(engine.recognize({ width: 1, height: 1, data: new Uint8ClampedArray(4) }));
+  const second = watch(engine.recognize({ width: 1, height: 1, data: new Uint8ClampedArray(4) }));
+  await tick();
+  assert.deepEqual(worker.posted.filter((p) => p.message.type === "recognize").map((p) => p.message.id), [1, 2]);
+
+  worker.emit({ type: "error", id: 1, message: "辨識引擎尚未就緒" });
+  await tick();
+  assert.deepEqual(first, { status: "rejected", value: "辨識引擎尚未就緒" });
+  assert.deepEqual(second, { status: "pending", value: undefined });
+
+  worker.emit({ type: "result", id: 2, text: "剩下的那一行" });
+  await tick();
+  assert.deepEqual(second, { status: "resolved", value: "剩下的那一行" });
+});
+
+test("a worker error whose id matches no waiting read settles nothing", async () => {
+  const worker = new FakeWorker();
+  const engine = await runningEngine(worker);
+  worker.emit({ type: "status", stage: "ready" });
+
+  const reading = watch(engine.recognize({ width: 1, height: 1, data: new Uint8ClampedArray(4) }));
+  await tick();
+  assert.equal(worker.posted.at(-1).message.id, 1);
+
+  worker.emit({ type: "error", id: 999, message: "不相干的錯誤" });
+  await tick();
+  assert.deepEqual(reading, { status: "pending", value: undefined });
+
+  worker.emit({ type: "result", id: 1, text: "仍然讀到了" });
+  await tick();
+  assert.deepEqual(reading, { status: "resolved", value: "仍然讀到了" });
+});
+
+test("a read is posted only once the worker has reported ready, and each status phase reaches the listener", async () => {
+  const worker = new FakeWorker();
+  const statuses = [];
+  const engine = await runningEngine(worker, statuses);
+
+  const reading = watch(engine.recognize({ width: 1, height: 1, data: new Uint8ClampedArray(4) }));
+  await tick();
+  assert.deepEqual(types(worker), ["init"]);
+  assert.deepEqual(statuses, []);
+  assert.deepEqual(reading, { status: "pending", value: undefined });
+
+  worker.emit({ type: "status", stage: "loading" });
+  await tick();
+  assert.deepEqual(statuses, ["正在準備辨識引擎…"]);
+  assert.deepEqual(types(worker), ["init"]);
+
+  worker.emit({ type: "status", stage: "ready" });
+  await tick();
+  assert.deepEqual(statuses, ["正在準備辨識引擎…", "正在辨識文字…"]);
+  assert.deepEqual(types(worker), ["init", "recognize"]);
+  assert.deepEqual(reading, { status: "pending", value: undefined });
+});
+
+test("a worker error with no id fails the engine, so a read waits for nothing and rejects instead of posting", async () => {
+  const worker = new FakeWorker();
+  const engine = await runningEngine(worker);
+
+  const reading = watch(engine.recognize({ width: 1, height: 1, data: new Uint8ClampedArray(4) }));
+  worker.emit({ type: "error", id: null, message: "字元清單長度不對（5，應為 18710）" });
+  await tick();
+  assert.deepEqual(reading, { status: "rejected", value: "字元清單長度不對（5，應為 18710）" });
+  assert.deepEqual(types(worker), ["init"]);
+});
+
+test("a worker-level error event rejects the engine and every read still waiting, with a default text when it has none", async () => {
+  const worker = new FakeWorker();
+  const engine = await runningEngine(worker);
+  worker.emit({ type: "status", stage: "ready" });
+
+  const first = watch(engine.recognize({ width: 1, height: 1, data: new Uint8ClampedArray(4) }));
+  const second = watch(engine.recognize({ width: 1, height: 1, data: new Uint8ClampedArray(4) }));
+  await tick();
+  assert.equal(types(worker).filter((t) => t === "recognize").length, 2);
+
+  worker.emitError("worker 掛了");
+  await tick();
+  assert.deepEqual(first, { status: "rejected", value: "worker 掛了" });
+  assert.deepEqual(second, { status: "rejected", value: "worker 掛了" });
+
+  const other = new FakeWorker();
+  const otherEngine = await runningEngine(other);
+  const reading = watch(otherEngine.recognize({ width: 1, height: 1, data: new Uint8ClampedArray(4) }));
+  other.emitError(undefined);
+  await tick();
+  assert.deepEqual(reading, { status: "rejected", value: "辨識 worker 發生錯誤" });
 });

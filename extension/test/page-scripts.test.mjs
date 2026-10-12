@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-// The extension injects two more page scripts whose real logic nothing else executes: resolve_target.js (which
-// decides where an action's click lands, or that the target is unusable) and settle.js (which waits for the page to
-// stop changing). Both are single arrow functions reading page globals only as bare names, so — exactly like
-// covered-overlay.test.mjs — rebuilding each with `new Function` and passing fakes keeps the page's globals (and
+// The extension injects page scripts whose real logic nothing else executes: resolve_target.js (which decides where
+// an action's click lands, or that the target is unusable), settle.js (which waits for the page to stop changing),
+// after_input.js (the wait for the page to react to an action) and traderie/settled_page.js (the settled-page
+// reader). Each is a single arrow function reading page globals only as bare names, so — exactly like
+// covered-overlay.test.mjs — rebuilding it with `new Function` and passing fakes keeps the page's globals (and
 // ours) out of this file.
 
 const RESOLVE_SOURCE = readFileSync(new URL("../../src/jev_ultrafast/resolve_target.js", import.meta.url), "utf8");
@@ -363,4 +364,398 @@ test("settle: the script observes the document and echoes an empty visibilitySta
   timers.fire(quietId);
   await flush();
   assert.equal(settled.result.visibility, "", "visibility is whatever document reports, not a default");
+});
+
+// --------------------------------------------------------------- after_input.js -------------------------------------
+// The wait-for-the-page-to-react step. A click settles on its own clock: it observes the DOM, restarts a 400ms quiet
+// timer on every text change, arms that timer at 1000ms even if the page never changed, and caps the whole wait at
+// 6000ms. A fill instead watches two animation frames (and, for a combobox, a visible option) with a 50ms/200ms cap.
+
+const AFTER_INPUT_SOURCE = readFileSync(new URL("../../src/jev_ultrafast/after_input.js", import.meta.url), "utf8");
+
+const BUILD_AFTER_INPUT = new Function(
+  "window",
+  "document",
+  "MutationObserver",
+  "setTimeout",
+  "clearTimeout",
+  "requestAnimationFrame",
+  "innerHeight",
+  "return (" + AFTER_INPUT_SOURCE + ");",
+);
+
+/** An injectable requestAnimationFrame: nothing runs by itself, so the test drives each frame explicitly. */
+function frameQueue() {
+  const queue = [];
+  return {
+    pending: () => queue.length,
+    requestAnimationFrame: (fn) => queue.push(fn),
+    frame: () => queue.shift()?.(),
+  };
+}
+
+/** Build the after_input script over fakes and return a handle to observe whether (and how often) it resolves. */
+function startAfterInput(action, { win, doc, observerFake, timers, frames }) {
+  const settled = { done: false, resolutions: 0, value: "unset" };
+  const promise = BUILD_AFTER_INPUT(
+    win,
+    doc,
+    observerFake,
+    timers.setTimeout,
+    timers.clearTimeout,
+    frames.requestAnimationFrame,
+    HEIGHT,
+  )(action);
+  promise.then((value) => {
+    settled.done = true;
+    settled.resolutions += 1;
+    settled.value = value;
+  });
+  return settled;
+}
+
+test("after_input: a click resolves once the page's text goes quiet", async () => {
+  const timers = timer();
+  const { FakeMutationObserver, record } = observer();
+  const doc = { body: { innerText: "ready" } };
+  const frames = frameQueue();
+  const settled = startAfterInput(
+    { kind: "click", node: 7 },
+    { win: { __jevFast: { nodes: new Map() } }, doc, observerFake: FakeMutationObserver, timers, frames },
+  );
+
+  assert.deepEqual(timers.delays(), [6000, 1000], "the 6s cap is scheduled before the 1s kickstart");
+  assert.deepEqual(record.observed, {
+    target: doc,
+    options: { subtree: true, childList: true, characterData: true, attributes: true },
+  });
+  await flush();
+  assert.equal(settled.done, false, "nothing resolves before the page reacts");
+
+  const [capId] = timers.ids();
+  doc.body.innerText = "ready now";
+  record.callback();
+  const quietId = timers.ids().at(-1);
+  assert.deepEqual(timers.delays().at(-1), 400, "a text change arms the 400ms quiet timer");
+  timers.fire(quietId);
+  await flush();
+  assert.equal(settled.done, true);
+  assert.equal(settled.resolutions, 1);
+  assert.equal(settled.value, undefined, "the wait resolves with no value");
+  assert.equal(record.disconnects, 1);
+
+  timers.fire(capId); // the 6000ms cap is still armed; firing it after done() must be a no-op
+  await flush();
+  assert.equal(settled.resolutions, 1, "the first resolution stands");
+  assert.equal(record.disconnects, 1, "finish() ran its body once");
+});
+
+test("after_input: a click that never goes quiet resolves on the 6000ms cap", async () => {
+  const timers = timer();
+  const { FakeMutationObserver, record } = observer();
+  const doc = { body: { innerText: "a" } };
+  const frames = frameQueue();
+  const settled = startAfterInput(
+    { kind: "click", node: 7 },
+    { win: { __jevFast: { nodes: new Map() } }, doc, observerFake: FakeMutationObserver, timers, frames },
+  );
+
+  const [capId] = timers.ids();
+  assert.deepEqual(timers.delays()[0], 6000);
+  timers.fire(capId);
+  await flush();
+  assert.equal(settled.done, true);
+  assert.equal(settled.resolutions, 1);
+  assert.equal(record.disconnects, 1, "the cap disconnects the observer");
+
+  doc.body.innerText = "b";
+  record.callback(); // a change after the cap still arms, but the timer it arms must not resolve again
+  timers.fire(timers.ids().at(-1));
+  await flush();
+  assert.equal(settled.resolutions, 1);
+  assert.equal(record.disconnects, 1, "the cap's finish does not run a second time");
+});
+
+test("after_input: a click whose page keeps changing does not resolve early", async () => {
+  const timers = timer();
+  const { FakeMutationObserver, record } = observer();
+  const doc = { body: { innerText: "start" } };
+  const frames = frameQueue();
+  const settled = startAfterInput(
+    { kind: "click", node: 7 },
+    { win: { __jevFast: { nodes: new Map() } }, doc, observerFake: FakeMutationObserver, timers, frames },
+  );
+
+  const [capId, kickId] = timers.ids();
+  const quietIds = [];
+  for (const text of ["one", "two", "three"]) {
+    doc.body.innerText = text;
+    record.callback();
+    quietIds.push(timers.ids().at(-1));
+  }
+  await flush();
+  assert.equal(settled.done, false, "every change restarted the quiet period");
+  assert.equal(new Set(quietIds).size, 3, "each change armed a fresh quiet timer");
+  assert.equal(timers.ids().length, 3, "cap, kickstart and exactly one quiet timer are pending");
+  assert.ok(timers.ids().includes(capId));
+
+  timers.fire(kickId); // the page already changed, so the kickstart must not arm a second quiet timer
+  assert.deepEqual(timers.ids(), [capId, quietIds.at(-1)], "started is already true: the kickstart is inert");
+  assert.equal(settled.done, false);
+
+  timers.fire(quietIds.at(-1));
+  await flush();
+  assert.equal(settled.done, true);
+  assert.equal(settled.resolutions, 1);
+});
+
+test("after_input: a click on a page that never reacts arms its quiet timer at 1000ms", async () => {
+  const timers = timer();
+  const { FakeMutationObserver } = observer();
+  const doc = { body: { innerText: "static" } };
+  const frames = frameQueue();
+  const settled = startAfterInput(
+    { kind: "click", node: 7 },
+    { win: { __jevFast: { nodes: new Map() } }, doc, observerFake: FakeMutationObserver, timers, frames },
+  );
+
+  const [, kickId] = timers.ids();
+  assert.equal(settled.done, false);
+  timers.fire(kickId);
+  const quietId = timers.ids().at(-1);
+  assert.notEqual(quietId, kickId);
+  assert.deepEqual(timers.delays().sort((a, b) => a - b), [400, 6000], "the kickstart armed the 400ms quiet timer");
+  await flush();
+  assert.equal(settled.done, false, "arming alone does not resolve");
+
+  timers.fire(quietId);
+  await flush();
+  assert.equal(settled.done, true);
+  assert.equal(settled.resolutions, 1);
+});
+
+test("after_input: a plain fill resolves after two animation frames and never observes the DOM", async () => {
+  const timers = timer();
+  const { FakeMutationObserver, record } = observer();
+  const doc = { body: { innerText: "" }, querySelectorAll: () => [] };
+  const frames = frameQueue();
+  const settled = startAfterInput(
+    { kind: "fill", node: 7 },
+    { win: { __jevFast: { nodes: new Map() } }, doc, observerFake: FakeMutationObserver, timers, frames },
+  );
+
+  assert.deepEqual(timers.delays(), [50], "a plain fill caps at 50ms");
+  assert.equal(frames.pending(), 1, "one animation frame is requested");
+  assert.equal(record.observed, null, "a fill never observes the DOM");
+
+  frames.frame();
+  await flush();
+  assert.equal(settled.done, false, "one frame is not enough");
+  assert.equal(frames.pending(), 1, "a second frame is requested");
+
+  frames.frame();
+  await flush();
+  assert.equal(settled.done, true);
+  assert.equal(settled.resolutions, 1);
+  assert.equal(record.disconnects, 1, "finish() still disconnects the observer it never used");
+});
+
+test("after_input: an autocomplete fill resolves once two frames show a visible option", async () => {
+  const timers = timer();
+  const { FakeMutationObserver } = observer();
+  const option = {
+    getBoundingClientRect: () => ({ width: 10, height: 10, top: 0, bottom: 5 }),
+    checkVisibility: () => true,
+  };
+  const list = { querySelectorAll: () => [option] };
+  const field = {
+    getAttribute: (name) => (name === "role" ? "combobox" : name === "aria-controls" ? "opts" : null),
+  };
+  const doc = { body: { innerText: "" }, getElementById: (id) => (id === "opts" ? list : null) };
+  const frames = frameQueue();
+  const settled = startAfterInput(
+    { kind: "fill", node: 7 },
+    { win: { __jevFast: { nodes: new Map([[7, field]]) } }, doc, observerFake: FakeMutationObserver, timers, frames },
+  );
+
+  assert.deepEqual(timers.delays(), [200], "an autocomplete fill caps at 200ms");
+  frames.frame();
+  frames.frame();
+  await flush();
+  assert.equal(settled.done, true, "two frames with a visible option resolve");
+  assert.equal(settled.resolutions, 1);
+});
+
+test("after_input: an autocomplete fill whose option is invisible waits for the cap", async () => {
+  const timers = timer();
+  const { FakeMutationObserver } = observer();
+  const option = {
+    getBoundingClientRect: () => ({ width: 10, height: 10, top: 0, bottom: 5 }),
+    checkVisibility: () => false,
+  };
+  const list = { querySelectorAll: () => [option] };
+  const field = {
+    getAttribute: (name) => (name === "role" ? "combobox" : name === "aria-controls" ? "opts" : null),
+  };
+  const doc = { body: { innerText: "" }, getElementById: (id) => (id === "opts" ? list : null) };
+  const frames = frameQueue();
+  const settled = startAfterInput(
+    { kind: "fill", node: 7 },
+    { win: { __jevFast: { nodes: new Map([[7, field]]) } }, doc, observerFake: FakeMutationObserver, timers, frames },
+  );
+
+  const [capId] = timers.ids();
+  frames.frame();
+  frames.frame();
+  await flush();
+  assert.equal(settled.done, false, "an invisible option keeps the frames coming");
+  assert.equal(frames.pending(), 1);
+
+  timers.fire(capId);
+  await flush();
+  assert.equal(settled.done, true);
+  assert.equal(settled.resolutions, 1);
+});
+
+// ------------------------------------------------------------- traderie/settled_page.js -----------------------------
+// The settled-page reader whose result feeds verification.read_settled_page: it must hand back url/title/text plus a
+// settled flag, or the reader treats the answer as malformed. It resolves quiet when the visible text stops changing
+// and, failing that, when its own cap fires with settled:false.
+
+const SETTLED_PAGE_SOURCE = readFileSync(
+  new URL("../../src/jev_ultrafast/traderie/settled_page.js", import.meta.url),
+  "utf8",
+);
+
+const BUILD_SETTLED_PAGE = new Function(
+  "location",
+  "document",
+  "MutationObserver",
+  "setTimeout",
+  "clearTimeout",
+  "return (" + SETTLED_PAGE_SOURCE + ");",
+);
+
+/** Build the settled_page script over fakes and return a handle to observe its result. */
+function startSettledPage({ location, doc, observerFake, timers }, quietMs = 500, timeoutMs = 5000) {
+  const settled = { result: "unset", done: false, resolutions: 0 };
+  const promise = BUILD_SETTLED_PAGE(location, doc, observerFake, timers.setTimeout, timers.clearTimeout)(
+    quietMs,
+    timeoutMs,
+  );
+  promise.then((result) => {
+    settled.result = result;
+    settled.done = true;
+    settled.resolutions += 1;
+  });
+  return settled;
+}
+
+test("settled page: a text that settles reports url, title, text and settled:true", async () => {
+  const timers = timer();
+  const { FakeMutationObserver, record } = observer();
+  const doc = { title: "Product", body: { innerText: "hello" }, documentElement: {}, visibilityState: "visible" };
+  const settled = startSettledPage({
+    location: { href: "https://traderie/item" },
+    doc,
+    observerFake: FakeMutationObserver,
+    timers,
+  });
+
+  assert.deepEqual(timers.delays(), [5000, 500], "the cap takes timeoutMs and the quiet timer takes quietMs");
+  assert.deepEqual(record.observed, {
+    target: doc.body,
+    options: { childList: true, subtree: true, characterData: true },
+  });
+  const [, quietId] = timers.ids();
+  timers.fire(quietId);
+  await flush();
+  assert.deepEqual(settled.result, {
+    url: "https://traderie/item",
+    title: "Product",
+    text: "hello",
+    settled: true,
+  });
+  assert.equal(record.disconnects, 1);
+});
+
+test("settled page: a text that never settles is capped with settled:false and the text it last saw", async () => {
+  const timers = timer();
+  const { FakeMutationObserver, record } = observer();
+  const doc = { title: "Chatty", body: { innerText: "a" }, documentElement: {} };
+  const settled = startSettledPage({
+    location: { href: "https://traderie/chatty" },
+    doc,
+    observerFake: FakeMutationObserver,
+    timers,
+  });
+
+  const [capId] = timers.ids();
+  for (const text of ["b", "c", "d"]) {
+    doc.body.innerText = text;
+    record.callback();
+  }
+  await flush();
+  assert.equal(settled.done, false, "each change re-armed the quiet timer, so nothing resolved yet");
+
+  timers.fire(capId);
+  await flush();
+  assert.deepEqual(settled.result, {
+    url: "https://traderie/chatty",
+    title: "Chatty",
+    text: "d",
+    settled: false,
+  });
+  assert.equal(record.disconnects, 1);
+});
+
+test("settled page: with no document.body it observes documentElement and reports empty text", async () => {
+  const timers = timer();
+  const { FakeMutationObserver, record } = observer();
+  const doc = { title: "Bare", documentElement: {}, body: undefined };
+  const settled = startSettledPage({
+    location: { href: "https://traderie/bare" },
+    doc,
+    observerFake: FakeMutationObserver,
+    timers,
+  });
+
+  assert.equal(record.observed.target, doc.documentElement);
+  const [, quietId] = timers.ids();
+  timers.fire(quietId);
+  await flush();
+  assert.deepEqual(settled.result, {
+    url: "https://traderie/bare",
+    title: "Bare",
+    text: "",
+    settled: true,
+  });
+});
+
+test("settled page: an observe failure is tolerated and the wait still resolves", async () => {
+  const timers = timer();
+  class ThrowingObserver {
+    constructor(callback) {
+      this.callback = callback;
+    }
+    observe() {
+      throw new Error("detached document");
+    }
+    disconnect() {
+      this.disconnected = true;
+    }
+  }
+  const doc = { title: "X", body: { innerText: "t" }, documentElement: {} };
+  const settled = startSettledPage({
+    location: { href: "u" },
+    doc,
+    observerFake: ThrowingObserver,
+    timers,
+  });
+
+  const [, quietId] = timers.ids();
+  timers.fire(quietId);
+  await flush();
+  assert.equal(settled.done, true);
+  assert.deepEqual(settled.result, { url: "u", title: "X", text: "t", settled: true });
 });

@@ -310,6 +310,85 @@ def test_wsgi_rejects_unusable_content_length_and_hostile_json_with_400(monkeypa
     assert call_wsgi("POST", "/api/run/start", b"[" * 100000, store)[0].startswith("400")
 
 
+class FakeHeaders:
+    """`Request.header` is documented case-insensitive, as a BaseHTTPRequestHandler's message object is."""
+
+    def __init__(self, values):
+        self.values = values
+
+    def get(self, name, default=None):
+        for key, value in self.values.items():
+            if key.lower() == name.lower():
+                return value
+        return default
+
+
+class FakeHandler:
+    """The slice of BaseHTTPRequestHandler that `http.serve` touches; it records exactly what the transport wrote."""
+
+    def __init__(self, method, path, body=b"", length=None, address="1.2.3.4"):
+        import io
+
+        self.command = method
+        self.path = path
+        self.rfile = io.BytesIO(body)
+        self.wfile = io.BytesIO()
+        self.client_address = (address, 12345)
+        self.headers = FakeHeaders({"Content-Length": str(len(body)) if length is None else length})
+        self.status = None
+        self.sent = []
+
+    def send_response(self, status):
+        self.status = status
+
+    def send_header(self, name, value):
+        self.sent.append((name, value))
+
+    def end_headers(self):
+        pass
+
+
+def serve_once(method, path, body=b"", length=None, store=None):
+    from jevsvc.http import serve
+
+    handler = FakeHandler(method, path, body, length)
+    routes = {"/api/run/start": app.run_start, "/api/choose": app.choose_route}
+    serve(handler, routes, store)
+    return handler.status, dict(handler.sent), handler.wfile.getvalue()
+
+
+def test_the_dev_server_refuses_a_body_over_the_limit_with_the_exact_413(monkeypatch):
+    monkeypatch.setenv("RUN_TOKEN_SECRET", "s" * 40)
+    over = str(backend_http.MAX_BODY + 1)
+    status, headers, data = serve_once("POST", "/api/run/start", length=over, store=MemoryStore())
+    assert status == 413
+    assert json.loads(data) == {"error": "請求太大", "code": "too_large"}
+    assert headers["Content-Length"] == str(len(data))
+
+
+def test_a_request_is_refused_with_500_not_configured_when_the_secret_is_missing_or_short(monkeypatch, capsys):
+    for secret in (None, "s" * 31):  # None: absent; 31 bytes: present but under the 32-byte floor
+        if secret is None:
+            monkeypatch.delenv("RUN_TOKEN_SECRET", raising=False)
+        else:
+            monkeypatch.setenv("RUN_TOKEN_SECRET", secret)
+        status, _headers, data = serve_once("POST", "/api/run/start", body=b"{}", store=MemoryStore())
+        assert status == 500
+        assert json.loads(data) == {"error": "伺服器設定不完整", "code": "not_configured"}
+    assert capsys.readouterr().out.count("missing or short env: RUN_TOKEN_SECRET") == 2
+
+
+def test_a_404_and_a_405_carry_their_exact_payloads():
+    store = MemoryStore()
+    status, headers, data = call_wsgi("GET", "/api/choose", store=store)
+    assert status == "405 Method Not Allowed"
+    assert json.loads(data) == {"error": "只接受 POST", "code": "method_not_allowed"}
+    assert headers["Allow"] == "POST, OPTIONS"
+    status, _headers, data = call_wsgi("POST", "/api/nope", store=store)
+    assert status == "404 Not Found"
+    assert json.loads(data) == {"error": "找不到", "code": "not_found"}
+
+
 def client_key(headers, remote="203.0.113.9"):
     """Who the throttle counts: `Client_key` reads the address Vercel saw, else the proxy headers, else the socket."""
     lower = {name.lower(): value for name, value in headers.items()}
