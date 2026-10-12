@@ -10,6 +10,13 @@ from jev_ultrafast.traderie.site import TRADERIE_D2R_URL, TRADING_MARKERS
 
 SIGN_IN_PROMPT = "Please sign in to view offers"
 
+# The trade vocabulary: a finished trade's block starts at TRADE_START, and a view without blocks shows the trade as
+# one of TRADE_DONE_MARKERS. The trade parsers here and the controller's line-counting cross-check read it from this
+# one place; TRADE_MARKERS is every line that marks a trade (the probe's vocabulary).
+TRADE_START = "They Give"
+TRADE_DONE_MARKERS = ("Sold For", "Traded For", "Closed For")
+TRADE_MARKERS = (TRADE_START, *TRADE_DONE_MARKERS)
+
 LISTING_NOISE_LINES = {
     "join akrew pro for an ad free experience!",
     "pro",
@@ -401,7 +408,7 @@ def _trade_block(lines: list[str], start: int) -> tuple[TradeRecord | None, int]
     received: list[str] = []
     trade_time = ""
     j = start + 1
-    while j < len(lines) and lines[j].lower() not in ("they give",):
+    while j < len(lines) and lines[j].lower() != TRADE_START.lower():
         line = lines[j]
         low = line.lower()
         if low == "i give":
@@ -441,7 +448,7 @@ def _marker_trades(lines: list[str]) -> list[TradeRecord]:
     """Fallback for a view without "They Give" blocks: one record per "Sold For"/"Traded For"/"Closed For" line."""
     trades: list[TradeRecord] = []
     for i, line in enumerate(lines):
-        if any(marker.lower() == line.lower() for marker in ("Sold For", "Traded For", "Closed For")):
+        if any(marker.lower() == line.lower() for marker in TRADE_DONE_MARKERS):
             price = lines[i + 1] if i + 1 < len(lines) else ""
             trade_time = lines[i + 2] if i + 2 < len(lines) else ""
             buyer_or_seller = lines[i - 1] if i > 0 else "Unknown"
@@ -458,7 +465,7 @@ def _they_give_trades(lines: list[str]) -> list[TradeRecord]:
     trades: list[TradeRecord] = []
     i = 0
     while i < len(lines):
-        if lines[i].lower() == "they give":
+        if lines[i].lower() == TRADE_START.lower():
             record, i = _trade_block(lines, i)
             if record:
                 trades.append(record)

@@ -10,8 +10,6 @@
  */
 :root {
   --accent: #2563eb;
-  /* Link and label text in the accent colour: the same blue on a light theme, a lighter one on a dark theme. */
-  --accent-ink: var(--accent);
   /* Three strengths of an accent-tinted surface, from the quietest to the most prominent (a filter line, a
    * drop area, the reading panel). */
   --accent-wash: rgba(37, 99, 235, 0.1);
@@ -37,6 +35,5 @@
   :root {
     --ok: #4ade80;
     --bad: #f87171;
-    --accent-ink: #93c5fd;
   }
 }

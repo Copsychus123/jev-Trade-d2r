@@ -19,7 +19,7 @@ from typing import Any
 
 from jev_ultrafast import fs
 from jev_ultrafast.errors import StalePage
-from jev_ultrafast.traderie.parsing import parse_recent_trades, parse_trading_txt
+from jev_ultrafast.traderie.parsing import TRADE_START, parse_recent_trades, parse_trading_txt
 from jev_ultrafast.traderie.site import TRADING_MARKERS, detect_guard, product_root_url, product_section
 from jev_ultrafast.traderie.verification import page_matches_item, read_settled_page
 
@@ -87,7 +87,7 @@ def _parse_view(view: str, text: str, item_name: str) -> dict[str, Any]:
     return {
         "trading": False,
         "rows": parsed["trades"],
-        "markers": sum(1 for line in lines if line.lower() == "they give"),
+        "markers": sum(1 for line in lines if line.lower() == TRADE_START.lower()),
         "lines": lines,
         "empty_text": EMPTY_RECENT,
         "empty_reason": "目前沒有成交紀錄",

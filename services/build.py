@@ -30,7 +30,7 @@ def build(target: Path = BUILD) -> None:
     (target / "jevsvc" / "bases.json").write_text(json.dumps({"bases": names}, ensure_ascii=False), encoding="utf-8")
     package = target / "jev_ultrafast"
     (package / "traderie").mkdir(parents=True)
-    for name in ("config.py", "fs.py", "model.py", "questions.py"):
+    for name in ("config.py", "model.py", "questions.py"):
         shutil.copy2(PKG / name, package / name)
     shutil.copy2(PKG / "traderie" / "site.py", package / "traderie" / "site.py")
     # The real package __init__ imports agent/browser, which would pull browser_harness.

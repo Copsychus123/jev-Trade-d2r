@@ -3,6 +3,12 @@ import { TRADERIE_D2R_URL, TRADING_MARKERS } from "./site.js";
 
 const SIGN_IN_PROMPT = "Please sign in to view offers";
 
+// The trade vocabulary: a finished trade's block starts at TRADE_START, and a view without blocks shows the trade as
+// one of TRADE_DONE_MARKERS. The trade parsers here and the controller's line-counting cross-check read it from this
+// one place (mirrors parsing.py).
+export const TRADE_START = "They Give";
+const TRADE_DONE_MARKERS = ["Sold For", "Traded For", "Closed For"];
+
 const LISTING_NOISE_LINES = new Set([
   "join akrew pro for an ad free experience!",
   "pro",
@@ -397,7 +403,7 @@ function tradeBlock(lines, start) {
   const rawEnvLines = [];
   let tradeTime = "";
   let j = start + 1;
-  while (j < lines.length && lines[j].toLowerCase() !== "they give") {
+  while (j < lines.length && lines[j].toLowerCase() !== TRADE_START.toLowerCase()) {
     const line = lines[j];
     const low = line.toLowerCase();
     if (low === "i give") {
@@ -432,7 +438,7 @@ function tradeBlock(lines, start) {
 
 /** Fallback for a view without "They Give" blocks: one record per "Sold For"/"Traded For"/"Closed For" line. */
 function markerTrades(lines) {
-  const markers = ["sold for", "traded for", "closed for"];
+  const markers = TRADE_DONE_MARKERS.map((marker) => marker.toLowerCase());
   const trades = [];
   lines.forEach((line, idx) => {
     if (markers.includes(line.toLowerCase())) {
@@ -453,7 +459,7 @@ function collectTrades(lines) {
   const trades = [];
   let i = 0;
   while (i < lines.length) {
-    if (lines[i].toLowerCase() === "they give") {
+    if (lines[i].toLowerCase() === TRADE_START.toLowerCase()) {
       const { record, next } = tradeBlock(lines, i);
       if (record) trades.push(record);
       i = next;

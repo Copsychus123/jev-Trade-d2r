@@ -34,6 +34,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _cdp import Panel, open_tab  # noqa: E402
 
 from jev_ultrafast.chrome import CHROME_PORT, chrome_mode, close_chrome, ensure_chrome  # noqa: E402
+from jev_ultrafast.traderie.parsing import SIGN_IN_PROMPT, TRADE_MARKERS  # noqa: E402
+from jev_ultrafast.traderie.site import TRADING_MARKERS as LISTING_MARKERS  # noqa: E402
 from login import LOGGED_OUT_JS  # noqa: E402
 
 HOME = "https://www.traderie.com/diablo2resurrected"
@@ -49,9 +51,6 @@ LINKS_JS = (
     "({href: a.href, text: (a.innerText || '').trim()})))"
 )
 RECENT_LINK = re.compile(r"recent|成交|sold|trade history", re.I)
-TRADE_MARKERS = ("They Give", "Sold For", "Traded For", "Closed For")
-LISTING_MARKERS = ("Trading For", "Make an Offer")
-SIGN_IN_PROMPT = "Please sign in to view offers"
 
 
 class Tab(Panel):
