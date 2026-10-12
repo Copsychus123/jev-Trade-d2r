@@ -372,8 +372,8 @@ export function initOcrPanel({ tables, onPick, onText = () => {}, onImage, isBus
   /** 辨識: make sure the models are here, then read the picture (or the boxed region) shown right now. */
   async function readCurrentPicture() {
     if (!image || isBusy()) return;
-    const mine = pictureVersion;
-    const isCurrent = () => mine === pictureVersion; // false once the picture was replaced or closed
+    const versionAtStart = pictureVersion;
+    const isCurrent = () => versionAtStart === pictureVersion; // false once the picture was replaced or closed
     const blob = image;
     const area = region;
     $("ocr-go").disabled = true;
