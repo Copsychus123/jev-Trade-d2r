@@ -1,6 +1,6 @@
 // A test that imports a shipped extension module meets specifiers that only exist in the built package: build.py
 // copies src/jev_ultrafast/static/csv.js into dist as csv.js, writes dist/config.js, and bundles the OCR vendor file.
-// Four test files install the same resolve hook for that, so it lives here once.
+// Every test file that imports such a module installs the same resolve hook for that, so it lives here once.
 
 import { register } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";

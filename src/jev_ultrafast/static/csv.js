@@ -3,9 +3,14 @@
 // Spreadsheet programs run cells that start with one of these as a formula; page text is untrusted.
 const FORMULA_START = /^[=+\-@\t\r]/;
 
+/** Neutralise a spreadsheet formula: a cell starting with = + - @, a tab or a CR gets a leading apostrophe that forces
+ * text. */
+export function formulaSafe(text) {
+  return FORMULA_START.test(text) ? "'" + text : text;
+}
+
 export function csvCell(value) {
-  let text = value === null || value === undefined ? "" : String(value);
-  if (FORMULA_START.test(text)) text = "'" + text;
+  const text = formulaSafe(value === null || value === undefined ? "" : String(value));
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 

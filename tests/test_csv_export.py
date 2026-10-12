@@ -31,6 +31,13 @@ def test_cells_that_a_spreadsheet_would_run_as_formulas_get_a_leading_apostrophe
     assert cells == ["'=SUM(1)", "'+1", "'-1", "'@x", "plain", "1 X Mal Rune"]
 
 
+def test_a_leading_tab_or_carriage_return_is_neutralised_the_same_way():
+    # Excel reads a leading tab or CR as the start of a formula too, so the rule covers all six; a value holding a CR
+    # then also needs the RFC 4180 quoting, apostrophe included.
+    cells = run_node('[m.csvCell("\\tx"), m.csvCell("\\r1"), m.formulaSafe("\\tx")]')
+    assert cells == ["'\tx", "\"'\r1\"", "'\tx"]
+
+
 def test_no_rows_still_gives_the_header_and_the_file_name_drops_unsafe_characters():
     assert run_node('m.toCsv(["a", "b"], [])') == "\ufeffa,b\r\n"
     assert run_node('m.csvFileName("Harlequin Crest", "目前掛單")') == "traderie-Harlequin Crest-目前掛單.csv"

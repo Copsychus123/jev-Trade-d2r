@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { toTsv, tsvCell } from "../src/tsv.js";
+import { installStubResolver } from "./support/stubs.mjs";
+
+// tsv.js imports "./csv.js", which ships only into extension/dist (extension/build.py copies it from
+// src/jev_ultrafast/static/csv.js); the hook points that specifier at the real source file.
+installStubResolver();
+
+const { toTsv, tsvCell } = await import("../src/tsv.js");
 
 test("a cell can never split into extra columns or rows", () => {
   assert.equal(tsvCell("a\tb\nc"), "a b c");
