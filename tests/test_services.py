@@ -581,3 +581,105 @@ def test_a_store_that_cannot_settle_a_failed_step_still_reports_the_failure(stor
     status, reply = app.choose_step(body, broken, SECRET, NOW, jev_is_down)
     assert (status, reply["code"]) == (502, "model_unavailable")
     assert "failed step not settled" in capsys.readouterr().out
+
+
+# --- settling one step: what a paying player is actually charged ---
+
+
+def test_a_failed_step_gives_back_exactly_one_of_the_two_reserved_calls(store):
+    """The attempt was spent, so the run keeps one call and returns the other: `_after_failure` does one `DECRBY`."""
+    run_key = "run:r1"
+    store.run("SET", run_key, "2")
+    app._after_failure(store, {"rid": "r1", "inv": "a" * 64, "item": "Harlequin Crest"}, run_key)
+    assert store.run("GET", run_key) == "1"
+
+
+def test_a_failed_step_refunds_the_start_use_once_when_the_run_never_got_an_answer(store, code):
+    """Jev being down is not the person's fault: the invitation's `used` goes back down by one, and only once."""
+    digest = invites.code_hash(code)
+    record = invites.record_key(digest)
+    store.run("HSET", record, "used", "5")
+    run_key = "run:r1"
+    store.run("SET", run_key, "2")
+    claims = {"rid": "r1", "inv": digest, "item": "Harlequin Crest"}
+
+    app._after_failure(store, claims, run_key)
+    assert store.run("HGET", record, "used") == "4"
+    assert store.run("GET", "refund:r1") == "1"
+
+    app._after_failure(store, claims, run_key)  # the marker must stop a second refund
+    assert store.run("HGET", record, "used") == "4"
+
+
+def test_a_failed_step_never_refunds_when_a_condition_does_not_hold(store, code):
+    """The refund is deliberately narrow: an answered run, an already-refunded one, a token without a record digest,
+    and a record with no `limit` all leave the counter untouched."""
+    digest = invites.code_hash(code)
+    record = invites.record_key(digest)
+    store.run("HSET", record, "used", "5")
+
+    def fail(rid, inv, *, answered=False, refunded=False):
+        run_key = f"run:{rid}"
+        store.run("SET", run_key, "2")
+        if answered:
+            store.run("SET", f"ok:{rid}", "1")
+        if refunded:
+            store.run("SET", f"refund:{rid}", "1")
+        app._after_failure(store, {"rid": rid, "inv": inv, "item": "Harlequin Crest"}, run_key)
+
+    fail("answered", digest, answered=True)
+    assert store.run("HGET", record, "used") == "5"
+
+    fail("refunded", digest, refunded=True)
+    assert store.run("HGET", record, "used") == "5"
+
+    short = "not-a-64-character-digest"
+    store.run("HSET", invites.record_key(short), "limit", "5", "used", "5")  # a real record: only the length blocks it
+    fail("shorthash", short)
+    assert store.run("HGET", invites.record_key(short), "used") == "5"
+
+    bare = "b" * 64
+    store.run("HSET", invites.record_key(bare), "name", "x")  # a record with no `limit`: nothing was ever granted
+    fail("nolimit", bare)
+    assert store.run("HGET", invites.record_key(bare), "used") is None
+
+
+def test_a_store_that_fails_mid_settlement_lets_a_failed_step_still_report_normally(store, capsys):
+    """`_after_failure` is best-effort: a store error is printed and swallowed, never raised, so the 502 the caller
+    already prepared is what the player sees."""
+    class NoSettle(MemoryStore):
+        def pipeline(self, commands, atomic=False):
+            if any(c[0] == "DECRBY" and str(c[1]).startswith("run:") for c in commands):
+                raise StoreError("kv down")
+            return super().pipeline(commands, atomic=atomic)
+
+    broken = NoSettle()
+    broken.run("SET", "run:r1", "2")
+    app._after_failure(broken, {"rid": "r1", "inv": "a" * 64, "item": "Harlequin Crest"}, "run:r1")
+    assert "failed step not settled" in capsys.readouterr().out
+
+
+def test_a_successful_step_hands_back_its_spare_call_and_records_the_usage(store, code):
+    """The answer costs what it used: the unused reservation goes back and the invitation's totals gain the calls and
+    input tokens of the step; an older token with no record digest is skipped, not crashed on."""
+    digest = invites.code_hash(code)
+    record = invites.record_key(digest)
+
+    store.run("SET", "run:a", "2")
+    app._after_success(store, {"rid": "a", "inv": digest}, "run:a", spare=1, calls=1, usage={"input_tokens": 123})
+    assert store.run("GET", "run:a") == "1"
+    assert store.run("GET", "ok:a") == "1"
+    assert store.run("HGET", record, "calls") == "1"
+    assert store.run("HGET", record, "input_tokens") == "123"
+
+    store.run("SET", "run:b", "1")
+    app._after_success(store, {"rid": "b", "inv": digest}, "run:b", spare=0, calls=1, usage={})
+    assert store.run("GET", "run:b") == "1"  # a step that used its full reservation hands nothing back
+    assert store.run("HGET", record, "calls") == "2"
+    assert store.run("HGET", record, "input_tokens") == "123"  # no tokens reported: nothing added
+
+    store.run("SET", "run:c", "2")
+    app._after_success(store, {"rid": "c", "inv": "old"}, "run:c", spare=1, calls=2, usage={"input_tokens": 7})
+    assert store.run("GET", "run:c") == "1"  # the reservation still settles even for an old token
+    # ...but its totals are skipped: neither the calls nor the tokens of that step are added.
+    assert (store.run("HGET", record, "calls"), store.run("HGET", record, "input_tokens")) == ("2", "123")

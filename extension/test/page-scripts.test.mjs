@@ -1,0 +1,366 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+
+// The extension injects two more page scripts whose real logic nothing else executes: resolve_target.js (which
+// decides where an action's click lands, or that the target is unusable) and settle.js (which waits for the page to
+// stop changing). Both are single arrow functions reading page globals only as bare names, so — exactly like
+// covered-overlay.test.mjs — rebuilding each with `new Function` and passing fakes keeps the page's globals (and
+// ours) out of this file.
+
+const RESOLVE_SOURCE = readFileSync(new URL("../../src/jev_ultrafast/resolve_target.js", import.meta.url), "utf8");
+const SETTLE_SOURCE = readFileSync(new URL("../../src/jev_ultrafast/settle.js", import.meta.url), "utf8");
+
+// ---------------------------------------------------------------- resolve_target.js ---------------------------------
+
+const BUILD_RESOLVE = new Function(
+  "window",
+  "document",
+  "innerWidth",
+  "innerHeight",
+  "Event",
+  "return (" + RESOLVE_SOURCE + ");",
+);
+
+const WIDTH = 1000;
+const HEIGHT = 800;
+
+/** The event the page script constructs and dispatches; records the type and bubbling it was made with. */
+class FakeEvent {
+  constructor(type, init) {
+    this.type = type;
+    this.bubbles = init?.bubbles;
+  }
+}
+
+/** A fake element exposing every method the page script probes, with sane defaults a caller can override. */
+function node({
+  rect = { x: 100, y: 100, width: 200, height: 100 }, // centre (200, 150), mid-viewport
+  connected = true,
+  disabled = false,
+  inert = false,
+  visible = true,
+  readOnly = false,
+  ariaReadonly = false,
+  tagName = "BUTTON",
+  options = [],
+  contains = [],
+} = {}) {
+  const el = {
+    isConnected: connected,
+    readOnly,
+    tagName,
+    options,
+    value: "initial",
+    events: [],
+    matches: (selector) => selector === ":disabled" && disabled,
+    closest: (selector) => (selector === '[aria-disabled="true"],[inert]' && inert ? {} : null),
+    checkVisibility: () => visible,
+    getAttribute: (name) => (name === "aria-readonly" && ariaReadonly ? "true" : null),
+    getBoundingClientRect: () => rect,
+    contains: (other) => other === el || contains.includes(other),
+    dispatchEvent: (event) => {
+      el.events.push(event);
+      return true;
+    },
+  };
+  return el;
+}
+
+/** Run the page script with `nodes` behind window.__jevFast and one elementFromPoint answer. */
+function resolve(nodes, hit) {
+  const fakeWindow = { __jevFast: { nodes } };
+  const fakeDocument = { elementFromPoint: () => hit };
+  return BUILD_RESOLVE(fakeWindow, fakeDocument, WIDTH, HEIGHT, FakeEvent);
+}
+
+/** Convenience: the given element under node id 7, hit-tested by itself unless `hit` is given. */
+function runNode(el, action, hit = el) {
+  return resolve(new Map([[7, el]]), hit)({ node: 7, ...action });
+}
+
+test("resolve: a node id the snapshot never recorded resolves to null", () => {
+  assert.equal(resolve(new Map(), undefined)({ node: 7, kind: "click" }), null);
+});
+
+test("resolve: a node that has left the document resolves to null", () => {
+  assert.equal(runNode(node({ connected: false }), { kind: "click" }), null);
+});
+
+test("resolve: a disabled node resolves to null", () => {
+  assert.equal(runNode(node({ disabled: true }), { kind: "click" }), null);
+});
+
+test("resolve: a node inside [inert] or [aria-disabled=true] resolves to null", () => {
+  assert.equal(runNode(node({ inert: true }), { kind: "click" }), null);
+});
+
+test("resolve: a node the page reports as not visible resolves to null", () => {
+  assert.equal(runNode(node({ visible: false }), { kind: "click" }), null);
+});
+
+test("resolve: filling a readonly field resolves to null (property or aria)", () => {
+  assert.equal(runNode(node({ readOnly: true }), { kind: "fill" }), null);
+  assert.equal(runNode(node({ ariaReadonly: true }), { kind: "fill" }), null);
+});
+
+test("resolve: a zero-area rect resolves to null", () => {
+  assert.equal(runNode(node({ rect: { x: 100, y: 100, width: 0, height: 50 } }), { kind: "click" }), null);
+  assert.equal(runNode(node({ rect: { x: 100, y: 100, width: 50, height: 0 } }), { kind: "click" }), null);
+});
+
+test("resolve: a centre off every viewport edge resolves to null", () => {
+  const edges = [
+    { x: -60, y: 100, width: 20, height: 20 }, // centre x = -50
+    { x: 100, y: -60, width: 20, height: 20 }, // centre y = -50
+    { x: 990, y: 100, width: 20, height: 20 }, // centre x = 1000 == innerWidth
+    { x: 100, y: 790, width: 20, height: 20 }, // centre y = 800 == innerHeight
+  ];
+  for (const rect of edges) assert.equal(runNode(node({ rect }), { kind: "click" }), null, JSON.stringify(rect));
+});
+
+test("resolve: a centre covered by another element resolves to null", () => {
+  const target = node();
+  const cover = node();
+  assert.equal(runNode(target, { kind: "click" }, cover), null);
+});
+
+test("resolve: a click returns the centre point", () => {
+  assert.deepEqual(runNode(node(), { kind: "click" }), { x: 200, y: 150 });
+});
+
+test("resolve: a fill into a writable field returns the centre point", () => {
+  assert.deepEqual(runNode(node(), { kind: "fill" }), { x: 200, y: 150 });
+});
+
+test("resolve: a select against a non-SELECT tag resolves to null", () => {
+  assert.equal(runNode(node({ tagName: "DIV" }), { kind: "select", value: "b" }), null);
+});
+
+test("resolve: a select with no option matching the value resolves to null", () => {
+  const options = [{ value: "a", disabled: false, closest: () => null }];
+  assert.equal(runNode(node({ tagName: "SELECT", options }), { kind: "select", value: "b" }), null);
+});
+
+test("resolve: a select whose only matching option is disabled resolves to null", () => {
+  const options = [{ value: "b", disabled: true, closest: () => null }];
+  assert.equal(runNode(node({ tagName: "SELECT", options }), { kind: "select", value: "b" }), null);
+});
+
+test("resolve: a select whose matching option sits in a disabled optgroup resolves to null", () => {
+  const options = [{ value: "b", disabled: false, closest: (selector) => (selector === "optgroup[disabled]" ? {} : null) }];
+  assert.equal(runNode(node({ tagName: "SELECT", options }), { kind: "select", value: "b" }), null);
+});
+
+test("resolve: a select sets the value and dispatches input then change, in that order", () => {
+  const options = [
+    { value: "a", disabled: false, closest: () => null },
+    { value: "b", disabled: false, closest: () => null },
+  ];
+  const el = node({ tagName: "SELECT", options });
+  assert.deepEqual(runNode(el, { kind: "select", value: "b" }), { x: 200, y: 150 });
+  assert.equal(el.value, "b");
+  assert.deepEqual(
+    el.events.map((event) => [event.type, event.bubbles]),
+    [["input", true], ["change", true]],
+  );
+});
+
+// --------------------------------------------------------------------- settle.js ------------------------------------
+
+const BUILD_SETTLE = new Function(
+  "document",
+  "MutationObserver",
+  "setTimeout",
+  "clearTimeout",
+  "performance",
+  "return (" + SETTLE_SOURCE + ");",
+);
+
+/** A MutationObserver whose callback and disconnect count we can inspect; observe() records its call and does nothing. */
+function observer() {
+  const record = { callback: null, observed: null, disconnects: 0 };
+  class FakeMutationObserver {
+    constructor(callback) {
+      record.callback = callback;
+    }
+    observe(target, options) {
+      record.observed = { target, options };
+    }
+    disconnect() {
+      record.disconnects += 1;
+    }
+  }
+  return { FakeMutationObserver, record };
+}
+
+/** An injectable timer: nothing fires by itself, so the test decides exactly when each callback runs. */
+function timer() {
+  let seq = 0;
+  const pending = new Map();
+  return {
+    pending,
+    // Insertion order mirrors the order the page script scheduled them: [quiet, cap].
+    ids: () => [...pending.keys()],
+    // The delay each pending timer was armed with, in the same order: the settle script must use quietMs for the
+    // quiet timer and timeoutMs for the cap, so a swapped delay has to be visible.
+    delays: () => [...pending.values()].map((slot) => slot.delay),
+    setTimeout: (fn, delay) => {
+      const id = (seq += 1);
+      pending.set(id, { fn, delay });
+      return id;
+    },
+    clearTimeout: (id) => pending.delete(id),
+    fire: (id) => {
+      const slot = pending.get(id);
+      pending.delete(id);
+      slot?.fn();
+    },
+  };
+}
+
+function clock(start = 0) {
+  let t = start;
+  return { now: () => t, advance: (by) => (t += by) };
+}
+
+/** Drain the microtask queue so a resolve() has definitely reached the `.then` we attached. */
+const flush = async () => {
+  for (let i = 0; i < 4; i += 1) await Promise.resolve();
+};
+
+/** Build the settle script over fakes and return a handle to observe its result. */
+function startSettle(quietMs, timeoutMs, minChars, { doc, observerFake, timers, clockFake }) {
+  const settled = { result: null, done: false };
+  const promise = BUILD_SETTLE(doc, observerFake, timers.setTimeout, timers.clearTimeout, { now: clockFake.now })(
+    quietMs,
+    timeoutMs,
+    minChars,
+  );
+  promise.then((result) => {
+    settled.result = result;
+    settled.done = true;
+  });
+  return settled;
+}
+
+test("settle: the cap resolves capped:true when the timeout fires before the page stops changing", async () => {
+  const timers = timer();
+  const clockFake = clock(0);
+  const { FakeMutationObserver, record } = observer();
+  const doc = { body: { innerText: "" }, visibilityState: "visible" };
+  const settled = startSettle(400, 15000, 100, { doc, observerFake: FakeMutationObserver, timers, clockFake });
+
+  await flush();
+  assert.equal(settled.done, false, "nothing resolves until a timer fires");
+  const [, capId] = timers.ids(); // [quiet, cap]
+  assert.deepEqual(timers.delays(), [400, 15000], "the quiet timer is armed with quietMs and the cap with timeoutMs");
+  clockFake.advance(15000);
+  timers.fire(capId);
+  await flush();
+  assert.equal(settled.done, true);
+  assert.equal(settled.result.capped, true);
+  assert.equal(settled.result.ms, 15000);
+  assert.equal(settled.result.visibility, "visible");
+  assert.equal(record.disconnects, 1);
+});
+
+test("settle: quiet for quietMs with enough text resolves capped:false and echoes visibility", async () => {
+  const timers = timer();
+  const clockFake = clock(0);
+  const { FakeMutationObserver } = observer();
+  const doc = { body: { innerText: "x".repeat(150) }, visibilityState: "hidden" };
+  const settled = startSettle(400, 15000, 100, { doc, observerFake: FakeMutationObserver, timers, clockFake });
+
+  const [quietId] = timers.ids();
+  clockFake.advance(700);
+  timers.fire(quietId);
+  await flush();
+  assert.equal(settled.done, true);
+  assert.equal(settled.result.capped, false);
+  assert.equal(settled.result.ms, 700);
+  assert.equal(settled.result.visibility, "hidden");
+});
+
+test("settle: a quiet timer that finds too little text re-arms instead of resolving", async () => {
+  const timers = timer();
+  const clockFake = clock(0);
+  const { FakeMutationObserver } = observer();
+  const doc = { body: { innerText: "short" }, visibilityState: "visible" };
+  const settled = startSettle(400, 15000, 100, { doc, observerFake: FakeMutationObserver, timers, clockFake });
+
+  const [quietId, capId] = timers.ids();
+  timers.fire(quietId);
+  await flush();
+  assert.equal(settled.done, false, "not enough text: the wait continues");
+
+  const afterIds = timers.ids();
+  assert.equal(afterIds.length, 2);
+  assert.ok(afterIds.includes(capId), "the cap is still armed");
+  const rearmed = afterIds.find((id) => id !== capId);
+  assert.ok(rearmed !== undefined && rearmed !== quietId, "a fresh quiet timer replaced the fired one");
+  assert.deepEqual(
+    [...timers.delays()].sort((a, b) => a - b),
+    [400, 15000],
+    "the re-armed quiet timer keeps quietMs and the cap keeps timeoutMs",
+  );
+
+  doc.body.innerText = "y".repeat(150);
+  clockFake.advance(400);
+  timers.fire(rearmed);
+  await flush();
+  assert.equal(settled.done, true);
+  assert.equal(settled.result.capped, false);
+});
+
+test("settle: a MutationObserver callback with unchanged text does not re-arm the quiet timer", async () => {
+  const timers = timer();
+  const clockFake = clock(0);
+  const { FakeMutationObserver, record } = observer();
+  const doc = { body: { innerText: "stable" }, visibilityState: "visible" };
+  startSettle(400, 15000, 100, { doc, observerFake: FakeMutationObserver, timers, clockFake });
+  const [quietId, capId] = timers.ids();
+
+  record.callback();
+  assert.deepEqual(timers.ids(), [quietId, capId], "no change: both timers left exactly as they were");
+
+  doc.body.innerText = "changed";
+  record.callback();
+  const afterIds = timers.ids();
+  assert.equal(afterIds.length, 2);
+  assert.ok(afterIds.includes(capId));
+  assert.ok(!afterIds.includes(quietId), "a change cleared the old quiet timer");
+});
+
+test("settle: the promise resolves once even when the cap and the quiet timer both fire", async () => {
+  const timers = timer();
+  const clockFake = clock(0);
+  const { FakeMutationObserver, record } = observer();
+  const doc = { body: { innerText: "z".repeat(150) }, visibilityState: "visible" };
+  const settled = startSettle(400, 15000, 100, { doc, observerFake: FakeMutationObserver, timers, clockFake });
+  const [quietId, capId] = timers.ids();
+
+  clockFake.advance(15000);
+  timers.fire(capId);
+  await flush();
+  assert.equal(settled.result.capped, true);
+
+  timers.fire(quietId); // the quiet timer was never cancelled by done(); firing it must be a no-op
+  await flush();
+  assert.equal(settled.result.capped, true, "the first resolution stands");
+  assert.equal(record.disconnects, 1, "done() ran its body once");
+});
+
+test("settle: the script observes the document and echoes an empty visibilityState", async () => {
+  const timers = timer();
+  const clockFake = clock(0);
+  const { FakeMutationObserver, record } = observer();
+  const doc = { body: { innerText: "v".repeat(150) }, visibilityState: "" };
+  const settled = startSettle(400, 15000, 100, { doc, observerFake: FakeMutationObserver, timers, clockFake });
+
+  assert.deepEqual(record.observed, { target: doc, options: { subtree: true, childList: true, characterData: true } });
+  const [quietId] = timers.ids();
+  timers.fire(quietId);
+  await flush();
+  assert.equal(settled.result.visibility, "", "visibility is whatever document reports, not a default");
+});
