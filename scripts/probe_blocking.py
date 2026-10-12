@@ -172,7 +172,10 @@ def pairs_of(rows: list[dict]) -> list[tuple[dict, dict]]:
     return list(zip(rows[0::2], rows[1::2]))
 
 
-def verdict(rows: list[dict]) -> tuple[str, str]:
+MIN_TRUSTWORTHY_PAIRS = 8  # below this a run's own verdict is a sample's luck, not a finding
+
+
+def _decide(rows: list[dict]) -> tuple[str, str]:
     """Whether the measured record supports "the settles wait on the page churn the blocked hosts cause"."""
     on = [row for row in rows if row["blocked"]]
     off = [row for row in rows if not row["blocked"]]
@@ -212,6 +215,19 @@ def verdict(rows: list[dict]) -> tuple[str, str]:
         "inconclusive",
         f"the pairs disagree: {len(shorter)} of {len(deltas)} settled faster blocked (median {round(paired)} ms)",
     )
+
+
+def verdict(rows: list[dict]) -> tuple[str, str]:
+    """`_decide`'s answer, with a loud note while the sample is too small to carry it: the first 5-pair run here
+    looked like 4 of 5 pairs settling 33% faster and was pure luck against a 12-pair run that found nothing."""
+    result, why = _decide(rows)
+    pairs = len(pairs_of(rows))
+    if pairs < MIN_TRUSTWORTHY_PAIRS:
+        why += (
+            f" - but only {pairs} pairs: that is a sample, not a finding, so re-run with"
+            f" --pairs {MIN_TRUSTWORTHY_PAIRS} or more before trusting it"
+        )
+    return result, why
 
 
 def print_report(rows: list[dict], url: str, verdict_line: tuple[str, str]) -> None:

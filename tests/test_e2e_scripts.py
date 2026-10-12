@@ -20,7 +20,16 @@ import pytest
 from jev_ultrafast.traderie.site import build_goal, phase_plan
 from jevsvc import invites
 from jevsvc.store import MemoryStore
-from scripts import demo_e2e, extension_batch, extension_e2e, ocr_e2e, probe_stats, scan_e2e, stub_backend
+from scripts import (
+    demo_e2e,
+    extension_batch,
+    extension_e2e,
+    ocr_e2e,
+    probe_blocking,
+    probe_stats,
+    scan_e2e,
+    stub_backend,
+)
 
 # --- extension_e2e.parse_sample ---------------------------------------------------------------------------
 
@@ -769,3 +778,49 @@ def test_the_same_names_with_and_without_the_parameter_are_not_a_filtered_page()
 
 def test_a_page_that_did_not_load_is_not_a_filtered_page():
     assert probe_stats.param_changed_the_list([], ["Amulet", "Archon Plate"]) is False
+
+
+# --- probe_blocking.verdict (whether a run's own numbers can be trusted) -----------------------------------
+
+def _ab_row(blocked, settle_ms, navigate_ms=300):
+    return {
+        "blocked": blocked,
+        "settle_capped": False,
+        "navigate_ms": navigate_ms,
+        "settle_ms": settle_ms,
+        "total_ms": navigate_ms + settle_ms,
+        "ad_blocked": 1 if blocked else 0,
+        "ad_served": 0 if blocked else 3,
+        "ad_last_ms": None if blocked else navigate_ms + 50,  # the premise: they landed during the settle
+    }
+
+
+def _ab_pairs(specs):
+    """Rows for alternating ON/OFF runs, one (blocked settle, unblocked settle) per pair."""
+    rows = []
+    for on_settle, off_settle in specs:
+        rows += [_ab_row(True, on_settle), _ab_row(False, off_settle)]
+    return rows
+
+
+def test_a_five_pair_run_cannot_be_read_as_a_verdict():
+    # The trap this pins: the first 5-pair run here looked like 4 of 5 pairs settling 33% faster, and a 12-pair run
+    # then found nothing at all. The verdict is allowed, but it must say out loud that the sample cannot carry it.
+    result, why = probe_blocking.verdict(_ab_pairs([(1600, 2000)] * 5))
+    assert result == "supported"
+    assert "only 5 pairs" in why
+    assert "--pairs 8" in why
+
+
+def test_enough_pairs_carry_the_verdict_without_the_note():
+    result, why = probe_blocking.verdict(_ab_pairs([(1600, 2000)] * 10))
+    assert result == "supported"
+    assert "only" not in why
+
+
+def test_the_real_twelve_pair_shape_is_inconclusive_and_needs_no_note():
+    # The deltas a real 12-pair run produced (OFF - ON, ms): scattered either side of zero.
+    deltas = [-66, 13, -6, -41, -13, -1, 71, -63, 65, -21, 81, -97]
+    result, why = probe_blocking.verdict(_ab_pairs([(1700, 1700 + d) for d in deltas]))
+    assert result == "inconclusive"
+    assert "only" not in why
