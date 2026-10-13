@@ -137,6 +137,32 @@ Measured and rejected, so future work does not repeat it: the recent-trades mark
 
 Measured and rejected, so future work does not repeat it: blocking ad/tracker hosts in the extension's own query tab (AGENTS.md blocks them only in the dedicated Chrome). `scripts/probe_blocking.py` toggles the dedicated Chrome's own block list on the same filtered affix address and compares strictly alternating ON/OFF pairs, checking first that the blocked-host scripts really did land inside the settle window (its premise). Four runs: the first was inconclusive because its toggling did not take effect in every ON run (fixed); the second paired median (215 ms) sat inside the run-to-run spread (±262 ms); a 5-pair run looked encouraging (4 of 5 pairs faster, paired median 888 ms, about 33% of the OFF settle, navigate 437 against 766 ms); and a **12-pair run found no effect at all** - settle median **1695 ms ON against 1699 ms OFF (4 ms)**, only 4 of 12 pairs faster, the per-pair deltas scattered from -97 to +81 ms (median -10 ms), navigate 375 against 359 ms, no settle cap on either side. So the settles on this path are Traderie's own churn, not the ad hosts': the premise held (the ad scripts did land during the settle) yet removing them changed nothing measurable, and a permission in the extension would buy nothing - the earlier 5-pair result was that sample's luck. The raw per-run records, with what each run loaded and when, are under the git-ignored `artifacts/blocking/`, the way this file's other measurements are kept. (The other item here, caching the Item Type list, was decided on 2026-10-13 and is implemented: see the stats timing bullet above.)
 
+## Settle window: measured and rejected at 150 ms (extension and Python)
+
+`traderie/controller.js` (and the Python twin) read each view through `readSettledPage(500, …)`: 500 ms is how long
+the view's text must hold still before it is read. A review asked whether that window is worth shortening, so it was
+measured on the shipped e2e path (`scripts/extension_e2e.py --stub-chooser --item <name>`, 0 Jev calls, so the
+measurement cost no quota) on three table-jump items, comparing the two read stages against the script's own
+independent check (the 掛單/成交 row counts, not the panel's status):
+
+| window | runs | read_trading | read_recent_trades | outcome |
+|---|---|---|---|---|
+| 500 ms (shipped) | 6 | 564–847 ms (median ≈ 630) | 522–820 ms (median ≈ 525) | 6 of 6 read 150/20 |
+| 150 ms | 10 | 233–753 ms | 165–213 ms | 7 of 10 read 150/20; **3 aborted** |
+
+The aborts are the same failure, and the script names it:
+
+    失敗：
+      - 載入更多 2 批，掛單只有 50 筆
+
+With the shorter window the trading read lands before the page's first Load More batch and its button are there, so
+the loading rule sees no button, ends the phase (its decisions stop after `Scroll` → `完成`, 2 steps against 5) and
+the panel shows 50 rows instead of 150. The e2e caught it because its check does not read the panel's own status.
+
+Not worth it: the two reads are ≈1.2 s of a ≈17 s run, and 150 ms removes ≈0.6 s of that (≈3.5 %), while making
+about one run in three end early. **The window stays 500 ms.** The per-run evidence is the git-ignored
+`artifacts/perf/run-20261013-*.json` (`timeline[].ms`, `history`, `decisions`) with the backend logs beside them.
+
 ## Fixed defects: stale retries, challenge detection, login, e2e evidence
 
 Three real defects were found and fixed in one session (2026-10); the rules in `AGENTS.md` keep them from coming back. The measurements are recorded here because `artifacts/` is git-ignored.
