@@ -160,10 +160,6 @@ export function initOcrPanel({ tables, onPick, onText = () => {}, onImage, isBus
     const zone = $("ocr-dropzone");
     let depth = 0; // dragenter/dragleave fire for every element crossed; only the empty stack shows the zone
     drop.addEventListener("dragover", (event) => event.preventDefault());
-    drop.addEventListener("drop", (event) => {
-      event.preventDefault();
-      if (event.dataTransfer.files.length) fromFiles(event.dataTransfer.files);
-    });
     drop.addEventListener("dragenter", (event) => {
       if ([...(event.dataTransfer?.types ?? [])].includes("Files")) {
         depth += 1;
@@ -174,9 +170,11 @@ export function initOcrPanel({ tables, onPick, onText = () => {}, onImage, isBus
       depth = Math.max(0, depth - 1);
       if (!depth) zone.hidden = true;
     });
-    drop.addEventListener("drop", () => {
-      depth = 0;
+    drop.addEventListener("drop", (event) => {
+      event.preventDefault();
+      depth = 0; // the drag ended: empty the stack and hide the zone again, whatever the files turn out to be
       zone.hidden = true;
+      if (event.dataTransfer.files.length) fromFiles(event.dataTransfer.files);
     });
   }
 

@@ -42,12 +42,12 @@ export async function startCapture(onFrame, onEnded = () => {}) {
 
   const pump = async () => {
     for (;;) {
-      const { done, value } = await reader.read();
-      if (done || !value) break;
+      const { done, value: frame } = await reader.read();
+      if (done || !frame) break;
       try {
-        if (!stopped) await onFrame(value);
+        if (!stopped) await onFrame(frame);
       } finally {
-        value.close(); // closed once by the callback and once here: closing a VideoFrame twice is a no-op
+        frame.close(); // closed once by the callback and once here: closing a VideoFrame twice is a no-op
       }
       if (stopped) break;
     }

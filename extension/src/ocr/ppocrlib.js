@@ -69,6 +69,13 @@ const pyRound = (x) => {
 };
 const trunc = (x) => (x < 0 ? Math.ceil(x) : Math.floor(x));
 
+// One 3-channel pixel copied unchanged from `si` in `src` to `di` in `out` (replicate, rot90 and rot180 all copy).
+const copy3 = (out, di, src, si) => {
+  out[di] = src[si];
+  out[di + 1] = src[si + 1];
+  out[di + 2] = src[si + 2];
+};
+
 // PIL np.array -> cv2.cvtColor(RGB2BGR): interleaved BGR bytes.
 export function imageDataToBgr(imageData) {
   const { data, width, height } = imageData;
@@ -170,9 +177,8 @@ function padCrop(crop, ic, ih, targetW) {
   const srcPlane = ih * resizedW;
   for (let ch = 0; ch < ic; ch++) {
     for (let y = 0; y < ih; y++) {
-      for (let x = 0; x < resizedW; x++) {
-        pad[ch * plane + y * targetW + x] = chw[ch * srcPlane + y * resizedW + x];
-      }
+      const from = ch * srcPlane + y * resizedW;
+      pad.set(chw.subarray(from, from + resizedW), ch * plane + y * targetW);
     }
   }
   return pad;
@@ -336,8 +342,8 @@ function floodComponent(bin, visited, w, h, want, seed, from, to, pts) {
   return touch;
 }
 
-// pid: component labels; returns {points: [[x,y],...]} lists in raster order; the ascending-index
-// scan already yields them ordered by `first`, so nothing re-sorts here (the caller orders the merged list).
+// One component per entry, as {first, pts, touch}: the ascending-index scan already yields them ordered by `first`,
+// so nothing re-sorts here (the caller orders the merged list).
 // `keep` is given only a component's `touch` flag, so a component the caller discards (the
 // border-touching background blob, which is the whole bitmap when the map has no text) is
 // flooded once to mark it and learn `touch`, and never allocates an [x, y] pair. The kept
@@ -451,13 +457,14 @@ export function dbPostprocess(prob, mapW, mapH, destW, destH) {
 }
 
 // TextDetector.sorted_boxes (y bands of 10 px, then x within a band)
+const Y_BAND = 10;
 export function sortedBoxes(boxes) {
   const order = boxes.map((_, i) => i).sort((a, b) => boxes[a][0][1] - boxes[b][0][1] || a - b);
   const ys = order.map((i) => boxes[i][0][1]);
   const lineIds = [];
   let cur = 0;
   for (let i = 0; i < order.length; i++) {
-    if (i > 0 && ys[i] - ys[i - 1] >= 10) cur++;
+    if (i > 0 && ys[i] - ys[i - 1] >= Y_BAND) cur++;
     lineIds.push(cur);
   }
   const pairs = order.map((oi, i) => ({ oi, line: lineIds[i], x: boxes[oi][0][0] }));
@@ -533,9 +540,7 @@ function warpPixel(out, di, src, sw, sh, sx, sy) {
     // far outside: replicate the nearest border pixel
     const cx = clamp(Math.round(sx), 0, sw - 1);
     const cy = clamp(Math.round(sy), 0, sh - 1);
-    out[di] = src[(cy * sw + cx) * 3];
-    out[di + 1] = src[(cy * sw + cx) * 3 + 1];
-    out[di + 2] = src[(cy * sw + cx) * 3 + 2];
+    copy3(out, di, src, (cy * sw + cx) * 3);
     return;
   }
   const ix = Math.floor(sx);
@@ -598,9 +603,7 @@ function rotate90(img) {
       const ny = w - 1 - x;
       const si = (y * w + x) * 3;
       const di = (ny * h + nx) * 3;
-      out[di] = data[si];
-      out[di + 1] = data[si + 1];
-      out[di + 2] = data[si + 2];
+      copy3(out, di, data, si);
     }
   }
   return { data: out, w: h, h: w };
@@ -612,9 +615,7 @@ function rotate180(img) {
   const n = w * h;
   for (let i = 0; i < n; i++) {
     const j = n - 1 - i;
-    out[i * 3] = data[j * 3];
-    out[i * 3 + 1] = data[j * 3 + 1];
-    out[i * 3 + 2] = data[j * 3 + 2];
+    copy3(out, i * 3, data, j * 3);
   }
   return { data: out, w, h };
 }
@@ -624,32 +625,22 @@ function rotate180(img) {
 // utils/process_img.py: reduce_max_side / increase_min_side / resize_image_within_bounds
 const roundTo32 = (v) => pyRound(v / 32) * 32;
 
-// Resize by `ratio`, rounding both sides to a multiple of 32 (the two bounds branches below).
+// Both sides scaled by `ratio`, rounded to a multiple of 32 (the two bounds branches below).
+const roundSize = (h, w, ratio) => ({ rh: roundTo32(trunc(h * ratio)), rw: roundTo32(trunc(w * ratio)) });
+
+// Resize by `ratio`, both sides rounded to a multiple of 32.
 function resizedBy(img, ratio) {
-  const rh = roundTo32(trunc(img.h * ratio));
-  const rw = roundTo32(trunc(img.w * ratio));
-  return { img: resizeLinear(img, rw, rh), rh, rw };
+  const { rh, rw } = roundSize(img.h, img.w, ratio);
+  return resizeLinear(img, rw, rh);
 }
 
+// utils/process_img.py resize_image_within_bounds (reduce_max_side then increase_min_side). Upstream also returns the
+// two ratios for mapping boxes back to the original image; this port measures in the resized image instead, so only
+// the resized image is kept.
 function resizeWithinBounds(img, minSide, maxSide) {
-  let { w, h } = img;
-  let ratioH = 1;
-  let ratioW = 1;
-  if (Math.max(h, w) > maxSide) {
-    const r = resizedBy(img, maxSide / Math.max(h, w));
-    img = r.img;
-    ratioH = h / r.rh;
-    ratioW = w / r.rw;
-    w = r.rw;
-    h = r.rh;
-  }
-  if (Math.min(h, w) < minSide) {
-    const r = resizedBy(img, minSide / Math.min(h, w));
-    img = r.img;
-    ratioH = h / r.rh;
-    ratioW = w / r.rw;
-  }
-  return { img, ratioH, ratioW };
+  if (Math.max(img.h, img.w) > maxSide) img = resizedBy(img, maxSide / Math.max(img.h, img.w));
+  if (Math.min(img.h, img.w) < minSide) img = resizedBy(img, minSide / Math.min(img.h, img.w));
+  return img;
 }
 
 function applyVerticalPadding(img, widthHeightRatio, minHeight) {
@@ -672,12 +663,10 @@ function detInputSize(h, w) {
   let ratio = 1;
   if (limit_type === "max") {
     if (Math.max(h, w) > limit_side_len) ratio = limit_side_len / Math.max(h, w);
-  } else {
-    if (Math.min(h, w) < limit_side_len) ratio = limit_side_len / Math.min(h, w);
+  } else if (Math.min(h, w) < limit_side_len) {
+    ratio = limit_side_len / Math.min(h, w);
   }
-  const rh = roundTo32(trunc(h * ratio));
-  const rw = roundTo32(trunc(w * ratio));
-  return { rh, rw };
+  return roundSize(h, w, ratio);
 }
 
 // ------------------------------------------------------------- recogniser
@@ -715,11 +704,10 @@ function* batchRanges(count, batchNum) {
 // build_final_output: drop blank texts, then filter_by_text_score
 function finalLines(recOut) {
   const lines = [];
-  for (let i = 0; i < recOut.length; i++) {
-    const t = recOut[i]?.text ?? "";
-    if (!t.trim()) continue;
-    if (recOut[i].score < CFG.text_score) continue;
-    lines.push({ text: t, score: recOut[i].score });
+  for (const line of recOut) {
+    const text = line?.text ?? "";
+    if (!text.trim() || line.score < CFG.text_score) continue;
+    lines.push({ text, score: line.score });
   }
   return lines;
 }
@@ -744,13 +732,21 @@ export class OcrPipeline {
     return new this.ort.Tensor("float32", flat, [batch.length, ic, ih, w]);
   }
 
+  /** Runs the sorted crops at `idx[beg..end)` through `session` as one batch padded to `width`; the planes and output. */
+  async runBatch({ session, crops, idx, beg, end, ic, ih, width }) {
+    const batch = [];
+    for (let i = beg; i < end; i++) batch.push(padCrop(crops[idx[i]], ic, ih, width));
+    const preds = await this.runSession(session, this.batchTensor(batch, ic, ih, width));
+    return { batch, preds };
+  }
+
   async detect(img) {
     const { rh, rw } = detInputSize(img.h, img.w);
     const resized = resizeLinear(img, rw, rh);
     const chw = toNormalizedCHW(resized, CFG.det.mean, CFG.det.std);
     const t = new this.ort.Tensor("float32", chw, [1, 3, rh, rw]);
     const out = await this.runSession(this.sessions.det, t);
-    const dims = out.dims;
+    const dims = out.dims; // [N, C, H, W]
     const mapH = dims[2];
     const mapW = dims[3];
     const prob = out.data.subarray(0, mapW * mapH);
@@ -763,15 +759,9 @@ export class OcrPipeline {
     const [ic, ih, iw] = CFG.cls.shape;
     const out = crops.slice();
     for (const [beg, end] of batchRanges(idx.length, CFG.cls.batch_num)) {
-      const batch = [];
-      for (let i = beg; i < end; i++) {
-        batch.push(padCrop(crops[idx[i]], ic, ih, iw));
-      }
-      const t = this.batchTensor(batch, ic, ih, iw);
-      const preds = await this.runSession(this.sessions.cls, t);
-      const n = batch.length;
-      for (let i = 0; i < n; i++) {
-        const a = preds.data[i * 2];
+      const { batch, preds } = await this.runBatch({ session: this.sessions.cls, crops, idx, beg, end, ic, ih, width: iw });
+      for (let i = 0; i < batch.length; i++) {
+        const a = preds.data[i * 2]; // preds.dims: [N, 2] — the class order is [0, 180]
         const b = preds.data[i * 2 + 1];
         const label = b > a ? CFG.cls.labels[1] : CFG.cls.labels[0];
         const score = b > a ? b : a;
@@ -790,17 +780,11 @@ export class OcrPipeline {
     for (const [beg, end] of batchRanges(idx.length, CFG.rec.batch_num)) {
       let maxWhRatio = iwBase / ih;
       for (let i = beg; i < end; i++) {
-        const c = crops[idx[i]];
-        const r = c.w / c.h;
+        const r = crops[idx[i]].w / crops[idx[i]].h;
         if (r > maxWhRatio) maxWhRatio = r;
       }
       const imgW = trunc(ih * maxWhRatio);
-      const batch = [];
-      for (let i = beg; i < end; i++) {
-        batch.push(padCrop(crops[idx[i]], ic, ih, imgW));
-      }
-      const t = this.batchTensor(batch, ic, ih, imgW);
-      const preds = await this.runSession(this.sessions.rec, t);
+      const { batch, preds } = await this.runBatch({ session: this.sessions.rec, crops, idx, beg, end, ic, ih, width: imgW });
       const dims = preds.dims; // [N, T, C]
       const T = dims[1];
       const C = dims[2];
@@ -831,8 +815,7 @@ export class OcrPipeline {
   }
 
   async recognizeImage(bgr) {
-    const pre = resizeWithinBounds(bgr, CFG.min_side_len, CFG.max_side_len);
-    let img = pre.img;
+    let img = resizeWithinBounds(bgr, CFG.min_side_len, CFG.max_side_len);
     let padTop = 0;
     if (CFG.use_vertical_padding) {
       const padded = applyVerticalPadding(img, CFG.width_height_ratio, CFG.min_height);

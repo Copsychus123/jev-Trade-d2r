@@ -65,7 +65,7 @@ const CEILINGS = {
   cbf: null,
 };
 
-const affix = (key, zh, en, abbr, kind, traderie, zhAlt = [], ceiling = CEILINGS[key] ?? null) => ({
+const affix = (key, zh, en, abbr, kind, traderie, zhAlt = []) => ({
   key,
   zh,
   zhAlt,
@@ -73,7 +73,7 @@ const affix = (key, zh, en, abbr, kind, traderie, zhAlt = [], ceiling = CEILINGS
   abbr,
   kind,
   traderie,
-  ceiling,
+  ceiling: CEILINGS[key] ?? null,
 });
 
 export const AFFIXES = [

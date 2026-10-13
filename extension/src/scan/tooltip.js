@@ -138,11 +138,12 @@ function insideMask(img) {
 /** Rows that hold dark pixels can only be tooltip rows: the game background around the panel does not. */
 function darkRowBands(rowDark, width, height) {
   const bandGap = Math.max(1, Math.round(BAND_GAP * height));
+  const seedDark = ROW_DARK * width; // a row this dark (a fraction of the width) can only be a tooltip row
   const seeds = [];
   let band = null;
   let gapRun = 0;
   for (let y = 0; y < height; y++) {
-    if (rowDark[y] >= ROW_DARK * width) {
+    if (rowDark[y] >= seedDark) {
       if (band && gapRun > bandGap) {
         seeds.push(band);
         band = null;
@@ -158,6 +159,11 @@ function darkRowBands(rowDark, width, height) {
   return seeds;
 }
 
+/** A row or column of `span` pixels is the panel's own when at least MIN_DENSITY of it is "inside" (dark or bright). */
+function isDense(insideCount, span) {
+  return insideCount >= MIN_DENSITY * span;
+}
+
 /** The columns of a stretch of rows: the longest stretch of columns that are "inside" often enough. */
 function panelColumns(inside, width, y0, y1) {
   const rows = y1 - y0 + 1;
@@ -166,7 +172,7 @@ function panelColumns(inside, width, y0, y1) {
     const row = y * width;
     for (let x = 0; x < width; x++) if (inside[row + x]) support[x] += 1;
   }
-  const run = longestRun(width, (x) => support[x] >= MIN_DENSITY * rows);
+  const run = longestRun(width, (x) => isDense(support[x], rows));
   return run && run[2] >= MIN_RUN * width ? { x: run[0], width: run[2] } : null;
 }
 
@@ -174,7 +180,7 @@ function panelColumns(inside, width, y0, y1) {
 function denseRow(inside, width, y, span) {
   let n = 0;
   for (let x = span.x; x < span.x + span.width; x++) if (inside[y * width + x]) n += 1;
-  return n >= MIN_DENSITY * span.width;
+  return isDense(n, span.width);
 }
 
 /** Does the box hold a tooltip's mix: dark enough, with a little (2..35 %) bright text in it? */
@@ -298,6 +304,24 @@ function gridCells(img, x0, y0, w, h, n) {
   return cells;
 }
 
+/** The region a content key samples: the panel's top square (KEY_ASPECT of its width), inset by KEY_INSET a side. */
+function sampleRegion(region) {
+  const height = Math.max(1, Math.min(region.height, Math.round(KEY_ASPECT * region.width)));
+  const insetX = Math.round(KEY_INSET * region.width);
+  const insetY = Math.round(KEY_INSET * height);
+  return {
+    x: region.x + insetX,
+    y: region.y + insetY,
+    width: Math.max(1, region.width - 2 * insetX),
+    height: Math.max(1, height - 2 * insetY),
+  };
+}
+
+/** Mean grey (0..255) quantised into one of KEY_LEVELS levels: the digit a boxKey cell contributes. */
+function greyLevel(grey) {
+  return Math.min(KEY_LEVELS - 1, Math.floor(grey / (256 / KEY_LEVELS)));
+}
+
 /**
  * A content key for the panel `box` points at: KEY_GRID x KEY_GRID mean-grey cells over the panel's own top region,
  * each cell's mean quantised into KEY_LEVELS grey levels. Three things make it survive what the scanner actually sees:
@@ -317,15 +341,10 @@ function gridCells(img, x0, y0, w, h, n) {
  */
 export function boxKey(img, box) {
   const region = panelRegion(img, box);
-  const height = Math.max(1, Math.min(region.height, Math.round(KEY_ASPECT * region.width)));
-  const insetX = Math.round(KEY_INSET * region.width);
-  const insetY = Math.round(KEY_INSET * height);
-  const w = Math.max(1, region.width - 2 * insetX);
-  const h = Math.max(1, height - 2 * insetY);
-  const step = 256 / KEY_LEVELS;
+  const sample = sampleRegion(region);
   let key = "";
-  for (const cell of gridCells(img, region.x + insetX, region.y + insetY, w, h, KEY_GRID)) {
-    key += Math.min(KEY_LEVELS - 1, Math.floor(cell / step));
+  for (const cell of gridCells(img, sample.x, sample.y, sample.width, sample.height, KEY_GRID)) {
+    key += greyLevel(cell);
   }
   return key;
 }

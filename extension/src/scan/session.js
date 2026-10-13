@@ -80,6 +80,14 @@ export function createScanSession() {
     lastHash = null;
   };
 
+  // A box that differs from the last one starts a fresh run of identical frames: one off, and not yet handed out.
+  const startStreak = (box, hash) => {
+    streak = 1;
+    emitted = false;
+    lastBox = { ...box };
+    lastHash = hash;
+  };
+
   // Returns { box } on the frame that first shows a stable tooltip, null otherwise.
   function feed(small) {
     stats.frames += 1;
@@ -90,19 +98,11 @@ export function createScanSession() {
     }
     stats.detected += 1;
     const hash = boxHash(small, box);
-    if (lastBox && sameBox(lastBox, box) && lastHash === hash) {
-      streak += 1;
-    } else {
-      streak = 1;
-      emitted = false;
-      lastBox = { ...box };
-      lastHash = hash;
-    }
-    if (streak >= STABLE_FRAMES && !emitted) {
-      emitted = true;
-      return { box };
-    }
-    return null;
+    if (lastBox && sameBox(lastBox, box) && lastHash === hash) streak += 1;
+    else startStreak(box, hash);
+    if (streak < STABLE_FRAMES || emitted) return null;
+    emitted = true;
+    return { box };
   }
 
   // True when this stable crop should be queued for OCR. The key describes the panel's content, so the same panel
@@ -110,7 +110,7 @@ export function createScanSession() {
   // though its bytes differ; KEY_TOLERANCE absorbs that drift.
   function accept(cropKey) {
     const tolerance = KEY_TOLERANCE * cropKey.length; // 8 of a 64-cell key
-    for (const seen of seenKeys) if (keyDistance(seen, cropKey) <= tolerance) return false;
+    if (seenKeys.some((seen) => keyDistance(seen, cropKey) <= tolerance)) return false;
     if (queue.length >= MAX_QUEUE) {
       stats.dropped += 1;
       return false;

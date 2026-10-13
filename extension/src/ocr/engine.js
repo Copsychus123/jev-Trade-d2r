@@ -118,7 +118,7 @@ function connectWorker(worker, waiting, onStatus) {
  * 所以冷啟動的「正在準備辨識引擎…」不會漏掉（不要等到 recognize 才掛）。
  */
 export async function createOcrEngine({ models, providers, onStatus = () => {}, createWorker = loadWorker } = {}) {
-  const eps = providers ?? (await chooseProviders());
+  const executionProviders = providers ?? (await chooseProviders());
   const worker = createWorker();
   let nextId = 1;
   const waiting = new Map(); // id -> { resolve, reject }
@@ -127,10 +127,12 @@ export async function createOcrEngine({ models, providers, onStatus = () => {}, 
   // The worker has no chrome.* (extension APIs are not exposed to dedicated workers), so the panel resolves the
   // extension-local ORT address and hands it over.
   const wasmPaths = globalThis.chrome?.runtime?.getURL?.(`${ORT_DIR}/`) ?? `${ORT_DIR}/`;
+  const modelBuffers = {
+    det: models.det.buffer, rec: models.rec.buffer, cls: models.cls.buffer, dict: models.dict.buffer,
+  };
   worker.postMessage(
-    { type: "init", providers: eps, wasmPaths, models: {
-      det: models.det.buffer, rec: models.rec.buffer, cls: models.cls.buffer, dict: models.dict.buffer } },
-    [models.det.buffer, models.rec.buffer, models.cls.buffer, models.dict.buffer],
+    { type: "init", providers: executionProviders, wasmPaths, models: modelBuffers },
+    Object.values(modelBuffers),
   );
   return {
     async recognize({ width, height, data }) {
@@ -152,11 +154,11 @@ export async function createOcrEngine({ models, providers, onStatus = () => {}, 
 export async function readPixels(blob, region = null) {
   // No colour-space conversion or alpha premultiplying: the pixels the file holds are the pixels that get read.
   const bitmap = await createImageBitmap(blob, { colorSpaceConversion: "none", premultiplyAlpha: "none" });
-  const r = region ?? { x: 0, y: 0, width: bitmap.width, height: bitmap.height };
-  const canvas = new OffscreenCanvas(r.width, r.height);
+  const area = region ?? { x: 0, y: 0, width: bitmap.width, height: bitmap.height };
+  const canvas = new OffscreenCanvas(area.width, area.height);
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  ctx.drawImage(bitmap, r.x, r.y, r.width, r.height, 0, 0, r.width, r.height);
+  ctx.drawImage(bitmap, area.x, area.y, area.width, area.height, 0, 0, area.width, area.height);
   bitmap.close();
-  const { width, height, data } = ctx.getImageData(0, 0, r.width, r.height);
+  const { width, height, data } = ctx.getImageData(0, 0, area.width, area.height);
   return { width, height, data };
 }

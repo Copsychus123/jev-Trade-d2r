@@ -78,7 +78,8 @@ export function buildMatchIndex(tables) {
     (baseKeys.has(key) ? bases : items).push({ key, name: product.name, cjk: false });
   }
   for (const name of tables.bases) {
-    if (!tables.byKey.has(normalizeName(name))) bases.push({ key: normalizeName(name), name, cjk: false });
+    const key = normalizeName(name);
+    if (!tables.byKey.has(key)) bases.push({ key, name, cjk: false });
   }
   for (const [chinese, english] of tables.zh) {
     (baseKeys.has(normalizeName(english)) ? bases : items).push({
@@ -121,8 +122,8 @@ function textPieces(text) {
     for (const run of letters.match(LATIN_RUN) ?? []) latin.push({ text: normalizeName(run), statPrefix: false, at });
   }
   return {
-    cjk: cjk.filter((p) => p.text.length >= 2),
-    latin: latin.filter((p) => p.text.length >= MIN_LATIN_NAME),
+    cjk: cjk.filter((piece) => piece.text.length >= 2),
+    latin: latin.filter((piece) => piece.text.length >= MIN_LATIN_NAME),
   };
 }
 

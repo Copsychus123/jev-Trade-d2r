@@ -68,12 +68,12 @@ export function idbStore() {
 /** A download that receives nothing for this long is given up (the user can then try again). */
 const STALL_MS = 30_000;
 
-/** An AbortController that also aborts when the caller's `signal` does; `cleanup()` detaches it again. */
+/** An AbortController that also aborts when the caller's `signal` does; `abort()` stops it, `cleanup()` detaches it. */
 function linkedAbort(signal) {
   const controller = new AbortController();
-  const cancel = () => controller.abort();
-  signal?.addEventListener("abort", cancel, { once: true });
-  return { controller, cleanup: () => signal?.removeEventListener("abort", cancel) };
+  const abort = () => controller.abort();
+  signal?.addEventListener("abort", abort, { once: true });
+  return { controller, abort, cleanup: () => signal?.removeEventListener("abort", abort) };
 }
 
 /** The download stall timer: `watch()` (after every chunk) restarts it, `stop()` clears it, `fired()` says whether
@@ -194,9 +194,8 @@ export function createModelManager({
     async download(name, { onProgress = () => {}, signal } = {}) {
       const { url, bytes: expected } = files[name];
       if (signal?.aborted) throw new ModelError("cancelled", "已取消下載");
-      const { controller, cleanup } = linkedAbort(signal);
-      const cancel = () => controller.abort();
-      const stall = stallTimer(stallMs, cancel);
+      const { controller, abort, cleanup } = linkedAbort(signal);
+      const stall = stallTimer(stallMs, abort);
       const failed = (what, error) => {
         if (signal?.aborted) return new ModelError("cancelled", "已取消下載");
         if (stall.fired()) return new ModelError("network", `模型下載停住：超過 ${Math.round(stallMs / 1000)} 秒沒有收到資料`);
@@ -213,7 +212,7 @@ export function createModelManager({
         }
         if (!response.ok) throw new ModelError("network", `模型下載失敗（HTTP ${response.status}）`);
         try {
-          bytes = await streamResponse(name, response, expected, { onProgress, watch: stall.watch, abort: cancel });
+          bytes = await streamResponse(name, response, expected, { onProgress, watch: stall.watch, abort });
         } catch (error) {
           throw error instanceof ModelError ? error : failed("模型下載中斷", error);
         }

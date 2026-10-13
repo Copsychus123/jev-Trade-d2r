@@ -139,17 +139,17 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
 
   /** A stable box came back from the session: cut it out of the full-resolution bitmap and queue it for OCR. */
   async function grab(bitmap, box, small) {
-    const k = bitmap.width / small.width;
-    const sx = Math.max(0, Math.floor(box.x * k) - PAD);
-    const sy = Math.max(0, Math.floor(box.y * k) - PAD);
-    const ex = Math.min(bitmap.width, Math.ceil((box.x + box.width) * k) + PAD);
-    const ey = Math.min(bitmap.height, Math.ceil((box.y + box.height) * k) + PAD);
-    const width = Math.max(1, ex - sx);
-    const height = Math.max(1, ey - sy);
+    const scale = bitmap.width / small.width; // the crop canvas is the full-resolution bitmap
+    const left = Math.max(0, Math.floor(box.x * scale) - PAD);
+    const top = Math.max(0, Math.floor(box.y * scale) - PAD);
+    const right = Math.min(bitmap.width, Math.ceil((box.x + box.width) * scale) + PAD);
+    const bottom = Math.min(bitmap.height, Math.ceil((box.y + box.height) * scale) + PAD);
+    const width = Math.max(1, right - left);
+    const height = Math.max(1, bottom - top);
     crop.width = width;
     crop.height = height;
     const ctx = crop.getContext("2d");
-    ctx.drawImage(bitmap, sx, sy, width, height, 0, 0, width, height);
+    ctx.drawImage(bitmap, left, top, width, height, 0, 0, width, height);
     // The identity is the panel's own content, from the box the detector gave, not the padded crop: the padding is
     // unknown background that differs from one place on screen to the next.
     if (!session.accept(boxKey(small, box))) return;
@@ -219,21 +219,26 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
   // contingency message sits in front of it, so 「待辨識 N 件」 stays readable (scripts/scan_e2e.py waits for it
   // while the queue drains). statusText is only for the not-capturing case.
   function refreshStatus() {
-    let base = statusText;
-    if (capture) base = `掃描中：已記錄 ${session.records.length} 件，待辨識 ${session.queue.length} 件`;
-    else if (stopped) base = `已停止，共記錄 ${session.records.length} 件`;
-    $("scan-status").textContent = [errorText, warning, base].filter(Boolean).join(" ");
+    let line = statusText;
+    if (capture) line = `掃描中：已記錄 ${session.records.length} 件，待辨識 ${session.queue.length} 件`;
+    else if (stopped) line = `已停止，共記錄 ${session.records.length} 件`;
+    $("scan-status").textContent = [errorText, warning, line].filter(Boolean).join(" ");
   }
 
   function renderStats() {
     $("scan-stats").textContent = statsLine(session.stats, fps);
   }
 
+  /** The two readouts under the list: the status line and the 掃描統計 line. */
+  function renderReadouts() {
+    refreshStatus();
+    renderStats();
+  }
+
   /** Everything the screen says about the session at once: the record list and the two readouts under it. */
   function renderScreen() {
     renderRecords();
-    refreshStatus();
-    renderStats();
+    renderReadouts();
   }
 
   function renderRecords() {
@@ -295,8 +300,7 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
     resetRun();
     $("scan-start").disabled = true;
     $("scan-stop").hidden = false;
-    refreshStatus();
-    renderStats();
+    renderReadouts();
     ticker = setInterval(tick, 1000);
   }
 
@@ -336,8 +340,7 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
     ticker = null;
     $("scan-stop").hidden = true;
     $("scan-start").disabled = false;
-    refreshStatus();
-    renderStats();
+    renderReadouts();
   }
 
   /** The slowdown advice, on a run of low-FPS ticks. The black-frame advice outranks it and is onFrame's to clear. */
@@ -356,8 +359,7 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
     fps = frames - framesAtTick;
     framesAtTick = frames;
     noteFrameRate();
-    refreshStatus();
-    renderStats();
+    renderReadouts();
   }
 
   // ---- wiring ----------------------------------------------------------------------------------------------------
@@ -377,6 +379,5 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
 
   wireControls();
   renderRecords();
-  renderStats();
-  refreshStatus();
+  renderReadouts();
 }
