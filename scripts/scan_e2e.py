@@ -34,7 +34,7 @@ import urllib.parse
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _cdp import Environment, attach, new_tab  # noqa: E402
+from _cdp import Environment, attach, new_tab_ws  # noqa: E402
 from _cdp import Panel as CdpPanel  # noqa: E402
 from extension_e2e import (  # noqa: E402
     DEBUG_PORT,
@@ -122,7 +122,7 @@ class Panel(CdpPanel):
 def open_sim(page: Path = SIM) -> str:
     """Opens the sim page as its own tab and returns the tab's debugger websocket URL."""
     url = page.resolve().as_uri()
-    return new_tab(DEBUG_PORT, urllib.parse.quote(url, safe=":/"))["webSocketDebuggerUrl"]
+    return new_tab_ws(DEBUG_PORT, urllib.parse.quote(url, safe=":/"))
 
 
 async def sim_state(sim) -> dict:

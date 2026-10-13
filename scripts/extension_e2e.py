@@ -40,7 +40,7 @@ E2E_DIST = ROOT / "extension" / "dist-e2e"  # never extension/dist: that one is 
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _cdp import Environment, attach, new_tab  # noqa: E402
+from _cdp import Environment, attach, new_tab_ws  # noqa: E402
 from stub_backend import STUB_SERVER  # noqa: E402
 
 from jev_ultrafast.chrome import CHROME_PORT, PROFILE_DIR, chrome_binary  # noqa: E402
@@ -248,7 +248,7 @@ def load_extension() -> str:
 
 def open_panel(ext_id: str) -> str:
     url = urllib.parse.quote(f"chrome-extension://{ext_id}/sidepanel.html", safe=":/?=")
-    return new_tab(DEBUG_PORT, url)["webSocketDebuggerUrl"]
+    return new_tab_ws(DEBUG_PORT, url)
 
 
 def start_chrome(headed: bool, extra_args: tuple[str, ...] = ()) -> subprocess.Popen:
@@ -582,7 +582,7 @@ def check(
     roots = [re.sub(r"/recent/?$", "", url or "") for url in result["urls"]]
     if not roots[0] or roots[0] != roots[1]:
         failures.append(f"兩段讀的不是同一個商品頁：{result['urls']}")
-    safe = "".join(c if c.isascii() and (c.isalnum() or c in " _-") else "_" for c in item).strip()
+    safe_name = "".join(c if c.isascii() and (c.isalnum() or c in " _-") else "_" for c in item).strip()
     views = (("trading", "目前掛單", result["rows"][0]), ("recent-trades", "近期成交", result["rows"][1]))
     for prefix, label, rows in views:
         if not rows:
@@ -594,7 +594,7 @@ def check(
         copied = csv["copied"].rstrip("\n").split("\n") if csv["copied"] else []
         if len(copied) != rows + 1 or len({line.count("\t") for line in copied}) != 1:
             failures.append(f"{label} 複製內容不對：{len(copied)} 行，應為 {rows + 1} 行且欄數一致")
-        if csv["name"] != f"traderie-{safe}-{label}.csv":
+        if csv["name"] != f"traderie-{safe_name}-{label}.csv":
             failures.append(f"{label} CSV 檔名不對：{csv['name']}")
     flt = result.get("filter")
     if flt:
@@ -608,6 +608,14 @@ def check(
         if flt["cleared_count"] != str(flt["read"]):
             failures.append(f"清除篩選後筆數應回到 {flt['read']}，實際：{flt['cleared_count']!r}")
     return failures
+
+
+def check_flags(args) -> None:
+    """The flag combinations the run cannot honour, refused before any Chrome or backend starts."""
+    if bool(args.api) != bool(args.invite):
+        raise Environment("--api 和 --invite 要一起給")
+    if args.stub_chooser and args.api:
+        raise Environment("--stub-chooser 只適用本機後端，不能和 --api 一起用")
 
 
 def cleanup(chrome, backend) -> None:
@@ -647,10 +655,7 @@ def main() -> int:
     args = parser.parse_args()
     chrome = backend = backend_log = None
     try:
-        if bool(args.api) != bool(args.invite):
-            raise Environment("--api 和 --invite 要一起給")
-        if args.stub_chooser and args.api:
-            raise Environment("--stub-chooser 只適用本機後端，不能和 --api 一起用")
+        check_flags(args)
         build_extension(args.api or LOCAL_API)
         backend, code, backend_log = (None, args.invite, None) if args.api else start_backend(args.stub_chooser)
         chrome = start_chrome(args.headed)
