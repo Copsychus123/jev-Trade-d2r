@@ -170,6 +170,31 @@ async def visit(tab: Tab, name: str, query: str, expected: dict[str, str]) -> di
     return {"url": url, "text": text, "count": listing_count(text), "kept": keeps(url, expected)}
 
 
+QUALITY_VALUES = {"rare": "rare", "magic": "magic", "normal": "normal,superior"}
+
+
+async def visit_filter_pages(tab: Tab, k1: str, k2: str, rarity: dict | None) -> dict:
+    """Every filter address the decisions are read from, each visited once; the quality pages only with a Rarity."""
+    pages = {
+        "HOME": await visit(tab, "HOME", "", {}),
+        "A": await visit(tab, "A", f"?{k1}=1", {k1: "1"}),
+        "B": await visit(tab, "B", f"?{k2}=1", {k2: "1"}),
+        "AB": await visit(tab, "AB", f"?{k1}=1&{k2}=1", {k1: "1", k2: "1"}),
+        "AX": await visit(tab, "AX", f"?{k1}=1&{k2}={ABSURD_MIN}", {k1: "1", k2: str(ABSURD_MIN)}),
+        "S": await visit(tab, "S", f"?search=Ring&{k1}=1", {"search": "Ring", k1: "1"}),
+        "S_ring": await visit(tab, "S_ring", "?search=Ring", {"search": "Ring"}),
+        "S_amulet": await visit(tab, "S_amulet", "?search=Caster%20Amulet", {"search": "Caster Amulet"}),
+        "T_ring": await visit(tab, "T_ring", "?tags[]=Ring", {"tags[]": "Ring"}),
+    }
+    if rarity:
+        for key, value in QUALITY_VALUES.items():
+            pages[f"Q_{key}"] = await visit(tab, f"Q_{key}", f"?prop_Rarity={value}", {"prop_Rarity": value})
+        pages["T_ring_rare"] = await visit(
+            tab, "T_ring_rare", "?tags[]=Ring&prop_Rarity=rare", {"tags[]": "Ring", "prop_Rarity": "rare"}
+        )
+    return pages
+
+
 async def _recent_tab_controls(tab: Tab, query: str, expected: dict[str, str]) -> tuple[dict, str]:
     """No home-page Recent Trades tab exists. As labelled controls, first open the section suffix the site itself uses
     on product pages (/recent) on the same filter address, then a real product's Recent Trades page — the second shows
@@ -369,24 +394,7 @@ async def probe(redact: str | None) -> int:
             k1, k2 = f"prop_{p1['id']}Min", f"prop_{p2['id']}Min"
             rarity = next((p for p in props if p["name"] == "Rarity" and p.get("type") == "string"), None)
             quality_props = [p["name"] for p in props if QUALITY_NAME.match(label_of(p["name"]).lstrip("+ "))]
-            pages = {
-                "HOME": await visit(tab, "HOME", "", {}),
-                "A": await visit(tab, "A", f"?{k1}=1", {k1: "1"}),
-                "B": await visit(tab, "B", f"?{k2}=1", {k2: "1"}),
-                "AB": await visit(tab, "AB", f"?{k1}=1&{k2}=1", {k1: "1", k2: "1"}),
-                "AX": await visit(tab, "AX", f"?{k1}=1&{k2}={ABSURD_MIN}", {k1: "1", k2: str(ABSURD_MIN)}),
-                "S": await visit(tab, "S", f"?search=Ring&{k1}=1", {"search": "Ring", k1: "1"}),
-                "S_ring": await visit(tab, "S_ring", "?search=Ring", {"search": "Ring"}),
-                "S_amulet": await visit(tab, "S_amulet", "?search=Caster%20Amulet", {"search": "Caster Amulet"}),
-                "T_ring": await visit(tab, "T_ring", "?tags[]=Ring", {"tags[]": "Ring"}),
-            }
-            quality_values = {"rare": "rare", "magic": "magic", "normal": "normal,superior"}
-            if rarity:
-                for key, value in quality_values.items():
-                    pages[f"Q_{key}"] = await visit(tab, f"Q_{key}", f"?prop_Rarity={value}", {"prop_Rarity": value})
-                pages["T_ring_rare"] = await visit(
-                    tab, "T_ring_rare", "?tags[]=Ring&prop_Rarity=rare", {"tags[]": "Ring", "prop_Rarity": "rare"}
-                )
+            pages = await visit_filter_pages(tab, k1, k2, rarity)
             names = {key: item_names(page["text"]) for key, page in pages.items()}
             recent_tab = await probe_recent_tab(tab, f"?{k1}=1", {k1: "1"})
 
@@ -405,7 +413,7 @@ async def probe(redact: str | None) -> int:
                 recent_tab=recent_tab,
             )
 
-            report["decisions"] = _decisions(report, rarity, quality_values)
+            report["decisions"] = _decisions(report, rarity, QUALITY_VALUES)
 
             sample = pages["A"]["text"]
             if redact:

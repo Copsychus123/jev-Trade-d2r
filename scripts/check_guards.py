@@ -77,6 +77,85 @@ def _check_action_guards(browser, check) -> None:
         check(not browser.fresh(page, buy), label + " invalidates action-specific guard")
 
 
+def _check_fresh_geometry(browser, check) -> None:
+    """An element that moved is clicked at its current spot, and text that changed outside the viewport is not a
+    change: the page stays fresh (no extra model call)."""
+    page = browser.observe(screenshot=False)
+    action = next(a for a in page["actions"] if a["label"] == "Continue")
+    browser.evaluate("document.querySelector('#target').style.transform='translateX(200px)'")
+    moved_is_fresh = browser.fresh(page)  # movement uses fresh geometry, not another model call
+    browser.act(action, page)
+    check(moved_is_fresh and browser.evaluate("window.clicks") == 1, "moving target clicked at its current spot")
+
+    browser.evaluate("document.querySelector('#outside').textContent='Updated outside the viewport'")
+    check(browser.fresh(page), "unrelated offscreen text does not invalidate")
+
+
+def _check_overlay(browser, check) -> None:
+    """A textless overlay does not alter the model's semantic state, but must block a click."""
+    browser.evaluate(
+        "document.querySelector('#target').disabled=false; document.querySelector('#target').style.display='block'"
+    )
+    page = browser.observe(screenshot=False)
+    action = next(a for a in page["actions"] if a["label"] == "Delete account")
+    browser.evaluate(
+        "const cover=document.createElement('div'); "
+        "cover.style.cssText='position:fixed;inset:0;z-index:9999;background:white'; "
+        "document.body.append(cover)"
+    )
+    overlay_fresh = browser.fresh(page)
+    blocked = _click_is_blocked(browser, page, action)
+    check(
+        overlay_fresh and blocked and browser.evaluate("window.clicks") == 1,
+        "overlay blocked before input",
+        f"fresh={overlay_fresh} blocked={blocked}",
+    )
+
+
+def _check_visible_updates(browser, check) -> None:
+    """An unrelated visible update keeps the click guard fresh but invalidates the page-level (terminal) guard."""
+    page = browser.observe(screenshot=False)
+    buy = next(a for a in page["actions"] if a["label"] == "Buy")
+    browser.evaluate("document.querySelector('#unrelated').textContent='New unrelated news'")
+    check(
+        browser.fresh(page, buy) and not browser.fresh(page),
+        "click guard accepts unrelated visible updates; terminal guard rejects them",
+    )
+
+
+def _check_native_controls(browser, check) -> None:
+    """The native controls expose only the operations they support, and a dropdown selects an observed option."""
+    page = browser.observe(screenshot=False)
+    actions = page["actions"]
+    check(_controls_ok(actions), "native controls expose only supported operations and safe values")
+
+    select = next(a for a in actions if a["kind"] == "select")
+    browser.act(select, page)
+    selected = browser.evaluate("document.querySelector('#category').value")
+    check(selected == "Design", "native dropdown selects an observed option", repr(selected))
+
+
+def _check_combobox(browser, check) -> None:
+    """A real text input waits for the asynchronous suggestion list, and a navigation invalidates the old document."""
+    browser.evaluate(
+        "document.querySelector('#query').addEventListener('input',()=>setTimeout(()=>{"
+        "document.querySelector('#suggestions').innerHTML='<div role=option>Generated</div>'"
+        "},60))"
+    )
+    page = browser.observe(screenshot=False)
+    field = next(a for a in page["actions"] if a["kind"] == "fill")
+    browser.act(field, page, text="Generated")
+    page = browser.observe(screenshot=False)
+    value = browser.evaluate("document.querySelector('#query').value")
+    check(
+        value == "Generated" and any(a.get("role") == "option" for a in page["actions"]),
+        "real text input waits for asynchronous combobox suggestions",
+        repr(value),
+    )
+    browser.call("Page.navigate", url="about:blank")
+    check(not browser.fresh(page, field), "navigation invalidates the old document")
+
+
 def main():
     browser = Browser("data:text/html," + quote(HTML))
     passed: list[str] = []
@@ -89,36 +168,9 @@ def main():
             failures.append(f"{label}: {detail}" if detail else label)
 
     try:
-        page = browser.observe(screenshot=False)
-        action = next(a for a in page["actions"] if a["label"] == "Continue")
-        browser.evaluate("document.querySelector('#target').style.transform='translateX(200px)'")
-        moved_is_fresh = browser.fresh(page)  # movement uses fresh geometry, not another model call
-        browser.act(action, page)
-        check(moved_is_fresh and browser.evaluate("window.clicks") == 1, "moving target clicked at its current spot")
-
-        browser.evaluate("document.querySelector('#outside').textContent='Updated outside the viewport'")
-        check(browser.fresh(page), "unrelated offscreen text does not invalidate")
-
+        _check_fresh_geometry(browser, check)
         _check_mutations(browser, check)
-
-        browser.evaluate(
-            "document.querySelector('#target').disabled=false; document.querySelector('#target').style.display='block'"
-        )
-        page = browser.observe(screenshot=False)
-        action = next(a for a in page["actions"] if a["label"] == "Delete account")
-        # A textless overlay does not alter the model's semantic state, but must block a click.
-        browser.evaluate(
-            "const cover=document.createElement('div'); "
-            "cover.style.cssText='position:fixed;inset:0;z-index:9999;background:white'; "
-            "document.body.append(cover)"
-        )
-        overlay_fresh = browser.fresh(page)
-        blocked = _click_is_blocked(browser, page, action)
-        check(
-            overlay_fresh and blocked and browser.evaluate("window.clicks") == 1,
-            "overlay blocked before input",
-            f"fresh={overlay_fresh} blocked={blocked}",
-        )
+        _check_overlay(browser, check)
 
         browser.evaluate(
             "document.body.innerHTML="
@@ -137,41 +189,10 @@ def main():
           </select></form><aside id="unrelated">News</aside>
         """)
         )
-        page = browser.observe(screenshot=False)
-        buy = next(a for a in page["actions"] if a["label"] == "Buy")
-        browser.evaluate("document.querySelector('#unrelated').textContent='New unrelated news'")
-        check(
-            browser.fresh(page, buy) and not browser.fresh(page),
-            "click guard accepts unrelated visible updates; terminal guard rejects them",
-        )
+        _check_visible_updates(browser, check)
         _check_action_guards(browser, check)
-
-        page = browser.observe(screenshot=False)
-        actions = page["actions"]
-        check(_controls_ok(actions), "native controls expose only supported operations and safe values")
-
-        select = next(a for a in actions if a["kind"] == "select")
-        browser.act(select, page)
-        selected = browser.evaluate("document.querySelector('#category').value")
-        check(selected == "Design", "native dropdown selects an observed option", repr(selected))
-
-        browser.evaluate(
-            "document.querySelector('#query').addEventListener('input',()=>setTimeout(()=>{"
-            "document.querySelector('#suggestions').innerHTML='<div role=option>Generated</div>'"
-            "},60))"
-        )
-        page = browser.observe(screenshot=False)
-        field = next(a for a in page["actions"] if a["kind"] == "fill")
-        browser.act(field, page, text="Generated")
-        page = browser.observe(screenshot=False)
-        value = browser.evaluate("document.querySelector('#query').value")
-        check(
-            value == "Generated" and any(a.get("role") == "option" for a in page["actions"]),
-            "real text input waits for asynchronous combobox suggestions",
-            repr(value),
-        )
-        browser.call("Page.navigate", url="about:blank")
-        check(not browser.fresh(page, field), "navigation invalidates the old document")
+        _check_native_controls(browser, check)
+        _check_combobox(browser, check)
     finally:
         browser.close()
     print("\n".join(passed))

@@ -172,6 +172,11 @@ def pairs_of(rows: list[dict]) -> list[tuple[dict, dict]]:
     return list(zip(rows[0::2], rows[1::2]))
 
 
+def paired_settle_deltas(rows: list[dict]) -> list[int]:
+    """The per-pair settle difference (OFF - ON): one drift-cancelling number per adjacent ON/OFF pair."""
+    return [off_row["settle_ms"] - on_row["settle_ms"] for on_row, off_row in pairs_of(rows)]
+
+
 MIN_TRUSTWORTHY_PAIRS = 8  # below this a run's own verdict is a sample's luck, not a finding
 
 
@@ -194,26 +199,26 @@ def _decide(rows: list[dict]) -> tuple[str, str]:
             f"blocked-host scripts did not land during the settle window in {len(off) - len(overlap)}/{len(off)}"
             " OFF runs, so the claim's premise (the settles wait on their churn) is not visible here",
         )
-    deltas = [off_row["settle_ms"] - on_row["settle_ms"] for on_row, off_row in pairs_of(rows)]
+    deltas = paired_settle_deltas(rows)
     shorter = [delta for delta in deltas if delta > 0]
-    paired = median(deltas)
+    median_delta = median(deltas)
     if len(shorter) == len(deltas):
-        return "supported", f"every one of {len(deltas)} adjacent pairs settled {round(paired)} ms faster blocked"
-    if len(shorter) >= len(deltas) - 1 and paired > 0:
+        return "supported", f"every one of {len(deltas)} adjacent pairs settled {round(median_delta)} ms faster blocked"
+    if len(shorter) >= len(deltas) - 1 and median_delta > 0:
         return (
             "supported",
-            f"{len(shorter)} of {len(deltas)} adjacent pairs settled faster blocked (median {round(paired)} ms,"
-            f" {round(100 * paired / median([row['settle_ms'] for row in off]))}% of the OFF settle)",
+            f"{len(shorter)} of {len(deltas)} adjacent pairs settled faster blocked (median {round(median_delta)} ms,"
+            f" {round(100 * median_delta / median([row['settle_ms'] for row in off]))}% of the OFF settle)",
         )
-    if len(shorter) <= len(deltas) // 4 and paired <= 0:
+    if len(shorter) <= len(deltas) // 4 and median_delta <= 0:
         return (
             "not supported",
             f"blocking did not shorten the settle: {len(shorter)} of {len(deltas)} adjacent pairs were faster"
-            f" blocked (median paired delta {round(paired)} ms)",
+            f" blocked (median paired delta {round(median_delta)} ms)",
         )
     return (
         "inconclusive",
-        f"the pairs disagree: {len(shorter)} of {len(deltas)} settled faster blocked (median {round(paired)} ms)",
+        f"the pairs disagree: {len(shorter)} of {len(deltas)} settled faster blocked (median {round(median_delta)} ms)",
     )
 
 
@@ -244,7 +249,7 @@ def print_report(rows: list[dict], url: str, verdict_line: tuple[str, str]) -> N
     print(f"\nsettle delta (OFF - ON): {round(off['settle_ms']['median'] - on['settle_ms']['median'])} ms")
     print(f"navigate delta (OFF - ON): {round(off['navigate_ms']['median'] - on['navigate_ms']['median'])} ms")
     print(f"capped settles: ON {on['capped_runs']}/{on['runs']}, OFF {off['capped_runs']}/{off['runs']}")
-    deltas = [off_row["settle_ms"] - on_row["settle_ms"] for on_row, off_row in pairs_of(rows)]
+    deltas = paired_settle_deltas(rows)
     print(f"\nadjacent pairs, settle delta (OFF - ON) ms: {deltas}  median {round(median(deltas))}")
     verdict_name, why = verdict_line
     print(f"\nverdict: {verdict_name} — {why}")
@@ -281,9 +286,7 @@ async def probe(pairs: int) -> int:
                 "navigate_grace_ms": GRACE_MS,
                 "runs": rows,
                 "summary": {"blocked_ON": summarize(rows, True), "blocked_OFF": summarize(rows, False)},
-                "paired_settle_delta_ms": [
-                    off_row["settle_ms"] - on_row["settle_ms"] for on_row, off_row in pairs_of(rows)
-                ],
+                "paired_settle_delta_ms": paired_settle_deltas(rows),
                 "verdict": {"result": verdict_line[0], "why": verdict_line[1]},
             }
             stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
