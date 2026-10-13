@@ -42,12 +42,15 @@ const gaps = (values) => {
   return sorted.slice(1).map((value, i) => value - sorted[i]);
 };
 
+/** Runs the geometry stage over a map laid out on the fixture's 736x920 pixel grid. */
+const boxesOf = (prob) => dbPostprocess(prob, W, H, W, H);
+
 test("a map with no text yields no boxes", () => {
-  assert.deepEqual(dbPostprocess(emptyMap(), W, H, W, H), { boxes: [], scores: [] });
+  assert.deepEqual(boxesOf(emptyMap()), { boxes: [], scores: [] });
 });
 
 test("every blob becomes one box of the same size, inside the frame, with its own score", () => {
-  const { boxes, scores } = dbPostprocess(blobsMap(), W, H, W, H);
+  const { boxes, scores } = boxesOf(blobsMap());
   assert.equal(boxes.length, 18, "one box per blob");
   assert.equal(scores.length, 18);
 
@@ -67,7 +70,7 @@ test("every blob becomes one box of the same size, inside the frame, with its ow
 });
 
 test("the fixture's grid survives, and the boxes stay in raster order", () => {
-  const { boxes } = dbPostprocess(blobsMap(), W, H, W, H);
+  const { boxes } = boxesOf(blobsMap());
   const corners = boxes.map(topLeft);
   assert.deepEqual(gaps(corners.map(([x]) => x)), [COL_STEP, COL_STEP, COL_STEP, COL_STEP, COL_STEP]);
   assert.deepEqual(gaps(corners.map(([, y]) => y)), [ROW_STEP, ROW_STEP]);
@@ -79,6 +82,6 @@ test("the fixture's grid survives, and the boxes stay in raster order", () => {
 });
 
 test("a map that is entirely text still yields its single blob, and a tiny map works", () => {
-  assert.equal(dbPostprocess(new Float32Array(W * H).fill(0.9), W, H, W, H).boxes.length, 1);
+  assert.equal(boxesOf(new Float32Array(W * H).fill(0.9)).boxes.length, 1);
   assert.equal(dbPostprocess(new Float32Array(64).fill(0.9), 8, 8, 8, 8).boxes.length, 1);
 });

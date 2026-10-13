@@ -18,14 +18,19 @@ import { fill, noise } from "./support/images.mjs";
 const WIDTH = 480;
 const HEIGHT = 270;
 
+/** The dark panel body both frame builders start from; returns the centred text column (its left edge and width). */
+function panelBody(img, { x, y, width, height }, stripes = 0.6) {
+  fill(img, x, y, width, height, 20);
+  const span = Math.round(width * stripes);
+  return { left: x + Math.round((width - span) / 2), span };
+}
+
 // `stripes` says how much of the panel the text lines cover, so two calls can build two different-looking panels.
 function frame(box, stripes = 0.6) {
   const img = noise(WIDTH, HEIGHT);
   if (!box) return img;
-  const { x, y, width, height } = box;
-  fill(img, x, y, width, height, 20);
-  const span = Math.round(width * stripes);
-  const left = x + Math.round((width - span) / 2);
+  const { left, span } = panelBody(img, box, stripes);
+  const { y, height } = box;
   for (let sy = y + 2; sy < y + height; sy += 14) {
     const sh = Math.min(4, y + height - sy);
     if (sh > 0) fill(img, left, sy, span, sh, 200);
@@ -40,10 +45,8 @@ function frame(box, stripes = 0.6) {
 // rendered a few pixels off (the kind of shift an encoder leaves behind).
 function realisticFrame(box, { stripes = 0.6, dashShift = 0 } = {}) {
   const img = noise(960, 540);
-  const { x, y, width, height } = box;
-  fill(img, x, y, width, height, 20);
-  const span = Math.round(width * stripes);
-  const left = x + Math.round((width - span) / 2);
+  const { left, span } = panelBody(img, box, stripes);
+  const { y, height } = box;
   for (let sy = y + 4; sy < y + height; sy += 28) {
     fill(img, left, sy - 2, span, 2, 96);
     fill(img, left, sy + 8, span, 2, 96);
@@ -100,15 +103,15 @@ test("a box comes back on the frame that first satisfies STABLE_FRAMES, never tw
 
 test("a changed box restarts the count, and the next stay crops once more", () => {
   const session = createScanSession();
-  const a = frame(BOX_A);
-  const b = frame(BOX_B);
-  assert.equal(session.feed(a), null);
-  assert.equal(session.feed(b), null);
-  assert.ok(session.feed(b));
+  const panelA = frame(BOX_A);
+  const panelB = frame(BOX_B);
+  assert.equal(session.feed(panelA), null);
+  assert.equal(session.feed(panelB), null);
+  assert.ok(session.feed(panelB));
 
   assert.equal(session.feed(frame(null)), null);
-  assert.equal(session.feed(a), null);
-  assert.ok(session.feed(a));
+  assert.equal(session.feed(panelA), null);
+  assert.ok(session.feed(panelA));
 });
 
 test("accept refuses a crop key it has already queued", () => {
@@ -125,19 +128,22 @@ function ringDiff(a, boxA, b, boxB) {
     const out = [];
     for (let y = box.y - 4; y < box.y + box.height + 4; y++) {
       for (let x = box.x - 4; x < box.x + box.width + 4; x++) {
-        if (x >= box.x && x < box.x + box.width && y >= box.y && y < box.y + box.height) continue;
+        const insidePanel = x >= box.x && x < box.x + box.width && y >= box.y && y < box.y + box.height;
+        if (insidePanel) continue;
         if (x < 0 || y < 0 || x >= img.width || y >= img.height) continue;
-        const i = (y * img.width + x) * 4;
-        out.push(Math.max(img.data[i], img.data[i + 1], img.data[i + 2]));
+        const pixel = (y * img.width + x) * 4;
+        out.push(Math.max(img.data[pixel], img.data[pixel + 1], img.data[pixel + 2]));
       }
     }
     return out;
   };
-  const ra = ring(a, boxA);
-  const rb = ring(b, boxB);
-  let n = 0;
-  for (let i = 0; i < Math.min(ra.length, rb.length); i++) if (ra[i] !== rb[i]) n += 1;
-  return n;
+  const ringA = ring(a, boxA);
+  const ringB = ring(b, boxB);
+  let differing = 0;
+  for (let i = 0; i < Math.min(ringA.length, ringB.length); i++) {
+    if (ringA[i] !== ringB[i]) differing += 1;
+  }
+  return differing;
 }
 
 test("the same panel shown at a second place is one crop, not two", () => {

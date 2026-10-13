@@ -138,6 +138,9 @@ class FakeWorker {
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 
+/** The one-pixel picture every engine test asks a read to recognise. */
+const pixels = () => ({ width: 1, height: 1, data: new Uint8ClampedArray(4) });
+
 test("createOcrEngine posts init and resolves a read with the worker's text, and terminate closes the worker", async () => {
   const worker = new FakeWorker();
   const statuses = [];
@@ -166,7 +169,7 @@ test("createOcrEngine posts init and resolves a read with the worker's text, and
   worker.emit({ type: "status", stage: "ready" });
   assert.deepEqual(statuses, ["正在準備辨識引擎…", "正在辨識文字…"]);
 
-  const reading = engine.recognize({ width: 1, height: 1, data: new Uint8ClampedArray(4) });
+  const reading = engine.recognize(pixels());
   await tick();
   const request = worker.posted[1].message;
   assert.equal(request.type, "recognize");
@@ -208,6 +211,9 @@ function watch(promise) {
   return state;
 }
 
+/** Watches a read of the one-pixel picture, so a test can say exactly which state it is in. */
+const watchRead = (engine) => watch(engine.recognize(pixels()));
+
 const types = (worker) => worker.posted.map((p) => p.message.type);
 
 test("a worker error message rejects the read waiting under its id and leaves the others alone", async () => {
@@ -215,8 +221,8 @@ test("a worker error message rejects the read waiting under its id and leaves th
   const engine = await runningEngine(worker);
   worker.emit({ type: "status", stage: "ready" });
 
-  const first = watch(engine.recognize({ width: 1, height: 1, data: new Uint8ClampedArray(4) }));
-  const second = watch(engine.recognize({ width: 1, height: 1, data: new Uint8ClampedArray(4) }));
+  const first = watchRead(engine);
+  const second = watchRead(engine);
   await tick();
   assert.deepEqual(worker.posted.filter((p) => p.message.type === "recognize").map((p) => p.message.id), [1, 2]);
 
@@ -235,7 +241,7 @@ test("a worker error whose id matches no waiting read settles nothing", async ()
   const engine = await runningEngine(worker);
   worker.emit({ type: "status", stage: "ready" });
 
-  const reading = watch(engine.recognize({ width: 1, height: 1, data: new Uint8ClampedArray(4) }));
+  const reading = watchRead(engine);
   await tick();
   assert.equal(worker.posted.at(-1).message.id, 1);
 
@@ -253,7 +259,7 @@ test("a read is posted only once the worker has reported ready, and each status 
   const statuses = [];
   const engine = await runningEngine(worker, statuses);
 
-  const reading = watch(engine.recognize({ width: 1, height: 1, data: new Uint8ClampedArray(4) }));
+  const reading = watchRead(engine);
   await tick();
   assert.deepEqual(types(worker), ["init"]);
   assert.deepEqual(statuses, []);
@@ -275,7 +281,7 @@ test("a worker error with no id fails the engine, so a read waits for nothing an
   const worker = new FakeWorker();
   const engine = await runningEngine(worker);
 
-  const reading = watch(engine.recognize({ width: 1, height: 1, data: new Uint8ClampedArray(4) }));
+  const reading = watchRead(engine);
   worker.emit({ type: "error", id: null, message: "字元清單長度不對（5，應為 18710）" });
   await tick();
   assert.deepEqual(reading, { status: "rejected", value: "字元清單長度不對（5，應為 18710）" });
@@ -287,8 +293,8 @@ test("a worker-level error event rejects the engine and every read still waiting
   const engine = await runningEngine(worker);
   worker.emit({ type: "status", stage: "ready" });
 
-  const first = watch(engine.recognize({ width: 1, height: 1, data: new Uint8ClampedArray(4) }));
-  const second = watch(engine.recognize({ width: 1, height: 1, data: new Uint8ClampedArray(4) }));
+  const first = watchRead(engine);
+  const second = watchRead(engine);
   await tick();
   assert.equal(types(worker).filter((t) => t === "recognize").length, 2);
 
@@ -299,7 +305,7 @@ test("a worker-level error event rejects the engine and every read still waiting
 
   const other = new FakeWorker();
   const otherEngine = await runningEngine(other);
-  const reading = watch(otherEngine.recognize({ width: 1, height: 1, data: new Uint8ClampedArray(4) }));
+  const reading = watchRead(otherEngine);
   other.emitError(undefined);
   await tick();
   assert.deepEqual(reading, { status: "rejected", value: "辨識 worker 發生錯誤" });

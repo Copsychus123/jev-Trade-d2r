@@ -51,10 +51,22 @@ const reply = (body, status = 200) => ({
   body: { getReader: () => ({ chunks: [body.slice(0, 3), body.slice(3)], read: async function () { const v = this.chunks.shift(); return v ? { done: false, value: v } : { done: true }; } }) },
 });
 
+/** A one-file manager for the 8-byte `eng` fixture, over `store` (a fresh memory store unless given). */
+const makeManager = (fetchFn, store = memoryStore(), extra = {}) =>
+  createModelManager({ files: good, order: ["eng"], store, fetchFn, ...extra });
+
+/** A manager that has already downloaded the fixture file once, plus the store it wrote into. */
+async function downloaded() {
+  const store = memoryStore();
+  const manager = makeManager(async () => reply(bytes), store);
+  await manager.download("eng");
+  return { store, manager };
+}
+
 test("a download is verified, stored once, and reported as progress", async () => {
   const store = memoryStore();
   const seen = [];
-  const manager = createModelManager({ files: good, order: ["eng"], store, fetchFn: async () => reply(bytes) });
+  const manager = makeManager(async () => reply(bytes), store);
   assert.deepEqual(await manager.missing(), { names: ["eng"], bytes: 8 });
   await manager.download("eng", { onProgress: (got) => seen.push(got) });
   assert.deepEqual(seen, [3, 8]);
@@ -67,59 +79,46 @@ test("a file with the wrong checksum or size is rejected and never stored", asyn
   const store = memoryStore();
   const tampered = new Uint8Array(bytes);
   tampered[0] = 99;
-  const bad = createModelManager({ files: good, order: ["eng"], store, fetchFn: async () => reply(tampered) });
+  const bad = makeManager(async () => reply(tampered), store);
   await assert.rejects(bad.download("eng"), (e) => e instanceof ModelError && e.kind === "checksum");
-  const short = createModelManager({ files: good, order: ["eng"], store, fetchFn: async () => reply(bytes.slice(0, 5)) });
+  const short = makeManager(async () => reply(bytes.slice(0, 5)), store);
   await assert.rejects(short.download("eng"), (e) => e.kind === "size");
   assert.equal(store.data.size, 0);
 });
 
 test("a failed download is reported once and not retried by itself", async () => {
   let calls = 0;
-  const manager = createModelManager({
-    files: good,
-    order: ["eng"],
-    store: memoryStore(),
-    fetchFn: async () => {
-      calls += 1;
-      throw new Error("offline");
-    },
+  const manager = makeManager(async () => {
+    calls += 1;
+    throw new Error("offline");
   });
   await assert.rejects(manager.download("eng"), (e) => e.kind === "network" && /offline/.test(e.message));
-  const http = createModelManager({ files: good, order: ["eng"], store: memoryStore(), fetchFn: async () => reply(bytes, 404) });
+  const http = makeManager(async () => reply(bytes, 404));
   await assert.rejects(http.download("eng"), (e) => e.kind === "network" && /404/.test(e.message));
   assert.equal(calls, 1);
 });
 
 test("a stored file of another version counts as missing again", async () => {
-  const store = memoryStore();
-  const manager = createModelManager({ files: good, order: ["eng"], store, fetchFn: async () => reply(bytes) });
-  await manager.download("eng");
+  const { store, manager } = await downloaded();
   store.data.set(HASH_KEY, "old-version");
   assert.deepEqual((await manager.missing()).names, ["eng"]);
 });
 
 test("checking what is stored never reads the model bytes", async () => {
-  const store = memoryStore();
-  const manager = createModelManager({ files: good, order: ["eng"], store, fetchFn: async () => reply(bytes) });
-  await manager.download("eng");
+  const { store, manager } = await downloaded();
   store.reads.length = 0;
   assert.deepEqual((await manager.missing()).names, []);
   assert.deepEqual(store.reads, [HASH_KEY]);
 });
 
 test("a file whose bytes are gone counts as missing even when its version record is still there", async () => {
-  const store = memoryStore();
-  const manager = createModelManager({ files: good, order: ["eng"], store, fetchFn: async () => reply(bytes) });
-  await manager.download("eng");
+  const { store, manager } = await downloaded();
   store.data.delete(BYTES_KEY);
   assert.deepEqual((await manager.missing()).names, ["eng"]);
 });
 
 test("forgetting a file makes it missing again", async () => {
-  const store = memoryStore();
-  const manager = createModelManager({ files: good, order: ["eng"], store, fetchFn: async () => reply(bytes) });
-  await manager.download("eng");
+  const { store, manager } = await downloaded();
   await manager.forget("eng");
   assert.equal(store.data.size, 0);
   assert.deepEqual((await manager.missing()).names, ["eng"]);
@@ -169,7 +168,7 @@ test("a download that delivers more bytes than the file has is stopped at once, 
       },
     };
   };
-  const manager = createModelManager({ files: good, order: ["eng"], store: memoryStore(), fetchFn });
+  const manager = makeManager(fetchFn);
   await assert.rejects(manager.download("eng"), (e) => e instanceof ModelError && e.kind === "size");
   assert.equal(reads, 2); // 5 bytes fit in the 8 expected, the second chunk (10 > 8) ends it
   assert.ok(aborted);
@@ -186,7 +185,7 @@ test("a download that stops delivering gives up after the stall time and stores 
       }),
     },
   });
-  const manager = createModelManager({ files: good, order: ["eng"], store, fetchFn, stallMs: 30 });
+  const manager = makeManager(fetchFn, store, { stallMs: 30 });
   await assert.rejects(manager.download("eng"), (e) => e.kind === "network" && /沒有收到資料/u.test(e.message));
   assert.equal(store.data.size, 0);
 });
@@ -194,7 +193,7 @@ test("a download that stops delivering gives up after the stall time and stores 
 test("a server that never answers is also a stall", async () => {
   const fetchFn = (_url, { signal }) =>
     new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(new Error("aborted"))));
-  const manager = createModelManager({ files: good, order: ["eng"], store: memoryStore(), fetchFn, stallMs: 30 });
+  const manager = makeManager(fetchFn, memoryStore(), { stallMs: 30 });
   await assert.rejects(manager.download("eng"), (e) => e.kind === "network" && /沒有收到資料/u.test(e.message));
 });
 
@@ -215,11 +214,11 @@ test("cancelling a running download ends it as 'cancelled' and stores nothing", 
       }),
     },
   });
-  const manager = createModelManager({ files: good, order: ["eng"], store, fetchFn });
+  const manager = makeManager(fetchFn, store);
   await assert.rejects(manager.download("eng", { signal: controller.signal }), (e) => e.kind === "cancelled");
   assert.equal(store.data.size, 0);
   const already = new AbortController();
   already.abort();
-  const never = createModelManager({ files: good, order: ["eng"], store, fetchFn: async () => assert.fail("no request") });
+  const never = makeManager(async () => assert.fail("no request"), store);
   await assert.rejects(never.download("eng", { signal: already.signal }), (e) => e.kind === "cancelled");
 });

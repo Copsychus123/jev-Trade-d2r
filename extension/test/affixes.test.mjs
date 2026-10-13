@@ -49,8 +49,7 @@ const byKey = (result) => Object.fromEntries(result.conditions.map((c) => [c.key
 const mine = (c) => [c.min, c.confident];
 
 test("a rare ring: a plausible value with a % is trusted, an impossible magnitude and a value whose % was read as digits stay unsure", () => {
-  const result = parseAffixLines(RING);
-  const c = byKey(result);
+  const c = byKey(parseAffixLines(RING));
   assert.deepEqual(mine(c.fcr), [10, false]); // +1096 -> the "96" is the misread "%"
   assert.deepEqual(mine(c.ar), [111, true]);
   assert.deepEqual(mine(c.life), [36, true]);
@@ -68,8 +67,7 @@ test("lines that are not affixes (title, base, requirement, hints) are dropped, 
 });
 
 test("a rare circlet: Chinese name, abbreviation and flat values", () => {
-  const result = parseAffixLines(CIRCLET);
-  const c = byKey(result);
+  const c = byKey(parseAffixLines(CIRCLET));
   assert.deepEqual(mine(c.defense), [30, true]);
   assert.deepEqual(mine(c.frw), [20, false]);
   assert.deepEqual(mine(c.fcr), [20, false]); // "+20096" is a real 20% FCR whose % became 096; the ladder continues to 20

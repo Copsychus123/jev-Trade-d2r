@@ -482,6 +482,11 @@ function fireTick() {
   for (const ticker of env.tickers) if (!ticker.cleared) ticker.fn();
 }
 
+/** `count` seconds on the panel's own ticker. */
+function fireTicks(count) {
+  for (let i = 0; i < count; i += 1) fireTick();
+}
+
 /** Runs the screen up to `texts.length` records on the list, without stopping the capture. */
 async function scanPanels(panels, texts) {
   setup();
@@ -489,6 +494,24 @@ async function scanPanels(panels, texts) {
   deliver(panels);
   await settleCrops(texts.length);
   for (let i = 0; i < texts.length; i++) await answer(i, texts[i]);
+}
+
+/** A fresh screen fed `frames`, one tick blown after them: the status line those frames produce. */
+async function statusAfterFrames(frames) {
+  setup();
+  await startScan();
+  await feedFrames(frames);
+  fireTick();
+  return statusText();
+}
+
+/** Two panels delivered, the first crop held at the engine, then the read loop ended: one crop waits behind it. */
+async function twoCropsWithOneHeldAtTheEngine() {
+  setup();
+  await startScan();
+  deliver([{ box: PANEL_A }, { box: PANEL_B, stripes: 0.3 }]);
+  await settleReads(1);
+  await drained();
 }
 
 // --- the empty screen ------------------------------------------------------------------------------------------------
@@ -552,12 +575,7 @@ test("a frame closer than 66 ms to the last one is counted in the rate but never
 
 test("one list item per record: the name line, the 類型/詞綴 line and two search buttons carrying the index", async () => {
   // The affix-only panel is read first, so the newest record (the named one) lands on top of the list.
-  setup();
-  await startScan();
-  deliver([{ box: PANEL_B, stripes: 0.3 }, { box: PANEL_A }]);
-  await settleCrops(2);
-  await answer(0, AFFIX_TEXT);
-  await answer(1, NAME_TEXT);
+  await scanPanels([{ box: PANEL_B, stripes: 0.3 }, { box: PANEL_A }], [AFFIX_TEXT, NAME_TEXT]);
 
   const items = listEl().children;
   assert.equal(items.length, 2);
@@ -565,7 +583,12 @@ test("one list item per record: the name line, the 類型/詞綴 line and two se
   assert.equal(node("scan-csv").disabled, false);
   assert.equal(node("scan-clear").disabled, false);
 
-  const named = items[0];
+  assertNamedItem(items[0]);
+  assertUnnamedItem(items[1]);
+});
+
+/** The named record (index 0): its 類型 line and two enabled search buttons. */
+function assertNamedItem(named) {
   assert.deepEqual({ index: named.dataset.index, name: named.dataset.name, kind: named.dataset.kind }, {
     index: "0",
     name: NAME_TEXT,
@@ -585,8 +608,10 @@ test("one list item per record: the name line, the 類型/詞綴 line and two se
     ["button", "button", "link", "0"],
   ]);
   assert.deepEqual(actions.children.map((button) => button.disabled), [false, false]);
+}
 
-  const unnamed = items[1];
+/** The affix-only record (index 1): no name, so 精準搜尋 is disabled and only 模糊搜尋 can be pressed. */
+function assertUnnamedItem(unnamed) {
   assert.deepEqual({ index: unnamed.dataset.index, name: unnamed.dataset.name, kind: unnamed.dataset.kind }, {
     index: "1",
     name: "",
@@ -597,7 +622,7 @@ test("one list item per record: the name line, the 類型/詞綴 line and two se
   assert.deepEqual(unnamed.children[2].children.map((button) => button.dataset.index), ["1", "1"]);
   assert.equal(unnamed.children[2].children[0].disabled, true); // no name: 精準搜尋 cannot look anything up
   assert.equal(unnamed.children[2].children[1].disabled, false);
-});
+}
 
 // --- 匯出 CSV --------------------------------------------------------------------------------------------------------
 
@@ -668,11 +693,7 @@ test("清除紀錄 before the first crop does not stop the crops taken after it 
 });
 
 test("a crop the OCR is still reading when 清除紀錄 is pressed does not come back as a record", async () => {
-  setup();
-  await startScan();
-  deliver([{ box: PANEL_A }, { box: PANEL_B, stripes: 0.3 }]);
-  await settleReads(1); // the first crop is at the engine and stays there
-  await drained(); // 4 frames, then the read that ends the loop
+  await twoCropsWithOneHeldAtTheEngine();
   fireTick();
   assert.equal(statusText(), "掃描中：已記錄 0 件，待辨識 1 件"); // the second crop waits behind the open read
 
@@ -753,11 +774,7 @@ test("a cancelled model download never opens the picker and says why nothing sta
 });
 
 test("while sharing, the status counts the records and the crops still waiting for OCR", async () => {
-  setup();
-  await startScan();
-  deliver([{ box: PANEL_A }, { box: PANEL_B, stripes: 0.3 }]);
-  await settleReads(1); // the first crop is at the engine and stays there (every read is held)
-  await drained(); // 4 frames, then the read that ends the loop
+  await twoCropsWithOneHeldAtTheEngine();
   assert.equal(node("scan-start").disabled, true);
   assert.equal(node("scan-stop").hidden, false);
 
@@ -773,11 +790,7 @@ test("while sharing, the status counts the records and the crops still waiting f
 });
 
 test("停止掃描 releases the share, drops the ticker and states the final count", async () => {
-  setup();
-  await startScan();
-  deliver([{ box: PANEL_A }]);
-  await settleCrops(1);
-  await answer(0, NAME_TEXT);
+  await scanPanels([{ box: PANEL_A }], [NAME_TEXT]);
 
   await node("scan-stop").fire("click");
 
@@ -792,11 +805,7 @@ test("停止掃描 releases the share, drops the ticker and states the final cou
 });
 
 test("the player's own 停止分享 ends the run the same way, with no error in front of the count", async () => {
-  setup();
-  await startScan();
-  deliver([{ box: PANEL_A }]);
-  await settleCrops(1);
-  await answer(0, NAME_TEXT);
+  await scanPanels([{ box: PANEL_A }], [NAME_TEXT]);
 
   env.tracks[0].end(); // Chrome's "stop sharing"
 
@@ -856,39 +865,24 @@ test("a long run of dark frames warns about a black capture, and a picture comin
   const dark = (n, from = 0) => Array.from({ length: n }, (_, i) => darkFrame((from + i + 1) * 100000));
 
   // One dark frame short of the run the advice needs (BLACK_FRAMES = 30): 29 of them stay silent.
-  setup();
-  await startScan();
-  await feedFrames(dark(29));
-  fireTick();
-  assert.equal(statusText(), "掃描中：已記錄 0 件，待辨識 0 件");
+  assert.equal(await statusAfterFrames(dark(29)), "掃描中：已記錄 0 件，待辨識 0 件");
 
   // The 30th sets it, and it is composed in front of the live count.
-  setup();
-  await startScan();
-  await feedFrames(dark(30));
-  fireTick();
-  assert.equal(statusText(), `${BLACK_ADVICE} 掃描中：已記錄 0 件，待辨識 0 件`);
+  assert.equal(await statusAfterFrames(dark(30)), `${BLACK_ADVICE} 掃描中：已記錄 0 件，待辨識 0 件`);
 
   // The black-screen advice outranks the slowdown one: slow ticks never replace it.
-  fireTick();
-  fireTick();
-  fireTick();
+  fireTicks(3);
   assert.equal(statusText(), `${BLACK_ADVICE} 掃描中：已記錄 0 件，待辨識 0 件`);
 
   // Frames with a picture on them are what clear it (the tick has no say here).
-  setup();
-  await startScan();
   const bright = [panelFrame(PANEL_A), panelFrame(PANEL_A)].map((img, i) => fakeFrame(img, (31 + i) * 100000));
-  await feedFrames([...dark(30), ...bright]);
-  fireTick();
-  assert.equal(statusText(), "掃描中：已記錄 0 件，待辨識 0 件");
+  assert.equal(await statusAfterFrames([...dark(30), ...bright]), "掃描中：已記錄 0 件，待辨識 0 件");
 });
 
 test("a run of slow seconds advises moving the game beside Chrome, and a fast one drops it", async () => {
   setup();
   await startScan();
-  fireTick();
-  fireTick();
+  fireTicks(2);
   // Two seconds below SLOW_FPS = 5 are not enough ...
   assert.equal(statusText(), "掃描中：已記錄 0 件，待辨識 0 件");
 
@@ -926,12 +920,7 @@ test("the stats line counts frames, detections, refusals and the run's average r
 // --- the two search buttons ------------------------------------------------------------------------------------------
 
 test("the search buttons hand the live record to the injected handlers and start no query themselves", async () => {
-  setup();
-  await startScan();
-  deliver([{ box: PANEL_B, stripes: 0.3 }, { box: PANEL_A }]);
-  await settleCrops(2);
-  await answer(0, AFFIX_TEXT);
-  await answer(1, NAME_TEXT);
+  await scanPanels([{ box: PANEL_B, stripes: 0.3 }, { box: PANEL_A }], [AFFIX_TEXT, NAME_TEXT]);
 
   const [named, unnamed] = listEl().children;
   const [precise, fuzzy] = named.children[2].children;
@@ -941,11 +930,7 @@ test("the search buttons hand the live record to the injected handlers and start
   assert.equal(env.handlers.name.length, 1);
   assert.deepEqual(env.handlers.stats, []);
   const record = env.handlers.name[0];
-  assert.deepEqual(
-    { name: record.name, zh: record.zh, kind: record.kind, base: record.base, text: record.text, conditions: record.conditions },
-    { name: NAME_TEXT, zh: "蛛網紋束帶", kind: "item", base: null, text: NAME_TEXT, conditions: [] },
-  );
-  assert.ok(record.at instanceof REAL_DATE); // the record itself, with its own Date, not a rendering of it
+  assertNamedSearchRecord(record);
 
   await fuzzy.fire("click");
   assert.equal(env.handlers.stats.length, 1);
@@ -957,11 +942,25 @@ test("the search buttons hand the live record to the injected handlers and start
   await unnamedFuzzy.fire("click");
   assert.equal(env.handlers.stats.length, 2);
   assert.notEqual(env.handlers.stats[1], record);
-  assert.deepEqual(
-    { name: env.handlers.stats[1].name, text: env.handlers.stats[1].text, labels: env.handlers.stats[1].conditions.map((c) => c.label) },
-    { name: null, text: AFFIX_TEXT, labels: ["力量"] },
-  );
+  assertAffixSearchRecord(env.handlers.stats[1]);
 
   assert.equal(env.ocr.reads.length, reads); // pressing a search button read no crop
   assert.deepEqual(env.fetches, []); // and no query left the page
 });
+
+/** 精準搜尋 hands the record itself to onSearchName, with its own Date, not a rendering of it. */
+function assertNamedSearchRecord(record) {
+  assert.deepEqual(
+    { name: record.name, zh: record.zh, kind: record.kind, base: record.base, text: record.text, conditions: record.conditions },
+    { name: NAME_TEXT, zh: "蛛網紋束帶", kind: "item", base: null, text: NAME_TEXT, conditions: [] },
+  );
+  assert.ok(record.at instanceof REAL_DATE); // the record itself, with its own Date, not a rendering of it
+}
+
+/** 模糊搜尋 on the affix-only panel hands onSearchStats a record with no name and the 力量 condition. */
+function assertAffixSearchRecord(record) {
+  assert.deepEqual(
+    { name: record.name, text: record.text, labels: record.conditions.map((c) => c.label) },
+    { name: null, text: AFFIX_TEXT, labels: ["力量"] },
+  );
+}

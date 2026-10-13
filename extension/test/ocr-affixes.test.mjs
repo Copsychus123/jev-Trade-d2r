@@ -7,6 +7,13 @@ import { parseAffixLines } from "../src/ocr/affixes.js";
 const byKey = (result) => Object.fromEntries(result.conditions.map((c) => [c.key, c]));
 const mine = (c) => [c.min, c.confident];
 
+/** The condition `key` that `line` produced, failing the test when the line produced no such condition. */
+function condition(line, key) {
+  const found = byKey(parseAffixLines(line))[key];
+  assert.ok(found, `Expected ${key} affix to be matched`);
+  return found;
+}
+
 test("擊中竊取 7% 法力 parses as ml with value 7", () => {
   const result = parseAffixLines("擊中竊取 7% 法力");
   const c = byKey(result);
@@ -24,52 +31,31 @@ test("擊中竊取 7% 生命 parses as ll with value 7", () => {
 });
 
 test("2x 火焰抗性 (FB) +12% extracts value 12 (not 2)", () => {
-  const result = parseAffixLines("2x 火焰抗性 (FB) +12%");
-  const c = byKey(result);
-  assert.ok(c.fire_res, "Expected fire_res affix to be matched");
-  assert.deepEqual(mine(c.fire_res), [12, true]);
+  assert.deepEqual(mine(condition("2x 火焰抗性 (FB) +12%", "fire_res")), [12, true]);
 });
 
 test("毒素抗性(88) +29% extracts value 29 (not 88)", () => {
-  const result = parseAffixLines("毒素抗性(88) +29%");
-  const c = byKey(result);
-  assert.ok(c.poison_res, "Expected poison_res affix to be matched");
-  assert.deepEqual(mine(c.poison_res), [29, true]);
+  assert.deepEqual(mine(condition("毒素抗性(88) +29%", "poison_res")), [29, true]);
 });
 
 test("火焰抗性 +909 repairs to 9", () => {
-  const result = parseAffixLines("火焰抗性 +909");
-  const c = byKey(result);
-  assert.ok(c.fire_res, "Expected fire_res affix to be matched");
-  assert.deepEqual(mine(c.fire_res), [9, false]);
+  assert.deepEqual(mine(condition("火焰抗性 +909", "fire_res")), [9, false]);
 });
 
 test("percent misread repairs: 406 -> 40", () => {
-  const result = parseAffixLines("火焰抗性 +406");
-  const c = byKey(result);
-  assert.ok(c.fire_res, "Expected fire_res affix to be matched");
-  assert.deepEqual(mine(c.fire_res), [40, false]);
+  assert.deepEqual(mine(condition("火焰抗性 +406", "fire_res")), [40, false]);
 });
 
 test("+2 德魯伊技能等級 (DU) matches dru_skills with min: 2, confident: true", () => {
-  const result = parseAffixLines("+2 德魯伊技能等級 (DU)");
-  const c = byKey(result);
-  assert.ok(c.dru_skills, "Expected dru_skills affix to be matched");
-  assert.deepEqual(mine(c.dru_skills), [2, true]);
+  assert.deepEqual(mine(condition("+2 德魯伊技能等級 (DU)", "dru_skills")), [2, true]);
 });
 
 test("+2 亞馬遜技能 matches ama_skills with min: 2, confident: true", () => {
-  const result = parseAffixLines("+2 亞馬遜技能");
-  const c = byKey(result);
-  assert.ok(c.ama_skills, "Expected ama_skills affix to be matched");
-  assert.deepEqual(mine(c.ama_skills), [2, true]);
+  assert.deepEqual(mine(condition("+2 亞馬遜技能", "ama_skills")), [2, true]);
 });
 
 test("中毒的時效縮短 (PU8) 25% matches plr with min: 25, confident: true", () => {
-  const result = parseAffixLines("中毒的時效縮短 (PU8) 25%");
-  const c = byKey(result);
-  assert.ok(c.plr, "Expected plr affix to be matched");
-  assert.deepEqual(mine(c.plr), [25, true]);
+  assert.deepEqual(mine(condition("中毒的時效縮短 (PU8) 25%", "plr")), [25, true]);
 });
 
 test("無法凍結 (CBF) matches cbf (bool, min: null, confident: true)", () => {
@@ -81,38 +67,23 @@ test("無法凍結 (CBF) matches cbf (bool, min: null, confident: true)", () => 
 });
 
 test("生命回復 (LifeRep) +13 matches replenish_life with min: 13, confident: true", () => {
-  const result = parseAffixLines("生命回復 (LifeRep) +13");
-  const c = byKey(result);
-  assert.ok(c.replenish_life, "Expected replenish_life affix to be matched");
-  assert.deepEqual(mine(c.replenish_life), [13, true]);
+  assert.deepEqual(mine(condition("生命回復 (LifeRep) +13", "replenish_life")), [13, true]);
 });
 
 test("+30% 跑步 / 衍走速度 matches frw with min: 30, confident: true", () => {
-  const result = parseAffixLines("+30% 跑步 / 衍走速度");
-  const c = byKey(result);
-  assert.ok(c.frw, "Expected frw affix to be matched");
-  assert.deepEqual(mine(c.frw), [30, true]);
+  assert.deepEqual(mine(condition("+30% 跑步 / 衍走速度", "frw")), [30, true]);
 });
 
 test("+43% 防答強化 matches edef with min: 43, confident: true", () => {
-  const result = parseAffixLines("+43% 防答強化");
-  const c = byKey(result);
-  assert.ok(c.edef, "Expected edef affix to be matched");
-  assert.deepEqual(mine(c.edef), [43, true]);
+  assert.deepEqual(mine(condition("+43% 防答強化", "edef")), [43, true]);
 });
 
 test("肉電抗性 +32% matches light_res with min: 32, confident: true", () => {
-  const result = parseAffixLines("肉電抗性 +32%");
-  const c = byKey(result);
-  assert.ok(c.light_res, "Expected light_res affix to be matched");
-  assert.deepEqual(mine(c.light_res), [32, true]);
+  assert.deepEqual(mine(condition("肉電抗性 +32%", "light_res")), [32, true]);
 });
 
 test("使目標減慢 (Slow) 10% matches slow with min: 10, confident: true", () => {
-  const result = parseAffixLines("使目標減慢 (Slow) 10%");
-  const c = byKey(result);
-  assert.ok(c.slow, "Expected slow affix to be matched");
-  assert.deepEqual(mine(c.slow), [10, true]);
+  assert.deepEqual(mine(condition("使目標減慢 (Slow) 10%", "slow")), [10, true]);
 });
 
 // --- Requirement lines must never become affixes (measured: 21 conditions came from them) ---
@@ -140,9 +111,7 @@ for (const line of ["需要 敏捷 :103", "需要 敏捷 : 94"]) {
 }
 
 test("+27 力量 (STN) is still a real affix with min: 27, confident: true", () => {
-  const c = byKey(parseAffixLines("+27 力量 (STN)"));
-  assert.ok(c.str, "Expected str affix to be matched");
-  assert.deepEqual(mine(c.str), [27, true]);
+  assert.deepEqual(mine(condition("+27 力量 (STN)", "str")), [27, true]);
 });
 
 // --- Ordered repair ladder for percent lines whose "%" the reader turned into digits ---
@@ -196,9 +165,7 @@ test("+30% 跑步 / 行走速度 keeps 30 confident: true (the % is present)", (
 });
 
 test("+20% 施法速度 (FCR) matches fcr by abbreviation with 20, confident: true", () => {
-  const c = byKey(parseAffixLines("+20% 施法速度 (FCR)"));
-  assert.ok(c.fcr, "Expected fcr affix to be matched");
-  assert.deepEqual(mine(c.fcr), [20, true]);
+  assert.deepEqual(mine(condition("+20% 施法速度 (FCR)", "fcr")), [20, true]);
 });
 
 // --- "(Def)" is the client's flat-Defense token, "(EDef)" its Enhanced Defense token; neither may fall through

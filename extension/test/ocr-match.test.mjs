@@ -49,6 +49,10 @@ const tables = indexTables({
 const index = buildMatchIndex(tables);
 const names = (text) => matchOcrText(text, index).map((c) => `${c.kind}:${c.name}`);
 
+/** A match index over the given products/zh/bases, with the placeholder `generated_at` the tests use. */
+const matchIndex = (products, zh, bases) =>
+  buildMatchIndex(indexTables({ generated_at: "x", products, zh, bases, game_only: [] }));
+
 test("a Chinese unique name is found even when the name line carries a mod tag with a misread bracket", () => {
   assert.deepEqual(names("蜘蛛之網[120EDI\n蛛網束帶[精英】\n防禦:129"), ["item:Arachnid Mesh"]);
 });
@@ -91,17 +95,14 @@ test("at most three candidates, best first", () => {
 });
 
 test("an exact short-name match adds the item as an alternative when a type line is also present; a non-exact short match only gives the type", () => {
-  const withSling = indexTables({
-    generated_at: "x",
-    products: [
+  const idx = matchIndex(
+    [
       { name: "Sling", slug: "sling", category: "uniques" },
       { name: "Ring", slug: "ring", category: "misc" },
     ],
-    zh: { 投索: "Sling", 戒指: "Ring" },
-    bases: ["Ring"],
-    game_only: [],
-  });
-  const idx = buildMatchIndex(withSling);
+    { 投索: "Sling", 戒指: "Ring" },
+    ["Ring"],
+  );
   assert.deepEqual(matchOcrText("投索\n戒指\n需要等級:50", idx).map((c) => `${c.kind}:${c.name}`), ["item:Sling", "base:Ring"]);
   assert.deepEqual(matchOcrText("投索", idx).map((c) => `${c.kind}:${c.name}`), ["item:Sling"]); // alone, still offered
   const withMistake = matchOcrText("投鎖\n戒指\n需要等級:50", idx).map((c) => `${c.kind}:${c.name}`);
@@ -114,29 +115,24 @@ test("a type word glued to its neighbours by OCR still gives the type, but only 
 });
 
 test("a name matches whether the screenshot writes its separator as a hyphen, a middle dot or not at all", () => {
-  const t = indexTables({
-    generated_at: "x",
-    products: [{ name: "Alma Negra", slug: "alma-negra", category: "uniques" }],
-    zh: { "阿爾瑪‧尼格拉": "Alma Negra" },
-    bases: [],
-    game_only: [],
-  });
-  const idx = buildMatchIndex(t);
+  const idx = matchIndex(
+    [{ name: "Alma Negra", slug: "alma-negra", category: "uniques" }],
+    { "阿爾瑪‧尼格拉": "Alma Negra" },
+    [],
+  );
   for (const text of ["阿爾瑪-尼格拉", "阿爾瑪·尼格拉", "阿爾瑪尼格拉", "阿爾瑪‧尼格拉"]) {
     assert.deepEqual(matchOcrText(text, idx).map((c) => c.name), ["Alma Negra"], text);
   }
 });
 
 test("a screenshot name with the period left out still matches a table name that has one", () => {
-  const t = indexTables({
-    generated_at: "x",
-    products: [{ name: "Tal Rasha's Guardianship", slug: "tal-rashas-guardianship", category: "sets" }],
-    zh: { "塔.拉夏的守護": "Tal Rasha's Guardianship" },
-    bases: [],
-    game_only: [],
-  });
-  assert.deepEqual(matchOcrText("塔拉夏的守護", buildMatchIndex(t)).map((c) => c.name), ["Tal Rasha's Guardianship"]);
-  assert.deepEqual(matchOcrText("塔.拉夏的守護", buildMatchIndex(t)).map((c) => c.name), ["Tal Rasha's Guardianship"]);
+  const idx = matchIndex(
+    [{ name: "Tal Rasha's Guardianship", slug: "tal-rashas-guardianship", category: "sets" }],
+    { "塔.拉夏的守護": "Tal Rasha's Guardianship" },
+    [],
+  );
+  assert.deepEqual(matchOcrText("塔拉夏的守護", idx).map((c) => c.name), ["Tal Rasha's Guardianship"]);
+  assert.deepEqual(matchOcrText("塔.拉夏的守護", idx).map((c) => c.name), ["Tal Rasha's Guardianship"]);
 });
 
 test("CJK OCR font glyph confusions are repaired for base matching", () => {

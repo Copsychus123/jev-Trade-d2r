@@ -472,6 +472,19 @@ function setup({ seed: seedMode = "missing", busy = false, pick = true, storage 
 
 const noticeText = `首次使用，正在下載辨識模型（約 ${formatMB(TOTAL_BYTES)} MB，只下載一次，存在這個瀏覽器裡，之後可以離線使用）。`;
 
+/**
+ * A panel whose models are already stored, with one whole picture pasted and the read run to completion. The
+ * candidate, failure and result tests all start from this prelude; `overrides` reaches `setup` for the ones that
+ * need a worker behaviour or a refusing handler.
+ */
+async function readImage(overrides = {}) {
+  const s = setup({ seed: "present", ...overrides });
+  await settle(2);
+  s.paste([image()]);
+  await settle(5);
+  return s;
+}
+
 // --- the download notice ---------------------------------------------------------------------------------------
 
 test("while the models are missing the download notice appears with a progress value and a cancel button", async () => {
@@ -588,11 +601,7 @@ test("the hint dot shows until the pick is first used, and using the pick rememb
 // --- the candidates --------------------------------------------------------------------------------------------
 
 test("the candidates are one button per name, labelled with the Chinese name, and the best one fills the field", async () => {
-  const s = setup({ seed: "present" });
-  await settle(2);
-
-  s.paste([image()]);
-  await settle(5);
+  const s = await readImage();
 
   assert.deepEqual(s.picks, [["Ripsaw", "item"]], "the best result goes into the name field through the handler");
   assert.equal(s.el("ocr-tag").hidden, false, "the name is marked as coming from a picture");
@@ -614,11 +623,7 @@ test("the candidates are one button per name, labelled with the Chinese name, an
 });
 
 test("picking another candidate writes it into the name field through the handler only", async () => {
-  const s = setup({ seed: "present" });
-  await settle(2);
-
-  s.paste([image()]);
-  await settle(5);
+  const s = await readImage();
   s.picks.length = 0; // the automatic best pick is not what this test is about
 
   s.candidateButtons()[1].click();
@@ -629,22 +634,14 @@ test("picking another candidate writes it into the name field through the handle
 });
 
 test("a result the form refuses is not marked as coming from a picture", async () => {
-  const s = setup({ seed: "present", pick: false });
-  await settle(2);
-
-  s.paste([image()]);
-  await settle(5);
+  const s = await readImage({ pick: false });
 
   assert.deepEqual(s.picks, [["Ripsaw", "item"]], "the handler was still offered the name");
   assert.equal(s.el("ocr-tag").hidden, true, "but the refused name is not tagged");
 });
 
 test("a read that matches nothing says so in the error kind", async () => {
-  const s = setup({ seed: "present", worker: { text: "ZZZZZZ" } });
-  await settle(2);
-
-  s.paste([image()]);
-  await settle(5);
+  const s = await readImage({ worker: { text: "ZZZZZZ" } });
 
   assert.equal(
     s.status().text,
@@ -660,11 +657,8 @@ test("a read that matches nothing says so in the error kind", async () => {
 // --- the picture and the box -----------------------------------------------------------------------------------
 
 test("a box dragged on the picture is the read region, and the button asks for a manual read", async () => {
-  const s = setup({ seed: "present" }); // auto-read on: the first picture is read without the button
-  await settle(2);
-
-  s.paste([image()]);
-  await settle(5);
+  // auto-read on: the first picture is read without the button
+  const s = await readImage();
   assert.equal(s.el("ocr-go").hidden, true, "auto-read runs by itself, so 辨識 stays out of the way");
 
   const preview = s.el("ocr-preview");
@@ -682,11 +676,8 @@ test("a box dragged on the picture is the read region, and the button asks for a
 });
 
 test("a box under the 20x10 image-pixel minimum is refused; just over it is the region the read uses", async () => {
-  const s = setup({ seed: "present" }); // auto-read on: 辨識 stays hidden while no region is set
-  await settle(2);
-
-  s.paste([image()]);
-  await settle(5);
+  // auto-read on: 辨識 stays hidden while no region is set
+  const s = await readImage();
   const preview = s.el("ocr-preview");
   canvasSizes.length = 0; // the whole-picture auto-read is not what this test measures
 
@@ -836,11 +827,7 @@ test("a download whose bytes do not match the pinned digest fails the read with 
 });
 
 test("a read that fails after the engine started reports the failure and offers a retry", async () => {
-  const s = setup({ seed: "present", worker: { failWith: "boom" } });
-  await settle(2);
-
-  s.paste([image()]);
-  await settle(5);
+  const s = await readImage({ worker: { failWith: "boom" } });
 
   assert.equal(s.status().text, "辨識失敗：boom。可以再按一次「辨識」重試。");
   assert.equal(s.status().kind, "error");
@@ -874,11 +861,7 @@ test("a read still running after 15 s shows the slow notice, which the finished 
 });
 
 test("a read that finishes quickly never shows the slow notice, and its timer is cleared", async () => {
-  const s = setup({ seed: "present" });
-  await settle(2);
-
-  s.paste([image()]);
-  await settle(5);
+  const s = await readImage();
   const finished = s.status().text;
   assert.equal(finished.startsWith("已辨識"), true, "the read already finished");
   assert.equal([...pendingTimers].some((handle) => handle.ms === 15_000), false, "the slow notice timer was cleared");

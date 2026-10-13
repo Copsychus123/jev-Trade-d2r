@@ -7,15 +7,23 @@ import { fill, noise } from "./support/images.mjs";
 
 // A reproducible mid-grey noise background, exactly the kind scripts/data/scan_sim.html paints: values in 70..160, so
 // the background is neither dark nor smooth and the detector must not bite on it.
+
+/** The dark panel body both drawings start from; returns the centred text column (its left edge and width). */
+function panelBody(img, { x, y, width, height }, stripes = 0.6) {
+  fill(img, x, y, width, height, 20);
+  const span = Math.round(width * stripes);
+  return { left: x + Math.round((width - span) / 2), span };
+}
+
 // A dark panel with bright text lines 60 % of the panel wide, 4 px tall every 14 px: the clean case.
 // `stripeOffset` slides the lines sideways so a test can move them inside a fixed panel.
-function drawPanel(img, { x, y, width, height }, stripeOffset = 0) {
-  fill(img, x, y, width, height, 20);
-  const stripes = Math.round(width * 0.6);
-  const left = x + Math.round((width - stripes) / 2) + stripeOffset;
+function drawPanel(img, box, stripeOffset = 0) {
+  const { left: centred, span } = panelBody(img, box);
+  const { y, height } = box;
+  const left = centred + stripeOffset;
   for (let sy = y + 2; sy < y + height; sy += 14) {
     const sh = Math.min(4, y + height - sy);
-    if (sh > 0) fill(img, left, sy, stripes, sh, 200);
+    if (sh > 0) fill(img, left, sy, span, sh, 200);
   }
 }
 
@@ -23,16 +31,15 @@ function drawPanel(img, { x, y, width, height }, stripeOffset = 0) {
 // dashes with mid-grey between them and the rows just above and below the line are mid-grey too. A row through such a
 // line then has no long dark-or-bright run at all (measured on the real screenshots: 12..37 px against the 48 px a run
 // rule wants), which is exactly what the detector has to survive.
-function drawAntialiasedPanel(img, { x, y, width, height }) {
-  fill(img, x, y, width, height, 20);
-  const stripes = Math.round(width * 0.6);
-  const left = x + Math.round((width - stripes) / 2);
+function drawAntialiasedPanel(img, box) {
+  const { left, span } = panelBody(img, box);
+  const { y, height } = box;
   // A line is 8 px tall here so that it is still ~4 px tall at DETECT_WIDTH, the size the real screenshots give.
   for (let sy = y + 4; sy < y + height; sy += 28) {
-    fill(img, left, sy - 2, stripes, 2, 96); // the mid-grey halo above the line
-    fill(img, left, sy + 8, stripes, 2, 96); // ... and below it
-    for (let sx = left; sx < left + stripes; sx += 48) {
-      const dash = Math.min(40, left + stripes - sx);
+    fill(img, left, sy - 2, span, 2, 96); // the mid-grey halo above the line
+    fill(img, left, sy + 8, span, 2, 96); // ... and below it
+    for (let sx = left; sx < left + span; sx += 48) {
+      const dash = Math.min(40, left + span - sx);
       if (dash > 0) fill(img, sx, sy, dash, 8, 200);
       if (dash < 48) fill(img, sx + dash, sy, 48 - dash, 8, 96); // the mid-grey between two glyphs
     }
@@ -70,9 +77,9 @@ test("a panel whose text lines are broken up by antialiasing is still found", ()
     let best = 0;
     let run = 0;
     for (let x = 0; x < small.width; x++) {
-      const i = (y * small.width + x) * 4;
-      const v = Math.max(small.data[i], small.data[i + 1], small.data[i + 2]);
-      run = v <= 45 || v >= 120 ? run + 1 : 0;
+      const pixel = (y * small.width + x) * 4;
+      const brightness = Math.max(small.data[pixel], small.data[pixel + 1], small.data[pixel + 2]);
+      run = brightness <= 45 || brightness >= 120 ? run + 1 : 0;
       if (run > best) best = run;
     }
     return best;
@@ -202,11 +209,12 @@ test("downscale returns the requested width with a proportional height", () => {
 test("downscale averages a known 2x2 block to its mean", () => {
   const img = { width: 2, height: 2, data: new Uint8ClampedArray(2 * 2 * 4) };
   const values = [0, 100, 200, 255];
-  values.forEach((v, i) => {
-    img.data[i * 4] = v;
-    img.data[i * 4 + 1] = v;
-    img.data[i * 4 + 2] = v;
-    img.data[i * 4 + 3] = 255;
+  values.forEach((value, i) => {
+    const pixel = i * 4;
+    img.data[pixel] = value;
+    img.data[pixel + 1] = value;
+    img.data[pixel + 2] = value;
+    img.data[pixel + 3] = 255;
   });
 
   const small = downscale(img, 1);

@@ -80,25 +80,66 @@ test("getRotateCropImage swaps sides when the crop is at least 1.5x taller than 
   assert.equal(out.data.length, 40 * 10 * 3);
 });
 
-test("getRotateCropImage keeps every pixel of a tall crop through the counter-clockwise rotation", () => {
-  // A 4x4 source whose red channel is a unique value per pixel: an axis-aligned quad makes the warp a
-  // lossless copy, so the rotated output must be exactly the crop's pixels re-ordered (a wrong index would
-  // drop them all and leave a blank crop, which is what a vertical text line would then be read from).
+test("getRotateCropImage keeps every channel of a tall crop through the counter-clockwise rotation", () => {
+  // A 4x4 source whose channels are distinct per pixel: an axis-aligned quad makes the warp a lossless copy, so the
+  // rotated output must be exactly the crop's pixels re-ordered (a wrong index would drop them all and leave a blank
+  // crop, and a copy that wrote only the first channel would leave a colourless one — both are what a vertical text
+  // line would then be read from). All three channels are asserted, not just red.
   const src = { data: new Uint8Array(4 * 4 * 3), w: 4, h: 4 };
   for (let y = 0; y < 4; y++) {
-    for (let x = 0; x < 4; x++) src.data[(y * 4 + x) * 3] = y * 4 + x + 1;
+    for (let x = 0; x < 4; x++) {
+      const at = (y * 4 + x) * 3;
+      src.data[at] = y * 4 + x + 1; // red: a unique value per pixel
+      src.data[at + 1] = 100 + y * 4 + x; // green and blue too, so a dropped channel cannot pass
+      src.data[at + 2] = 200 - (y * 4 + x);
+    }
   }
   const out = getRotateCropImage(src, [[1, 0], [3, 0], [3, 4], [1, 4]]);
   assert.equal(out.w, 4);
   assert.equal(out.h, 2);
-  const red = [];
-  for (let i = 0; i < out.data.length; i += 3) red.push(out.data[i]);
+  const pixels = [];
+  for (let i = 0; i < out.data.length; i += 3) pixels.push([out.data[i], out.data[i + 1], out.data[i + 2]]);
   // The crop is source columns 1..2 (crop[y][0] = src[y][1]); np.rot90 sends crop[y][x] to out[x][w - 1 - y].
   const expected = [];
   for (let ny = 0; ny < 2; ny++) {
-    for (let nx = 0; nx < 4; nx++) expected.push(nx * 4 + 3 - ny);
+    for (let nx = 0; nx < 4; nx++) {
+      const red = nx * 4 + 3 - ny;
+      expected.push([red, 100 + red - 1, 201 - red]);
+    }
   }
-  assert.deepEqual(red, expected);
+  assert.deepEqual(pixels, expected);
+});
+
+test("detect feeds the session a tensor whose sides are rounded to a multiple of 32", () => {
+  // The det input grows so its shorter side reaches CFG.det.limit_side_len (736, limit_type "min") and then both sides
+  // are rounded to a multiple of 32 (upstream reduce_max_side/increase_min_side). Nothing else in the suite observes
+  // the resize geometry: without this, dropping the rounding would only show up as a slow accuracy drift.
+  const fed = [];
+  const session = {
+    inputNames: ["x"],
+    outputNames: ["y"],
+    run: async (feed) => {
+      fed.push(feed.x.dims);
+      const [n, , h, w] = feed.x.dims;
+      return { y: { data: new Float32Array(n * h * w), dims: [n, 1, h, w] } };
+    },
+  };
+  const ort = {
+    Tensor: class {
+      constructor(type, data, dims) {
+        this.type = type;
+        this.data = data;
+        this.dims = dims;
+      }
+    },
+  };
+  const pipeline = new OcrPipeline(ort, { det: session, cls: null, rec: null }, []);
+  const img = { data: new Uint8Array(100 * 173 * 3), w: 173, h: 100 };
+
+  return pipeline.detect(img).then(() => {
+    // 100 is the shorter side: 736/100 = 7.36, so 173 * 7.36 = 1273.28 -> 1273, rounded up to 1280 (40 * 32).
+    assert.deepEqual(fed, [[1, 3, 736, 1280]]);
+  });
 });
 
 test("ctcDecode drops repeats and blanks and averages the kept probabilities", () => {

@@ -41,9 +41,14 @@ function overlayCovers(node, hit) {
   return BUILD(fakeWindow, fakeDocument, fakeStyle, VIEWPORT.width, VIEWPORT.height)({ node: NODE_KEY });
 }
 
-test("a target whose centre sits under a fixed full-screen box is covered", () => {
+/** A full-viewport fixed overlay and a child of it the hit test can report. */
+function fixedOverlay() {
   const cover = element(FULL, { position: "fixed" });
-  const backdrop = element(FULL, { parent: cover });
+  return { cover, backdrop: element(FULL, { parent: cover }) };
+}
+
+test("a target whose centre sits under a fixed full-screen box is covered", () => {
+  const { backdrop } = fixedOverlay();
   assert.equal(overlayCovers(element(TARGET), backdrop), true);
 });
 
@@ -71,7 +76,6 @@ test("a fixed box covering less than 90 % of the viewport does not count", () =>
 });
 
 test("a disconnected target node is never reported as covered", () => {
-  const cover = element(FULL, { position: "fixed" });
-  const backdrop = element(FULL, { parent: cover });
+  const { backdrop } = fixedOverlay();
   assert.equal(overlayCovers(element(TARGET, { connected: false }), backdrop), false);
 });

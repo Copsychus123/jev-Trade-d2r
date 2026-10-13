@@ -155,6 +155,13 @@ function el({
   return self;
 }
 
+/** A well-separated text box: the second candidate on a page unless its caller reorders the list. */
+const queryInput = ({ value = "alfa", id = "" } = {}) =>
+  el({ tagName: "INPUT", id, ariaLabel: "Query", value, rect: { x: 200, y: 10, width: 100, height: 40 } });
+
+/** A `promo-banner` div whose innerText is `text`; under 200 characters it is treated as an advert. */
+const banner = (text) => el({ tagName: "DIV", className: "promo-banner", innerText: text });
+
 function makeDocument({ elements, textNodes, pageHeight, title, ids, body }) {
   let selected = null;
   return {
@@ -208,7 +215,7 @@ const inputState = (arr) => arr.find((v) => Array.isArray(v) && v.every(Array.is
 
 test("snapshot: a shared page cache keeps a node's id stable and numbers new nodes next", () => {
   const win = {}; // the same window.__jevFast the extension sees while it polls one page
-  const input = el({ tagName: "INPUT", ariaLabel: "Query", value: "x", rect: { x: 200, y: 10, width: 100, height: 40 } });
+  const input = queryInput({ value: "x" });
   // The first poll of the session sees only the input, so the input takes id 1.
   const first = snap({ elements: [input], win });
   assert.deepEqual(Object.keys(first.guards), ["1"], "one element, one guard");
@@ -303,12 +310,12 @@ test("snapshot: the page text is capped at 6000 characters", () => {
 });
 
 test("snapshot: a short promo banner is dropped, a long one is kept", () => {
-  const shortBanner = el({ tagName: "DIV", className: "promo-banner", innerText: "Play now" });
+  const shortBanner = banner("Play now");
   const shortButton = el({ text: "Play", parent: shortBanner });
   // Exactly one character short of the threshold: the boundary is `< 200`, so a 199-char banner is still an advert.
-  const almostBanner = el({ tagName: "DIV", className: "promo-banner", innerText: "z".repeat(199) });
+  const almostBanner = banner("z".repeat(199));
   const almostButton = el({ text: "Almost", parent: almostBanner });
-  const longBanner = el({ tagName: "DIV", className: "promo-banner", innerText: "x".repeat(200) });
+  const longBanner = banner("x".repeat(200));
   const longButton = el({ text: "Read more", parent: longBanner });
   // closest() matches the element itself too: a short element that carries "banner" in its own class/id is dropped.
   const selfBanner = el({ id: "banner-cta", className: "banner-cta", text: "Ad" });
@@ -321,9 +328,9 @@ test("snapshot: a short promo banner is dropped, a long one is kept", () => {
 });
 
 test("snapshot: the promo rule also keeps banner text out of the page text", () => {
-  const shortBanner = el({ tagName: "DIV", className: "promo-banner", innerText: "Play now" });
-  const almostBanner = el({ tagName: "DIV", className: "promo-banner", innerText: "z".repeat(199) });
-  const longBanner = el({ tagName: "DIV", className: "promo-banner", innerText: "y".repeat(200) });
+  const shortBanner = banner("Play now");
+  const almostBanner = banner("z".repeat(199));
+  const longBanner = banner("y".repeat(200));
   const s = snap({
     elements: [],
     textNodes: [
@@ -396,7 +403,7 @@ test("snapshot: the scroll controls follow the scroll position and wait is alway
 
 test("snapshot: an identical observation produces an identical marker, page_key and guards", () => {
   const button = el({ id: "buy", text: "Buy" });
-  const input = el({ tagName: "INPUT", id: "q", ariaLabel: "Query", value: "alfa", rect: { x: 200, y: 10, width: 100, height: 40 } });
+  const input = queryInput({ id: "q" });
   const page = { elements: [button, input] };
   const a = snap(page);
   const same = snap(page);
@@ -426,27 +433,28 @@ test("snapshot: an identical observation produces an identical marker, page_key 
 
 test("snapshot: text, url, scroll and input value all move the marker", () => {
   const button = el({ id: "buy", text: "Buy" });
-  const input = el({ tagName: "INPUT", id: "q", ariaLabel: "Query", value: "alfa", rect: { x: 200, y: 10, width: 100, height: 40 } });
+  const input = queryInput({ id: "q" });
   const region = el({ tagName: "DIV" });
   const base = { elements: [button, input], textNodes: [{ nodeType: 3, textContent: "Hello", parentElement: region }] };
-  const a = snap(base);
+  const withBase = (over = {}) => snap({ ...base, ...over });
+  const a = withBase();
 
-  const newText = snap({ ...base, textNodes: [{ nodeType: 3, textContent: "Goodbye", parentElement: region }] });
+  const newText = withBase({ textNodes: [{ nodeType: 3, textContent: "Goodbye", parentElement: region }] });
   assert.notDeepEqual(newText.marker, a.marker);
 
-  const renamed = snap({ ...base, elements: [el({ id: "buy", text: "Sell" }), input] });
+  const renamed = withBase({ elements: [el({ id: "buy", text: "Sell" }), input] });
   assert.notDeepEqual(renamed.marker, a.marker);
   assert.notDeepEqual(renamed.guards, a.guards, "the guard carries the accessible name");
 
-  const moved = snap({ ...base, href: "https://example.com/other" });
+  const moved = withBase({ href: "https://example.com/other" });
   assert.notDeepEqual(moved.marker, a.marker);
 
-  const scrolled = snap({ ...base, scrollY: 300 });
+  const scrolled = withBase({ scrollY: 300 });
   assert.notDeepEqual(scrolled.marker, a.marker);
   assert.notDeepEqual(scrolled.page_key, a.page_key, "scrollY is part of the page key");
 
   input.value = "bravo";
-  const retyped = snap(base);
+  const retyped = withBase();
   assert.notDeepEqual(retyped.marker, a.marker);
   assert.notDeepEqual(retyped.page_key, a.page_key, "an input value is part of the page key");
 });
@@ -485,7 +493,7 @@ test("snapshot: the guard reacts to a change in any single field it copies", () 
 
   // Conversely, a change to one node must not move another node's guard.
   const button = el({ text: "Buy" });
-  const input = el({ tagName: "INPUT", ariaLabel: "Query", value: "alfa", rect: { x: 200, y: 10, width: 100, height: 40 } });
+  const input = queryInput();
   const before = snap({ elements: [button, input] });
   input.value = "bravo";
   const after = snap({ elements: [button, input] });

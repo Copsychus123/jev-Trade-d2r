@@ -49,10 +49,13 @@ function fakeReader(frames) {
   };
 }
 
+/** A stream as capture.js reads it: one video track. */
+const streamOf = (track) => ({ getVideoTracks: () => [track], getTracks: () => [track] });
+
 /** Installs the two globals startCapture reaches for, and returns the pieces a case asserts on. */
 function environment({ frames = [], getDisplayMedia, readerFor } = {}) {
   const track = new FakeTrack();
-  const stream = { getVideoTracks: () => [track], getTracks: () => [track] };
+  const stream = streamOf(track);
   const reader = fakeReader(frames);
   // `navigator` is a read-only accessor on globalThis in current Node, so it needs defining, not assigning.
   Object.defineProperty(globalThis, "navigator", {
@@ -64,7 +67,7 @@ function environment({ frames = [], getDisplayMedia, readerFor } = {}) {
     if (readerFor === "throw") throw new Error("no processor here");
     return { readable: { getReader: () => (readerFor ? readerFor() : reader) } };
   };
-  return { track, stream, reader };
+  return { track, reader };
 }
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -76,7 +79,7 @@ test("the dialog asks for one window at 15 fps and every frame is handed over an
     frames,
     getDisplayMedia: async (options) => {
       asked.push(options);
-      return { getVideoTracks: () => [new FakeTrack()], getTracks: () => [new FakeTrack()] };
+      return streamOf(new FakeTrack());
     },
   });
   const seen = [];

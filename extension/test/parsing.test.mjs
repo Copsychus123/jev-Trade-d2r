@@ -9,15 +9,45 @@ const homeStats = readFileSync(new URL("../../tests/fixtures/home_stats.txt", im
 
 const trade = (give, time) => `They Give\n1 X ${give}\nI Give\n1 X Pul Rune\nHigh Rune Value: 0\n${time}`;
 
+const DATED_TRADES = [
+  trade("Shako", "1 天前"),
+  trade("Shako", "2026年10月1日"),
+  trade("Shako", "2026年9月30日"),
+  trade("Shako", "3 days ago"),
+  "Load More",
+].join("\n");
+
+const TAGGED_TRADES = [
+  "They Give", "1 X Shako", "Nintendo Switch • ", "Hardcore • ", "Non Ladder • ", "Lord Of Destruction",
+  "I Give", "1 X Pul Rune", "PC • ", "1 天前",
+  "They Give", "1 X Shako", "I Give", "1 X Pul Rune", "2 days ago",
+].join("\n");
+
+const datedListing = (seller, time) =>
+  [seller, "1 X Axe", "PC •", "Softcore •", "Trading For", "1 X Pul Rune", time].join("\n");
+
+const DATED_LISTINGS = [
+  "Apply this search for all", datedListing("alpha", "21 小時前"), datedListing("beta", "2026年9月27日"),
+  datedListing("gamma", "2026年4月6日"), "HELP",
+].join("\n");
+
+const HOME_LISTING_CARDS = [
+  "Marketplace", "Community", "Add Listing", "Stats", "Apply FiltersClear Filters",
+  "Bsg2026", " (261)", "English", "1 X Caster Amulet", "Reign Of The Warlock • ", "Softcore • ", "PC • ", "Non Ladder",
+  "+8% Faster Cast Rate", "+18 To Mana", "", "Trading For", "", "1 X Vex Rune", "High Rune Value: 0.5", "1 秒前",
+  "Pro", "z_Diablo", " (12)", "1 X Ring", "PC •", "+10% Faster Cast Rate", "Make an Offer", "2 秒前",
+  "Is trading items safe on Traderie?", "HELP", "Contact Us",
+].join("\n");
+
+const AFFIX_CARD = [
+  "Apply this search for all",
+  "Kenz11757", " (288)", "1 X Caster Amulet", "Reign Of The Warlock • ", "Softcore • ", "PC • ", "Non Ladder • ",
+  "Rare • ", "Classic • ", "Penta",
+  "+2 To Warlock Skills", "+8% Faster Cast Rate", "+116 Defense", "Ethereal", "Make an Offer", "0 秒前",
+].join("\n");
+
 test("recent trades keep old entries that show a date instead of 'N days ago'", () => {
-  const text = [
-    trade("Shako", "1 天前"),
-    trade("Shako", "2026年10月1日"),
-    trade("Shako", "2026年9月30日"),
-    trade("Shako", "3 days ago"),
-    "Load More",
-  ].join("\n");
-  const parsed = parseRecentTrades(text);
+  const parsed = parseRecentTrades(DATED_TRADES);
   assert.equal(parsed.trades.length, 4);
   assert.deepEqual(
     parsed.trades.map((t) => t.trade_time),
@@ -26,12 +56,7 @@ test("recent trades keep old entries that show a date instead of 'N days ago'", 
 });
 
 test("recent trades keep platform, mode, ladder and game version from the They Give side only", () => {
-  const text = [
-    "They Give", "1 X Shako", "Nintendo Switch • ", "Hardcore • ", "Non Ladder • ", "Lord Of Destruction",
-    "I Give", "1 X Pul Rune", "PC • ", "1 天前",
-    "They Give", "1 X Shako", "I Give", "1 X Pul Rune", "2 days ago",
-  ].join("\n");
-  const [a, b] = parseRecentTrades(text).trades;
+  const [a, b] = parseRecentTrades(TAGGED_TRADES).trades;
   assert.deepEqual([a.platform, a.mode, a.ladder, a.game_version],
     ["Switch", "Hardcore", "Non Ladder", "Lord of Destruction"]);
   assert.equal(a.buyer_or_seller, "1 X Shako");
@@ -40,26 +65,18 @@ test("recent trades keep platform, mode, ladder and game version from the They G
 
 test("a seller name that starts with HELP does not end the listings early", () => {
   // The page's end-of-listings line is exactly "HELP" (measured: one line, between "Load More" and "Getting Started").
-  // Reading it as a prefix cut the list at a seller called "HELPfulTrader", so the rows then disagreed with the page's
-  // markers and the whole trading read failed. The card builder is spelled out here on purpose: this test must not
-  // depend on a helper another change introduces.
-  const card = (seller, time) =>
-    [seller, "1 X Axe", "PC •", "Softcore •", "Trading For", "1 X Pul Rune", time].join("\n");
+  // Reading it as a prefix cut the list at a seller called "HELPfulTrader", so the rows no longer matched the markers
+  // and the whole trading read failed.
   const page = [
-    "Apply this search for all", card("alpha", "21 小時前"), card("HELPfulTrader", "20 小時前"),
-    card("gamma", "19 小時前"), "HELP",
+    "Apply this search for all", datedListing("alpha", "21 小時前"), datedListing("HELPfulTrader", "20 小時前"),
+    datedListing("gamma", "19 小時前"), "HELP",
   ].join("\n");
   const rows = parseTradingTxt(page, { itemName: "Axe" });
   assert.deepEqual(rows.map((r) => r.seller), ["alpha", "HELPfulTrader", "gamma"]);
 });
 
-
 test("listings keep old entries that show a date, and a date inside a line does not end a listing", () => {
-  const card = (seller, time) =>
-    [seller, "1 X Axe", "PC •", "Softcore •", "Trading For", "1 X Pul Rune", time].join("\n");
-  const text = ["Apply this search for all", card("alpha", "21 小時前"), card("beta", "2026年9月27日"),
-    card("gamma", "2026年4月6日"), "HELP"].join("\n");
-  const rows = parseTradingTxt(text, { itemName: "Axe" });
+  const rows = parseTradingTxt(DATED_LISTINGS, { itemName: "Axe" });
   assert.deepEqual(rows.map((r) => [r.seller, r.posted_time]),
     [["alpha", "21 小時前"], ["beta", "2026年9月27日"], ["gamma", "2026年4月6日"]]);
 });
@@ -84,14 +101,7 @@ test("a recent trade of the original game reads its version tag and keeps it out
 });
 
 test("home page listings: the item, seller and ask of a card are found without a known item name", () => {
-  const text = [
-    "Marketplace", "Community", "Add Listing", "Stats", "Apply FiltersClear Filters",
-    "Bsg2026", " (261)", "English", "1 X Caster Amulet", "Reign Of The Warlock • ", "Softcore • ", "PC • ", "Non Ladder",
-    "+8% Faster Cast Rate", "+18 To Mana", "", "Trading For", "", "1 X Vex Rune", "High Rune Value: 0.5", "1 秒前",
-    "Pro", "z_Diablo", " (12)", "1 X Ring", "PC •", "+10% Faster Cast Rate", "Make an Offer", "2 秒前",
-    "Is trading items safe on Traderie?", "HELP", "Contact Us",
-  ].join("\n");
-  const [a, b, ...rest] = parseTradingTxt(text, { itemName: null });
+  const [a, b, ...rest] = parseTradingTxt(HOME_LISTING_CARDS, { itemName: null });
   assert.equal(rest.length, 0);
   assert.deepEqual([a.seller, a.rating, a.item_name, a.ask, a.posted_time], ["Bsg2026", "(261)", "Caster Amulet", "1 X Vex Rune", "1 秒前"]);
   assert.deepEqual([a.platform, a.mode, a.ladder], ["PC", "Softcore", "Non Ladder"]);
@@ -101,13 +111,7 @@ test("home page listings: the item, seller and ask of a card are found without a
 });
 
 test("home page listings: affixes keep every affix line and drop the environment tags and variant words", () => {
-  const text = [
-    "Apply this search for all",
-    "Kenz11757", " (288)", "1 X Caster Amulet", "Reign Of The Warlock • ", "Softcore • ", "PC • ", "Non Ladder • ",
-    "Rare • ", "Classic • ", "Penta",
-    "+2 To Warlock Skills", "+8% Faster Cast Rate", "+116 Defense", "Ethereal", "Make an Offer", "0 秒前",
-  ].join("\n");
-  const [card] = parseTradingTxt(text, { itemName: null });
+  const [card] = parseTradingTxt(AFFIX_CARD, { itemName: null });
   assert.deepEqual(card.affixes, ["+2 To Warlock Skills", "+8% Faster Cast Rate", "+116 Defense", "Ethereal"]);
 });
 

@@ -148,6 +148,17 @@ async function settleUntil(done, label) {
   assert.ok(done(), `never settled: ${label}`);
 }
 
+/** A loaded worker that has taken one init through to `ready`, with the scope and state behind it. */
+async function readyWorker(state = workerState(), scope = makeScope()) {
+  await loadWorker(scope, state);
+  scope.receive(initMessage());
+  await settleUntil(() => scope.posted.length === 2, "the ready status");
+  return { scope, state };
+}
+
+/** A recognize as the panel posts it: one 1x1 pixel, answered under `id`. */
+const recognize = (id) => ({ type: "recognize", id, width: 1, height: 1, data: new Uint8ClampedArray(4) });
+
 // --- the worker's side of the protocol -------------------------------------------------------------------------
 
 test("loading the worker keeps onnxruntime on one wasm thread", async () => {
@@ -221,20 +232,18 @@ test("a recognize before any init is answered under its own id, nothing converte
   const state = workerState();
   await loadWorker(scope, state);
 
-  scope.receive({ type: "recognize", id: 7, width: 1, height: 1, data: new Uint8ClampedArray(4) });
+  scope.receive(recognize(7));
   await settleUntil(() => scope.posted.length === 1, "the not-ready error");
   assert.deepEqual(scope.posted, [{ type: "error", id: 7, message: "辨識引擎尚未就緒" }]);
   assert.deepEqual(state.conversions, []);
 });
 
 test("a recognize converts the panel's pixels and answers with the same id and the lines joined by a newline", async () => {
-  const scope = makeScope();
-  const state = workerState({
-    answer: async () => ({ lines: [{ text: "哈勒昆", score: 0.9 }, { text: "之冠", score: 0.8 }] }),
-  });
-  await loadWorker(scope, state);
-  scope.receive(initMessage());
-  await settleUntil(() => scope.posted.length === 2, "the ready status");
+  const { scope, state } = await readyWorker(
+    workerState({
+      answer: async () => ({ lines: [{ text: "哈勒昆", score: 0.9 }, { text: "之冠", score: 0.8 }] }),
+    }),
+  );
 
   const data = new Uint8ClampedArray([1, 2, 3, 4, 5, 6, 7, 8]);
   scope.receive({ type: "recognize", id: 5, width: 2, height: 1, data });
@@ -255,24 +264,22 @@ test("a recognize converts the panel's pixels and answers with the same id and t
 });
 
 test("a recognize that throws answers the read's own id, with the thrown value's own text when it is not an Error", async () => {
-  const scope = makeScope();
-  const state = workerState({
-    answer: async () => {
-      throw new Error("圖片太小");
-    },
-  });
-  await loadWorker(scope, state);
-  scope.receive(initMessage());
-  await settleUntil(() => scope.posted.length === 2, "the ready status");
+  const { scope, state } = await readyWorker(
+    workerState({
+      answer: async () => {
+        throw new Error("圖片太小");
+      },
+    }),
+  );
 
-  scope.receive({ type: "recognize", id: 6, width: 1, height: 1, data: new Uint8ClampedArray(4) });
+  scope.receive(recognize(6));
   await settleUntil(() => scope.posted.length === 3, "the error");
   assert.deepEqual(scope.posted[2], { type: "error", id: 6, message: "圖片太小" });
 
   state.answer = async () => {
     throw "沒有 message 的錯誤";
   };
-  scope.receive({ type: "recognize", id: 8, width: 1, height: 1, data: new Uint8ClampedArray(4) });
+  scope.receive(recognize(8));
   await settleUntil(() => scope.posted.length === 4, "the second error");
   assert.deepEqual(scope.posted[3], { type: "error", id: 8, message: "沒有 message 的錯誤" });
 });
