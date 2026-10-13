@@ -302,6 +302,9 @@ export class Agent {
     const state = this.state;
     if (state.started_at === null) state.started_at = now();
     if (state.awaiting_handoff) throw new Error("Controller handoff required before continuing this run.");
+    // Cleared before the page read: a stale read is a navigation, not a target that keeps failing, and it must not be
+    // charged to the step before (whose action may have succeeded).
+    state.last_attempt = null;
     try {
       if (!(await this.tab.fresh(state.page))) state.page = await this.tab.observe();
     } catch (error) {
@@ -309,7 +312,6 @@ export class Agent {
       throw error;
     }
     state.decision = null;
-    state.last_attempt = null; // only an action attempt (below) may extend a stale streak
     if (this._applyScopeGuard(state)) {
       state.elapsed_ms = this._elapsedMs();
       return this.snapshot();
@@ -444,6 +446,9 @@ export class Agent {
   async _runAction(action, page, decision, selected, text) {
     const state = this.state;
     await this._readThroughStale(() => this.tab.act(action, page, text));
+    // It ran: only a refused attempt may extend the stale streak, so a stale read of the page it produced is not
+    // charged to it (`_noteStaleFailure`).
+    state.last_attempt = null;
     state.elapsed_ms = this._elapsedMs();
     // Record execution before observing. A stale post-action observation must not erase the action.
     const entry = this._recordExecution(state, action, page, decision, selected, text);

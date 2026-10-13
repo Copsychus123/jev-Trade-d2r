@@ -626,6 +626,38 @@ def test_tick_recovers_from_a_stale_page_by_observing_once(runner, monkeypatch):
     assert runner.state["status"] == "ready" and runner.state["history"] == []
 
 
+def test_an_executed_action_whose_observation_goes_stale_does_not_extend_the_streak(runner, monkeypatch):
+    """Only a *refused* attempt may extend the streak: an action that ran and then could not be observed is a
+    navigation, and charging it would name an action that already succeeded and stop a healthy run."""
+    monkeypatch.setattr(loop, "choose", lambda *_a, **_k: _jev_answer("e3", "CLICK", {"CLICK": 1.0}))
+    runner.state["browser"].observe.side_effect = [StalePage("navigation"), page()] * loop.STALE_RETRY_LIMIT
+
+    for _ in range(loop.STALE_RETRY_LIMIT):
+        runner.state["decision"] = None
+        runner.state["status"] = "ready"
+        runner.command("tick")
+
+    assert runner.state["status"] != "blocked"
+    assert runner.state["stale_streak"] is None and runner.state["stale_events"] == {}
+    assert len(runner.state["history"]) == loop.STALE_RETRY_LIMIT  # every action really executed
+
+
+def test_a_stale_page_read_before_the_choice_is_not_charged_to_the_previous_action(runner, monkeypatch):
+    """The read that precedes the choice is not an action attempt, so a target left over from the step before must not
+    be blamed for it (the ordering rule AGENTS.md states for the streak)."""
+    runner.state["browser"].fresh.return_value = False
+    runner.state["browser"].observe.side_effect = [StalePage("navigation"), page()]
+    runner.state["last_attempt"] = {
+        "choice": "e3", "fingerprint": runner.state["page"]["fingerprint"], "label": "Go",
+    }
+    monkeypatch.setattr(loop, "choose", lambda *_a, **_k: _jev_answer("e3", "CLICK", {"CLICK": 1.0}))
+    runner.state["decision"] = None
+
+    runner.command("tick")
+
+    assert runner.state["stale_streak"] is None and runner.state["stale_events"] == {}
+
+
 def test_three_consecutive_stale_failures_on_one_target_stop_the_run(runner, monkeypatch):
     """A refused action is popped from `history`, so the step budget cannot fire: the streak has to end the run."""
     monkeypatch.setattr(loop, "choose", lambda *_a, **_k: _jev_answer("e3", "CLICK", {"CLICK": 1.0}))

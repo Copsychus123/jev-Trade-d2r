@@ -312,11 +312,11 @@ class Agent:
         self._require_step_budget(state)
         if len(state["decisions"]) >= MAX_STEPS * 2:
             raise ValueError("Reached the demo's model-call budget")
+        # Cleared before the page read: a stale read is a navigation, not a target that keeps failing, and it must not
+        # be charged to the step before (whose action may have succeeded).
+        state["last_attempt"] = None
         if not state["browser"].fresh(state["page"]):
             state["page"] = state["browser"].observe(screenshot=self.screenshots)
-        # Only an action attempt (in `_act`) may extend a stale streak: a page that is still navigating is not a
-        # target that keeps failing, and it must not be reported as if the screen had not changed.
-        state["last_attempt"] = None
         state["decision"] = None
         if self._stop_if_off_scope(state):
             return
@@ -388,6 +388,9 @@ class Agent:
         except BaseException:
             entry.update(outcome="unconfirmed", elapsed_ms=self._elapsed_ms())  # may have happened; never replayed
             raise
+        # It ran: only a refused attempt may extend the stale streak, so a stale read of the page it produced is not
+        # charged to it (see `_note_stale_failure`).
+        state["last_attempt"] = None
         self._sync_elapsed(state)
         entry.update(outcome="executed", executed_ms=state["elapsed_ms"], elapsed_ms=state["elapsed_ms"])
         try:

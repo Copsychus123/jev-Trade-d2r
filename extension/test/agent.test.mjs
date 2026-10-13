@@ -291,6 +291,63 @@ test("a stale stop without an overlay, or with a failing measurement, keeps the 
   }
 });
 
+/** A fake tab whose next `staleOnce()` page reads fail and every read after that returns the current page.
+
+ *  `Agent.create` reads the page once itself, so a test arms the failure *after* creating the agent instead of trying
+ *  to predict how many reads a recovering step makes.
+ */
+class FlakyObservationTab extends FakeTab {
+  constructor(pages) {
+    super(pages);
+    this.pendingStales = 0;
+  }
+  staleOnce() {
+    this.pendingStales += 1;
+  }
+  async observe() {
+    if (this.pendingStales > 0) {
+      this.pendingStales -= 1;
+      throw new StalePage("Target changed or is covered. Observe again.");
+    }
+    return super.observe();
+  }
+}
+
+test("an executed action whose observation goes stale does not extend the stale streak", async () => {
+  // Only a *refused* attempt may extend the streak (AGENTS.md): an action that ran and then could not be observed is a
+  // navigation, and charging it names an action that already succeeded and stops a healthy run.
+  const tab = new FlakyObservationTab([page("p1", [click("a1", "Load More")])]);
+  const agent = await Agent.create({
+    tab, choose: makeChoose(decide("a1", "CLICK"), decide("a1", "CLICK"), decide("a1", "CLICK")),
+  });
+
+  for (let i = 0; i < 3; i += 1) {
+    tab.staleOnce(); // the read of the page the executed action produced
+    agent.state.decision = null;
+    agent.state.status = "ready";
+    await agent.command("tick");
+  }
+
+  assert.equal(agent.state.status, "ready");
+  assert.equal(agent.state.stale_streak, null);
+  // `stale_events` counts every StalePage by reason (measurement only): what must stay empty is the streak's record.
+  assert.equal(agent.state.rule_events.some((event) => event.stale), false, "no stale stop may be recorded");
+  assert.equal(agent.state.history.length, 3, "every action really executed");
+});
+
+test("a stale page read before the choice is not charged to the previous action", async () => {
+  const tab = new FlakyObservationTab([page("p1", [click("a1", "Load More")])]);
+  const agent = await Agent.create({ tab, choose: makeChoose(decide("a1", "CLICK")) });
+  tab.isFresh = false; // forces the read `_syncPage` makes before the choice
+  tab.staleOnce();
+  agent.state.last_attempt = { choice: "a1", fingerprint: agent.state.page.fingerprint };
+  agent.state.decision = null;
+
+  await agent.command("tick");
+
+  assert.equal(agent.state.stale_streak, null);
+});
+
 test("a refused press is counted as an attempt even though it never reaches history", async () => {
   // Two always-stale targets taken alternately, so the stale-streak rule can never trip (its key changes with the
   // target) and every press is refused (so `history` stays empty). What stops this run is the Jev call budget: a
