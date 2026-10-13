@@ -59,16 +59,7 @@ export function sourceLine(source) {
 }
 
 export function explainFailedChecks(ids) {
-  const sentences = [];
-  const seen = new Set();
-  for (const id of ids) {
-    const sentence = CHECK_REASONS[id] ?? "有一項檢查沒通過";
-    if (!seen.has(sentence)) {
-      sentences.push(sentence);
-      seen.add(sentence);
-    }
-  }
-  return sentences;
+  return [...new Set(ids.map((id) => CHECK_REASONS[id] ?? "有一項檢查沒通過"))];
 }
 
 export function verificationSummary(verification) {

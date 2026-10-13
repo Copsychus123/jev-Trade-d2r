@@ -7,8 +7,6 @@
 //   done     finished, data was read      problem   stopped by a problem, the banner says what to do
 //   stopped  the player pressed stop
 
-export const VIEWS = ["choose", "scan", "welcome", "settings", "ready", "running", "done", "problem", "stopped"];
-
 const SECTIONS = {
   choose: ["choose", "results"],
   scan: ["scan"],
@@ -20,6 +18,9 @@ const SECTIONS = {
   problem: ["summary", "requery", "notes", "results"],
   stopped: ["summary", "requery", "stopped", "notes", "results"],
 };
+
+/** The screens, in the order `SECTIONS` declares them, so the list cannot drift from the section map. */
+export const VIEWS = Object.keys(SECTIONS);
 
 export const SECTION_NAMES = [...new Set(Object.values(SECTIONS).flat())];
 

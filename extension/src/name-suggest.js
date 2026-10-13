@@ -78,7 +78,10 @@ export function initNameSuggest({ input, list, getTables }) {
 
   input.addEventListener("input", () => {
     const tables = getTables();
-    if (!tables) { close(); return; }
+    if (!tables) {
+      close();
+      return;
+    }
     items = suggestNames(input.value, tables);
     active = -1;
     render();

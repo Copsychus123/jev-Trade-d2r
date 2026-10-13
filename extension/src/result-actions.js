@@ -11,10 +11,21 @@ import { toTsv } from "./tsv.js";
 export function createResultActions({ getMarket, rowsOf, getItemName, getActiveTab }) {
   let copyTimer = null;
 
+  /** The note under the export buttons: the refusal's sentence, or nothing. */
+  function showNote(text) {
+    const note = $("result-note");
+    note.textContent = text;
+    note.hidden = false;
+  }
+
+  function hideNote() {
+    $("result-note").hidden = true;
+  }
+
   function resetCopyLabel() {
     clearTimeout(copyTimer);
     $("result-copy").textContent = "複製";
-    $("result-note").hidden = true;
+    hideNote();
   }
 
   /**
@@ -29,11 +40,6 @@ export function createResultActions({ getMarket, rowsOf, getItemName, getActiveT
     return reasons.length ? `${headline}：${reasons.join("；")}` : headline;
   }
 
-  function blocked(blockedText) {
-    $("result-note").textContent = blockedText;
-    $("result-note").hidden = false;
-  }
-
   /**
    * The rows an export of `key` sends: its view config and the kept rows, or null when it is refused (a failed check)
    * or there is nothing to send. The refusal sentence is shown.
@@ -41,10 +47,10 @@ export function createResultActions({ getMarket, rowsOf, getItemName, getActiveT
   function exportRows(key) {
     const blockedText = exportBlocked();
     if (blockedText) {
-      blocked(blockedText);
+      showNote(blockedText);
       return null;
     }
-    $("result-note").hidden = true;
+    hideNote();
     const rows = rowsOf(key);
     return rows.length ? { config: viewConfigFor(getMarket(), key), rows } : null;
   }

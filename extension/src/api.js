@@ -21,8 +21,8 @@ async function post(base, path, payload) {
     clearTimeout(timer);
   }
   const body = await response.json().catch(() => null);
-  if (!response.ok) throw new ApiError(response.status, body?.error || "伺服器沒有回應");
-  if (body === null) throw new ApiError(response.status, "伺服器沒有回應");
+  // A refused answer carries the server's own wording; any other unreadable answer gets the generic one.
+  if (!response.ok || body === null) throw new ApiError(response.status, body?.error || "伺服器沒有回應");
   return body;
 }
 

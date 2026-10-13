@@ -18,6 +18,15 @@ const NAVIGATE_INTERACTIVE_GRACE_MS = 500;
 const WINDOWS_KEY = "jevWindows"; // chrome.storage.session: query windows that are open right now
 // What Chrome reports when a navigation or process swap destroys the page a script was running in.
 const NAVIGATION_FAILURE = /Execution context was destroyed|Cannot find context|Inspected target navigated/i;
+// The action kinds the page's own guards can go stale on: they name an observed node, so a page change invalidates them.
+const INPUT_KINDS = ["click", "select", "fill"];
+const SNAPSHOT_ATTEMPTS = 10; // a snapshot a navigation interrupted is retried this many times at most
+
+/** The text a failure carries; a CDP protocol error has no message. */
+const messageOf = (error) => error?.message ?? "";
+
+/** A navigation or process swap tearing down the page's context is a stale page, not a real failure. */
+const isNavigationFailure = (message) => NAVIGATION_FAILURE.test(message);
 
 /** How long Chrome may take to answer a command before the run gives up on it. */
 export const commandTimeoutMs = (method) => (method === "Page.navigate" ? NAVIGATE_TIMEOUT_MS : COMMAND_TIMEOUT_MS);
@@ -46,6 +55,9 @@ const quiet = async (call) => {
   }
 };
 
+/** Closes a query window that may already be gone. */
+const closeWindow = (id) => quiet(() => chrome.windows.remove(id));
+
 async function readWindows() {
   const stored = await chrome.storage.session.get(WINDOWS_KEY);
   return Array.isArray(stored[WINDOWS_KEY]) ? stored[WINDOWS_KEY].filter(Number.isInteger) : [];
@@ -65,25 +77,31 @@ const forgetWindow = (id) => updateWindows((windows) => windows.filter((w) => w 
  */
 export async function closeStaleWindows() {
   const ids = await readWindows();
-  await Promise.all(ids.map((id) => quiet(() => chrome.windows.remove(id))));
+  await Promise.all(ids.map(closeWindow));
   await chrome.storage.session.set({ [WINDOWS_KEY]: [] });
 }
 
+// The page scripts the run injects, in the order `loadPageScripts` fetches them.
+const PAGE_SCRIPT_FILES = {
+  snapshot: "snapshot.js",
+  afterInput: "after_input.js",
+  resolveTarget: "resolve_target.js",
+  coveredOverlay: "covered_overlay.js",
+  settle: "settle.js",
+  settledPage: "settled_page.js",
+  fetchJson: "fetch_json.js",
+};
+
+async function readPageScript(name) {
+  const response = await fetch(chrome.runtime.getURL(`page/${name}`));
+  return (await response.text()).trim();
+}
+
 export async function loadPageScripts() {
-  const read = async (name) => {
-    const response = await fetch(chrome.runtime.getURL(`page/${name}`));
-    return (await response.text()).trim();
-  };
-  const [snapshot, afterInput, resolveTarget, coveredOverlay, settle, settledPage, fetchJson] = await Promise.all([
-    read("snapshot.js"),
-    read("after_input.js"),
-    read("resolve_target.js"),
-    read("covered_overlay.js"),
-    read("settle.js"),
-    read("settled_page.js"),
-    read("fetch_json.js"),
-  ]);
-  return { snapshot, afterInput, resolveTarget, coveredOverlay, settle, settledPage, fetchJson };
+  const entries = await Promise.all(
+    Object.entries(PAGE_SCRIPT_FILES).map(async ([key, file]) => [key, await readPageScript(file)]),
+  );
+  return Object.fromEntries(entries);
 }
 
 function stableStringify(value) {
@@ -138,7 +156,7 @@ export class Tab {
     const created = await chrome.windows.create({ url, state: "minimized" });
     const first = created.tabs?.[0];
     if (!first) {
-      await quiet(() => chrome.windows.remove(created.id));
+      await closeWindow(created.id);
       throw new Error("Chrome 沒有開出查詢視窗，查詢已停止");
     }
     await rememberWindow(created.id);
@@ -163,7 +181,7 @@ export class Tab {
     try {
       await chrome.debugger.attach({ tabId: this.tabId }, "1.3");
     } catch (error) {
-      if (/different extension/i.test(error?.message ?? "")) {
+      if (/different extension/i.test(messageOf(error))) {
         throw new Error("你的 Chrome 有其他擴充功能接管了查詢視窗。請暫時停用其他擴充功能，或改用乾淨的 Chrome 使用者設定檔再試");
       }
       throw error;
@@ -232,7 +250,7 @@ export class Tab {
     } catch (error) {
       if (this.aborted || error instanceof TimeoutError) throw error;
       // Chrome rejects the in-flight command before onDetach fires.
-      if (/detached/i.test(error?.message ?? "")) {
+      if (/detached/i.test(messageOf(error))) {
         this.detached = true;
         await sleep(100); // onDetach carries the reason and fires just after
       }
@@ -251,16 +269,14 @@ export class Tab {
     try {
       response = await this.send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise }, { retryable });
     } catch (error) {
-      if (NAVIGATION_FAILURE.test(error?.message ?? "")) throw new StalePage(error.message);
+      if (isNavigationFailure(messageOf(error))) throw new StalePage(error.message);
       throw error;
     }
     const details = response?.exceptionDetails;
-    if (details) {
-      const description = details.exception?.description ?? details.text ?? "unknown exception";
-      if (NAVIGATION_FAILURE.test(description)) throw new StalePage(description);
-      throw new Error(`頁面腳本發生錯誤：${description}`);
-    }
-    return response?.result?.value;
+    if (!details) return response?.result?.value;
+    const description = details.exception?.description ?? details.text ?? "unknown exception";
+    if (isNavigationFailure(description)) throw new StalePage(description);
+    throw new Error(`頁面腳本發生錯誤：${description}`);
   }
 
   /** Resolves { capped, ms, visibility } (settle.js): whether the cap ended the wait, how long it took, and the document's visibility state. */
@@ -280,6 +296,11 @@ export class Tab {
     return page;
   }
 
+  /** A retryable page read whose StalePage the poll loops below simply ignore and re-read. */
+  async _readStable(expression) {
+    return ignoringStalePage(() => this.evaluate(expression, { retryable: true }));
+  }
+
   /** Resolves { how: "complete" | "interactive_grace", ms } for measurement; callers may ignore it. */
   async navigate(url, timeoutMs = 30000, interactiveGraceMs = NAVIGATE_INTERACTIVE_GRACE_MS) {
     const started = performance.now();
@@ -287,8 +308,7 @@ export class Tab {
     const deadline = Date.now() + timeoutMs;
     let interactiveSince = null;
     while (Date.now() < deadline) {
-      // The old document may go away mid-poll: ignore that and keep polling the new one.
-      const state = await ignoringStalePage(() => this.evaluate("document.readyState", { retryable: true }));
+      const state = await this._readStable("document.readyState");
       if (state === "complete") return { how: "complete", ms: Math.round(performance.now() - started) };
       if (state === "interactive") {
         if (interactiveSince === null) interactiveSince = Date.now();
@@ -304,9 +324,7 @@ export class Tab {
   async waitUntilReady(timeoutMs = 2000, intervalMs = 50) {
     const deadline = Date.now() + Math.max(timeoutMs, 0);
     for (;;) {
-      const complete = await ignoringStalePage(() =>
-        this.evaluate("document.readyState === 'complete' && !!document.body", { retryable: true }),
-      );
+      const complete = await this._readStable("document.readyState === 'complete' && !!document.body");
       if (complete) return true;
       if (Date.now() >= deadline) return false;
       await sleep(intervalMs);
@@ -343,7 +361,7 @@ export class Tab {
       afterInputMs = Math.round(performance.now() - started);
     }
     const snapshotStarted = performance.now();
-    for (let attempt = 0; attempt < 10; attempt++) {
+    for (let attempt = 0; attempt < SNAPSHOT_ATTEMPTS; attempt++) {
       try {
         const info = await this.evaluate(this.scripts.snapshot, { retryable: true });
         if (info === null || info === undefined) throw new StalePage("Document is navigating");
@@ -352,14 +370,14 @@ export class Tab {
         info.timing = { after_input_ms: afterInputMs, snapshot_ms: Math.round(performance.now() - snapshotStarted) };
         return info;
       } catch (error) {
-        if (!(error instanceof StalePage) || attempt === 9) throw error;
+        if (!(error instanceof StalePage) || attempt === SNAPSHOT_ATTEMPTS - 1) throw error;
         await sleep(20);
       }
     }
   }
 
   async fresh(page, action = null) {
-    if (action && ["click", "select", "fill"].includes(action.kind)) {
+    if (action && INPUT_KINDS.includes(action.kind)) {
       const node = action.node;
       if (!Number.isInteger(node)) return false;
       const current = await this.evaluate(
@@ -443,7 +461,7 @@ export class Tab {
    * cannot answer simply reports nothing.
    */
   async overlayCover(action) {
-    return await this.evaluate(`${this.scripts.coveredOverlay}(${JSON.stringify(action)})`);
+    return this.evaluate(`${this.scripts.coveredOverlay}(${JSON.stringify(action)})`);
   }
 
   /**
@@ -471,7 +489,7 @@ export class Tab {
     const windowId = this.windowId;
     if (windowId !== null && windowId !== undefined) {
       this.windowId = null;
-      work.push(quiet(() => chrome.windows.remove(windowId)));
+      work.push(closeWindow(windowId));
       work.push(forgetWindow(windowId));
     }
     await Promise.all(work);

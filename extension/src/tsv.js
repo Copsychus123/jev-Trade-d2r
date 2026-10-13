@@ -1,4 +1,5 @@
-// Tab-separated text for pasting into a spreadsheet. No DOM or chrome.* here: it is also tested under node.
+// Tab-separated text for pasting into a spreadsheet. No DOM and no chrome.*, and no import beyond the formula guard:
+// this is a leaf formatter, so it decides "no value" the same way the CSV cell does.
 
 import { formulaSafe } from "./csv.js";
 

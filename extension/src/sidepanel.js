@@ -80,25 +80,26 @@ function setStatus(text) {
 function renderMarket(key) {
   const config = viewConfigFor(market, key);
   const view = market[key];
-  const prefix = config.prefix;
+  // Every node of one list shares its prefix (`trading-`, `recent-trades-`).
+  const at = (suffix) => $(`${config.prefix}-${suffix}`);
   const { rows } = filteredRows(key);
   const total = rows.length;
-  $(`${prefix}-tab`).dataset.status = view.status;
-  $(`${prefix}-count`).textContent = tabCount(view, total, filtersActive(filters));
-  $(`${prefix}-mark`).textContent = view.status === "PASSED" ? "" : statusLabel(view.status);
+  at("tab").dataset.status = view.status;
+  at("count").textContent = tabCount(view, total, filtersActive(filters));
+  at("mark").textContent = view.status === "PASSED" ? "" : statusLabel(view.status);
   const note = viewNote(view, total);
-  const meta = $(`${prefix}-meta`);
+  const meta = at("meta");
   meta.textContent = note;
   meta.hidden = !note;
-  $(`${prefix}-clear`).hidden = !filteredAway(view, total);
+  at("clear").hidden = !filteredAway(view, total);
   const page = clampPage(pages[key], total);
   pages[key] = page;
   const count = pageCount(total);
-  $(`${prefix}-pager`).hidden = total <= PAGE_SIZE;
-  $(`${prefix}-page`).textContent = `第 ${page} / ${count} 頁`;
-  $(`${prefix}-prev`).disabled = page <= 1;
-  $(`${prefix}-next`).disabled = page >= count;
-  const body = $(`${prefix}-list`);
+  at("pager").hidden = total <= PAGE_SIZE;
+  at("page").textContent = `第 ${page} / ${count} 頁`;
+  at("prev").disabled = page <= 1;
+  at("next").disabled = page >= count;
+  const body = at("list");
   const stamp = `${view.status}|${view.observed_at}|${view.rows.length}|${JSON.stringify(filters)}|${page}`;
   if (body.dataset.stamp === stamp) return;
   body.dataset.stamp = stamp;
@@ -160,13 +161,14 @@ const remainingQuota = (q) => Math.max(0, q.limit - q.used);
 
 /** Caption, summary line and tab labels of the results: the two search kinds name their list differently. */
 function renderResultsHeader(view) {
-  const stats = market.mode === "stats";
+  const statsMode = market.mode === "stats";
   const description = market.lookup?.description ?? "";
-  $("results-caption").hidden = stats ? view !== "done" || !description : view !== "ready" || !queryText;
-  $("results-caption").textContent = stats ? `條件：${description}` : `上一次查詢的結果：${queryText}`;
-  $("summary-text").textContent = `查詢：${stats && description ? description : queryText}`;
-  $("recent-trades-tab").hidden = stats; // the stats search has no recent-trades list
-  $("trading-label").textContent = stats ? "符合條件的掛單" : "目前掛單";
+  const caption = $("results-caption");
+  caption.textContent = statsMode ? `條件：${description}` : `上一次查詢的結果：${queryText}`;
+  caption.hidden = statsMode ? view !== "done" || !description : view !== "ready" || !queryText;
+  $("summary-text").textContent = `查詢：${statsMode && description ? description : queryText}`;
+  $("recent-trades-tab").hidden = statsMode; // the stats search has no recent-trades list
+  $("trading-label").textContent = viewConfigFor(market, "trading").label; // the affix search renames the one list it shows
 }
 
 /** The query form of the chosen search kind: name box or base box plus the affix part; locked while a query runs. */
@@ -230,15 +232,21 @@ function renderInvite() {
   $("invite-quota").hidden = !quota;
 }
 
+/**
+ * The notes line: the affix search's own conclusion (what the listings it read ask, so the player does not have to work
+ * it out from the table) leads it, and the base translation note follows.
+ */
+function notesText() {
+  const price = market.mode === "stats" ? priceSummaryLine(priceSummary(market.trading?.rows ?? [])) : "";
+  return [price, sourceLine(runSource), ...(market.lookup?.notes ?? [])].filter(Boolean).join("。");
+}
+
 function renderChrome() {
   const view = deriveView({ settingsOpen, hasInvite: Boolean(currentInvite()), running, after, mode: queryMode });
   document.body.dataset.view = view;
-  // The affix search's own conclusion: what the listings it read are asking, so the player does not have to work it
-  // out from the table. It leads the notes line (the base translation note follows).
-  const priceLine = market.mode === "stats" ? priceSummaryLine(priceSummary(market.trading?.rows ?? [])) : "";
-  const notes = [priceLine, sourceLine(runSource), ...(market.lookup?.notes ?? [])].filter(Boolean).join("。");
   const shown = visibleSections(view, hasRows());
   for (const name of SECTION_NAMES) $(`part-${name}`).hidden = !shown.has(name);
+  const notes = notesText();
   $("part-notes").textContent = notes;
   $("part-notes").hidden = !notes || !shown.has("notes");
   $("part-requery").hidden = !shown.has("requery") || Boolean(banner?.retry);
@@ -252,10 +260,15 @@ function renderChrome() {
   renderBanner(view);
   renderQuota(view);
   renderModeForm();
+  renderLoadMore();
+  renderInvite();
+}
+
+/** The "read more batches" count: how many extra batches the next query reads, within the site's maximum. */
+function renderLoadMore() {
   $("more-value").textContent = loadMore;
   $("more-minus").disabled = running || loadMore <= 0;
   $("more-plus").disabled = running || loadMore >= MAX_LOAD_MORE;
-  renderInvite();
 }
 
 /** The settings selects mirror `filters`; they are locked like every other setting while a query runs. */

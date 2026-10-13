@@ -15,7 +15,8 @@ import {
 export const clock = (iso) =>
   iso ? new Date(iso).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }) : "";
 
-function drawTwoLine(list, first, second, details) {
+/** One two-line entry: `first` is the bold lead, `second` the side text beside it, `details` the small grey line. */
+function drawTwoLine(list, { first, second, details }) {
   const li = element("li");
   const top = element("div", { className: "line1" });
   top.append(element("strong", { textContent: first }), element("span", { className: "side", textContent: second }));
@@ -24,29 +25,33 @@ function drawTwoLine(list, first, second, details) {
   list.append(li);
 }
 
-/** Two-line rows of the stats search: the item and its price next to the seller, then the small grey details. */
-export function drawStatsListings(list, rows) {
-  for (const row of rows) {
-    const { title, price, seller, details } = statsRow(STATS_COLUMNS, statsCells(row));
-    drawTwoLine(list, `${title} ・ ${price}`, seller, details);
-  }
+/** Draws `rows`, each shaped by `shape(row)` into `{ first, second, details }`; the three lists differ only in `shape`. */
+function drawRows(list, rows, shape) {
+  for (const row of rows) drawTwoLine(list, shape(row));
 }
 
-/** Two-line rows: price and seller, then the small grey details. */
+/** Two-line rows of the stats search: the item and its price next to the seller, then the small grey details. */
+export function drawStatsListings(list, rows) {
+  drawRows(list, rows, (row) => {
+    const { title, price, seller, details } = statsRow(STATS_COLUMNS, statsCells(row));
+    return { first: `${title} ・ ${price}`, second: seller, details };
+  });
+}
+
+/** Two-line rows: price and seller, then the small grey details. The same cells as CSV and copy, so the three cannot drift. */
 export function drawListings(list, rows) {
-  for (const row of rows) {
-    // The same cells as CSV and copy, so the three cannot drift.
+  drawRows(list, rows, (row) => {
     const { price, seller, details } = listingRow(TRADING_COLUMNS, tradingCells(row));
-    drawTwoLine(list, price, seller, details);
-  }
+    return { first: price, second: seller, details };
+  });
 }
 
 /** Two-line rows: the item and its price, then time and environment. */
 export function drawRecent(list, rows) {
-  for (const row of rows) {
+  drawRows(list, rows, (row) => {
     const { title, price, details } = recentRow(RECENT_COLUMNS, recentCells(row));
-    drawTwoLine(list, title, price, details);
-  }
+    return { first: title, second: price, details };
+  });
 }
 
 /** The trust line (checked: how it was found and when) or the expandable list of what did not pass. */

@@ -73,11 +73,14 @@ export function normalizeFilters(value) {
   return result;
 }
 
+/** The filter keys that hold a value: an empty string is the "no filter" value. */
+const activeKeys = (filters) => Object.keys(filters).filter((key) => filters[key] !== "");
+
 /**
  * Check if any filter field is active (non-empty).
  */
 export function filtersActive(filters) {
-  return Object.values(filters).some((v) => v !== "");
+  return activeKeys(filters).length > 0;
 }
 
 /**
@@ -108,11 +111,11 @@ function rowVerdict(row, activeFields, filters) {
  * Does not mutate input rows/array.
  */
 export function applyFilters(rows, filters) {
-  if (!filtersActive(filters)) {
+  const activeFields = activeKeys(filters);
+  if (!activeFields.length) {
     return { rows, hidden: 0, unknown: 0 };
   }
 
-  const activeFields = Object.keys(filters).filter((field) => filters[field] !== "");
   const keptRows = [];
   let unknown = 0;
 

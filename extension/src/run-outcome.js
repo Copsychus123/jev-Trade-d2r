@@ -47,6 +47,10 @@ export async function judgeNameRun({
   return { after: "done", verification };
 }
 
+/** A problem banner that offers a retry; `hint` is left out entirely when there is nothing to add. */
+const retryBanner = (message, hint) =>
+  hint === undefined ? { banner: { message, retry: "重新查詢" } } : { banner: { message, hint, retry: "重新查詢" } };
+
 /**
  * How a failure is described to the player, and whether the pending invite must be dropped (the backend refused it:
  * never store it). `hasRun` is whether the backend had already accepted this query's code.
@@ -55,15 +59,9 @@ export function describeRunError(error, { hasRun, hasStoredInvite, detached, det
   if (error instanceof ApiError && !hasRun && (error.status === 401 || error.status === 429)) {
     return { banner: { message: error.message, settings: Boolean(hasStoredInvite) }, clearPendingInvite: true };
   }
-  if (error instanceof ApiError) return { banner: { message: error.message, retry: "重新查詢" } };
+  if (error instanceof ApiError) return retryBanner(error.message);
   if (detached) {
-    return {
-      banner: {
-        message: "查詢視窗被關閉，或「偵錯」被取消，查詢已停止。",
-        hint: `原因：${detachReason || "未知"}；${error?.message || ""}`,
-        retry: "重新查詢",
-      },
-    };
+    return retryBanner("查詢視窗被關閉，或「偵錯」被取消，查詢已停止。", `原因：${detachReason || "未知"}；${error?.message || ""}`);
   }
-  return { banner: { message: error?.message || String(error), retry: "重新查詢" } };
+  return retryBanner(error?.message || String(error));
 }

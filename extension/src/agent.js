@@ -112,19 +112,22 @@ export class Agent {
     }
   }
 
-  /** Stop the run: blocked status, no pending handoff, elapsed time updated. Callers record their own reason. */
-  _block(state) {
-    state.status = "blocked";
+  /** Stop the run with `status`, no pending handoff, elapsed time updated. Callers record their own reason. */
+  _endRun(state, status) {
+    state.status = status;
     state.awaiting_handoff = false;
     state.elapsed_ms = this._elapsedMs();
   }
 
-  /** The last phase is over: done status, no pending handoff, elapsed time updated. */
+  /** Stop the run as blocked. Callers record their own reason. */
+  _block(state) {
+    this._endRun(state, "blocked");
+  }
+
+  /** The last phase is over: done status, and the plan index pinned to that last phase. */
   _finishRun(state) {
-    state.status = "done";
+    this._endRun(state, "done");
     state.plan_index = state.plan.length - 1;
-    state.awaiting_handoff = false;
-    state.elapsed_ms = this._elapsedMs();
   }
 
   /** End a run whose target keeps failing on an unchanged page, with a reason the panel shows and logs. */
@@ -171,6 +174,13 @@ export class Agent {
   /** Whether the page (and optionally one action) still matches; a navigation that kills the read re-observes first. */
   async _isFresh(page, action = null) {
     return this._readThroughStale(() => this.tab.fresh(page, action));
+  }
+
+  /** Re-observe the page only when it changed; a navigation that kills the read re-observes first. */
+  async _syncPage(state) {
+    await this._readThroughStale(async () => {
+      if (!(await this.tab.fresh(state.page))) state.page = await this.tab.observe();
+    });
   }
 
   _applyScopeGuard(state) {
@@ -270,6 +280,12 @@ export class Agent {
     };
   }
 
+  /** Update the elapsed time and hand back the state, the shape every command returns. */
+  _settle(state) {
+    state.elapsed_ms = this._elapsedMs();
+    return this.snapshot();
+  }
+
   /** Tick, predict, handoff or act. Prediction and execution stay separate commands: the caller can hold a decision. */
   async command(name, body = {}) {
     if (name === "tick") return this._tick();
@@ -305,17 +321,9 @@ export class Agent {
     // Cleared before the page read: a stale read is a navigation, not a target that keeps failing, and it must not be
     // charged to the step before (whose action may have succeeded).
     state.last_attempt = null;
-    try {
-      if (!(await this.tab.fresh(state.page))) state.page = await this.tab.observe();
-    } catch (error) {
-      if (error instanceof StalePage) await this._refreshForRetry(state);
-      throw error;
-    }
+    await this._syncPage(state);
     state.decision = null;
-    if (this._applyScopeGuard(state)) {
-      state.elapsed_ms = this._elapsedMs();
-      return this.snapshot();
-    }
+    if (this._applyScopeGuard(state)) return this._settle(state);
     if (state.status === "done" || state.status === "blocked") {
       throw new Error("This run has stopped. Start a fresh run.");
     }
@@ -324,8 +332,7 @@ export class Agent {
     if (byRule) {
       state.decision = this._ruleDecision(state, byRule);
       state.status = "predicted";
-      state.elapsed_ms = this._elapsedMs();
-      return this.snapshot();
+      return this._settle(state);
     }
     // Mirrors the server: a request may cost two model calls, so stop while two more would not fit.
     const budget = this.callBudget;
@@ -369,8 +376,7 @@ export class Agent {
     state.phase_start = state.history.length;
     await this._refreshForRetry(state);
     if (!this._applyScopeGuard(state)) state.status = "ready";
-    state.elapsed_ms = this._elapsedMs();
-    return this.snapshot();
+    return this._settle(state);
   }
 
   /** Execute the pending decision once, then observe its result. The action is recorded before it can happen. */
@@ -389,10 +395,7 @@ export class Agent {
     const { action, text } = await this._prepareAction(selected, page);
     await this._runAction(action, page, decision, selected, text);
 
-    if (this._applyScopeGuard(state)) {
-      state.elapsed_ms = this._elapsedMs();
-      return this.snapshot();
-    }
+    if (this._applyScopeGuard(state)) return this._settle(state);
     state.status = this._isStuckRepeating(state) ? "blocked" : "ready";
     if (state.status === "ready") this._finishPhaseByRule(state);
     return this.snapshot();

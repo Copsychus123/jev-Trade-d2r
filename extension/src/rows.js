@@ -52,7 +52,7 @@ export function recentRow(head, cells) {
 }
 
 /** The same for a listing of the stats search: the item is line 1 with the price, the seller next to it. */
-export const STATS_LAYOUT = { title: "物品", price: "要價", seller: "賣家", details: LISTING_LAYOUT.details };
+export const STATS_LAYOUT = { title: "物品", ...LISTING_LAYOUT };
 
 /** `head` is STATS_COLUMNS and `cells` one row of `statsCells(row)`; same rules as `listingRow`. */
 export function statsRow(head, cells) {

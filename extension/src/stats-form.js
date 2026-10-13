@@ -99,10 +99,10 @@ export function initStatsForm({ getProperties, onChange }) {
     li.classList.toggle("unmapped", unavailable);
     li.classList.toggle("invalid", invalidKeys(form).includes(condition.key));
 
-    const on = element("input", { type: "checkbox", className: "affix-on", checked: condition.on });
-    on.disabled = busy || unavailable;
+    const checkbox = element("input", { type: "checkbox", className: "affix-on", checked: condition.on });
+    checkbox.disabled = busy || unavailable;
     const name = element("label", { className: "affix-name" });
-    name.append(on, element("span", { textContent: condition.label }));
+    name.append(checkbox, element("span", { textContent: condition.label }));
     if (unavailable) name.append(element("small", { textContent: "（Traderie 沒有這個屬性）" }));
     li.append(name);
 
@@ -114,7 +114,8 @@ export function initStatsForm({ getProperties, onChange }) {
     return li;
   }
 
-  function render() {
+  /** The condition list and the "add a condition" menu, both built from the form. */
+  function renderConditions() {
     $("affix-list").replaceChildren(...form.conditions.map(rowElement));
     const empty = $("affix-empty");
     empty.textContent = EMPTY_LIST;
@@ -125,19 +126,34 @@ export function initStatsForm({ getProperties, onChange }) {
     for (const entry of availableToAdd(form, AFFIXES)) select.append(new Option(entry.zh, entry.key));
     select.disabled = busy;
     $("affix-fill").disabled = busy || !hasScreenshot;
+  }
+
+  /** The quality radios mirror the form's choice. */
+  function renderQuality() {
     for (const radio of qualityRadios()) {
       radio.checked = radio.value === form.quality;
       radio.disabled = busy;
     }
+  }
+
+  /**
+   * The base field mirrors the form. A base that came from a picture or a scan record is marked the same way a captured
+   * number is: the player can see it was not their own typing, and editing it clears the mark.
+   */
+  function renderBase() {
     const base = $("stats-base");
     if (base.value !== form.base) base.value = form.base;
-    // A base that came from a picture or a scan record is marked the same way a captured number is: the player can see
-    // it was not their own typing, and editing it clears the mark.
-    const baseFromCapture = base.dataset.from === "ocr";
-    base.classList.toggle("from-capture", baseFromCapture);
-    if (baseFromCapture) base.title = FROM_CAPTURE_TITLE;
+    const fromCapture = base.dataset.from === "ocr";
+    base.classList.toggle("from-capture", fromCapture);
+    if (fromCapture) base.title = FROM_CAPTURE_TITLE;
     else base.removeAttribute("title");
     base.disabled = busy;
+  }
+
+  function render() {
+    renderConditions();
+    renderQuality();
+    renderBase();
   }
 
   // The list is redrawn on structural changes only; typing a number just updates the state and the invalid marks.
