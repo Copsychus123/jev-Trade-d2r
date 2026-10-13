@@ -4,7 +4,7 @@
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
-  color: #252523;
+  color: var(--ink);
   --bg: #fafaf7;
   --panel: #ffffff;
   --ink: #252523;
@@ -141,8 +141,11 @@ textarea:focus-visible {
   padding-left: 8px;
 }
 
+/* One card surface: the panels, the result cards and the two control bands all carry it. */
 .panel,
-.capture-card {
+.capture-card,
+.workspace-controls,
+.tabs {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -153,10 +156,6 @@ textarea:focus-visible {
   padding: 16px 20px;
   display: grid;
   gap: 12px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  box-shadow: var(--shadow);
 }
 
 .workspace-form {
@@ -202,7 +201,7 @@ textarea:focus-visible {
 }
 
 #status-dot[data-state="predicted"] {
-  background: #ed6738;
+  background: var(--amber);
 }
 
 #status-dot[data-state="done"] {
@@ -515,7 +514,7 @@ textarea:focus-visible {
   line-height: 1.1;
   font-weight: 450;
   letter-spacing: -0.9px;
-  color: #252523;
+  color: var(--ink);
 }
 
 .metrics > div:last-child strong {
@@ -605,7 +604,7 @@ textarea:focus-visible {
 }
 
 .operation-choice b {
-  color: #ed6738;
+  color: var(--amber);
 }
 
 .operation-choice.best {
@@ -625,10 +624,13 @@ textarea:focus-visible {
   color: #6d6d66;
 }
 
-.choices {
+.choices,
+#history {
   display: flex;
   flex-direction: column;
   gap: 0;
+}
+.choices {
   max-height: 250px;
   overflow: auto;
   padding: 0 12px;
@@ -663,7 +665,7 @@ textarea:focus-visible {
 
 .choice-label {
   min-width: 0;
-  color: #252523;
+  color: var(--ink);
   overflow-wrap: anywhere;
 }
 
@@ -718,9 +720,6 @@ textarea:focus-visible {
 }
 
 #history {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
   max-height: 200px;
   overflow: auto;
   padding-right: 2px;
@@ -805,10 +804,6 @@ textarea:focus-visible {
   gap: 8px;
   padding: 8px 10px;
   margin-bottom: 14px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  box-shadow: var(--shadow);
 }
 
 .tabs [role="tab"] {
@@ -885,11 +880,6 @@ textarea:focus-visible {
   white-space: nowrap;
 }
 
-.status-pill[data-status="NOT_RUN"] {
-  background: #f3f4ee;
-  color: #7b8174;
-}
-
 .status-pill[data-status="PASSED"] {
   background: #e9f2e7;
   color: #245934;
@@ -940,12 +930,6 @@ textarea:focus-visible {
   vertical-align: top;
 }
 
-.market-table th {
-  position: sticky;
-  top: 0;
-  background: #f3f4ee;
-}
-
 /* Time and defense cells are short: keep each on one line. */
 #trading-table th:nth-child(4),
 #trading-table td:nth-child(4),
@@ -980,7 +964,7 @@ textarea:focus-visible {
   margin: 0;
   border: 1px solid #edcdb6;
   background: #fff0e7;
-  color: #924c2b;
+  color: var(--red);
   padding: 12px 14px;
   border-radius: 6px;
   font-size: 13px;
@@ -1091,9 +1075,7 @@ textarea:focus-visible {
   .trace-row .effect {
     grid-column: 2;
   }
-}
 
-@media (max-width: 760px) {
   .tabs {
     overflow-x: auto;
   }
