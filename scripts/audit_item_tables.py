@@ -76,11 +76,8 @@ def _coverage(products: list[dict], named: set[str]) -> dict[str, dict]:
     return coverage
 
 
-def audit(data: dict) -> tuple[dict, list[str]]:
-    by_name = {p["name"]: p for p in data["products"]}
-    named = {normalize(english) for english in data["zh"].values()}
-    coverage = _coverage(data["products"], named)
-
+def _category_problems(coverage: dict[str, dict]) -> list[str]:
+    """Required categories with too few products, and categories whose Chinese-name coverage fell below its floor."""
     problems = []
     for category, minimum in MIN_PRODUCTS.items():
         row = coverage.get(category)
@@ -92,18 +89,36 @@ def audit(data: dict) -> tuple[dict, list[str]]:
         row = coverage.get(category)
         if row and row["named"] / row["total"] < floor:
             problems.append(f"{category} 覆蓋率 {row['named']}/{row['total']} 低於下限 {floor:.0%}")
-    for key, slugs in duplicate_keys(data["products"]).items():
-        if key not in ALLOWED_DUPLICATE_KEYS:
-            problems.append(f"商品名稱正規化後重複：{key!r} → {', '.join(slugs)}")
-    seen_slugs: set[str] = set()
-    for product in data["products"]:
+    return problems
+
+
+def _duplicate_key_problems(products: list[dict]) -> list[str]:
+    """Product names that normalise to the same key and are not on the allow-list."""
+    return [
+        f"商品名稱正規化後重複：{key!r} → {', '.join(slugs)}"
+        for key, slugs in duplicate_keys(products).items()
+        if key not in ALLOWED_DUPLICATE_KEYS
+    ]
+
+
+def _slug_problems(products: list[dict]) -> list[str]:
+    """A malformed slug, or the same slug behind two products."""
+    problems = []
+    seen: set[str] = set()
+    for product in products:
         slug = product["slug"]
         if not SLUG.fullmatch(slug):
             problems.append(f"網址代稱格式不對：{slug!r}")
-        if slug in seen_slugs:
+        if slug in seen:
             problems.append(f"網址代稱重複：{slug!r}")
-        seen_slugs.add(slug)
-    for chinese, english in data["zh"].items():
+        seen.add(slug)
+    return problems
+
+
+def _zh_problems(zh: dict[str, str], by_name: dict[str, dict]) -> list[str]:
+    """Page noise as a key, a generic word naming a unique or set, and a name that points at no product."""
+    problems = []
+    for chinese, english in zh.items():
         if NOISE_KEY.search(chinese):
             problems.append(f"雜訊鍵：{chinese!r} → {english}")
         product = by_name.get(english)
@@ -111,15 +126,54 @@ def audit(data: dict) -> tuple[dict, list[str]]:
             problems.append(f"通用字誤配：{chinese} → {english}")
         if english not in by_name:
             problems.append(f"對到不存在的商品：{chinese} → {english}")
-    for english in data["game_only"]:
-        if english.lower() in FOOTER_ENGLISH or re.search(r"\d", english):
-            problems.append(f"game_only 含頁尾雜訊：{english!r}")
-    for base in data["bases"]:
+    return problems
+
+
+def _game_only_problems(game_only: list[str]) -> list[str]:
+    """Footer text or a number slipped into the "game only" list."""
+    return [
+        f"game_only 含頁尾雜訊：{english!r}"
+        for english in game_only
+        if english.lower() in FOOTER_ENGLISH or re.search(r"\d", english)
+    ]
+
+
+def _base_problems(bases: list[str], by_name: dict[str, dict]) -> list[str]:
+    """A base-list entry that is not a product, or a product that is not one of the base categories."""
+    problems = []
+    for base in bases:
         if base not in by_name:
             problems.append(f"底材清單裡有不存在的商品：{base}")
         elif by_name[base]["category"] not in BASE_CATEGORIES:
             problems.append(f"底材清單裡的商品不是底材分類：{base}（{by_name[base]['category']}）")
+    return problems
+
+
+def audit(data: dict) -> tuple[dict, list[str]]:
+    """The coverage table and every rule violation, in the order a person reads the report."""
+    by_name = {p["name"]: p for p in data["products"]}
+    named = {normalize(english) for english in data["zh"].values()}
+    coverage = _coverage(data["products"], named)
+    problems = (
+        _category_problems(coverage)
+        + _duplicate_key_problems(data["products"])
+        + _slug_problems(data["products"])
+        + _zh_problems(data["zh"], by_name)
+        + _game_only_problems(data["game_only"])
+        + _base_problems(data["bases"], by_name)
+    )
     return coverage, problems
+
+
+def _print_report(data: dict, coverage: dict[str, dict], problems: list[str]) -> None:
+    total = sum(row["named"] for row in coverage.values())
+    print(f"中文名稱 {len(data['zh'])} 個；商品 {len(data['products'])} 個，其中 {total} 個有中文名稱")
+    for category, row in coverage.items():
+        print(f"  {category:10s} {row['named']:4d}/{row['total']:<4d} {row['named'] / row['total']:5.0%}")
+    for problem in problems:
+        print("問題：" + problem)
+    if not problems:
+        print("沒有發現問題。")
 
 
 def main() -> int:
@@ -132,14 +186,7 @@ def main() -> int:
     if args.json:
         print(json.dumps({"coverage": coverage, "problems": problems}, ensure_ascii=False, indent=1))
     else:
-        total = sum(r["named"] for r in coverage.values())
-        print(f"中文名稱 {len(data['zh'])} 個；商品 {len(data['products'])} 個，其中 {total} 個有中文名稱")
-        for category, row in coverage.items():
-            print(f"  {category:10s} {row['named']:4d}/{row['total']:<4d} {row['named'] / row['total']:5.0%}")
-        for problem in problems:
-            print("問題：" + problem)
-        if not problems:
-            print("沒有發現問題。")
+        _print_report(data, coverage, problems)
     return 1 if problems else 0
 
 

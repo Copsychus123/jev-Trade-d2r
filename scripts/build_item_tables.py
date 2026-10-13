@@ -411,6 +411,16 @@ def by_normalized_name(products: list[dict]) -> dict[str, dict]:
     return {normalize(p["name"]): p for p in products}
 
 
+def base_item_for_ambiguous(names: set[str], by_name: dict) -> str | None:
+    """A weapon-type word ("匕首") is also a heading followed by the first unique of that type. When exactly one
+    candidate is a plain base item and the others are uniques or sets, that base item is the answer."""
+    bases = [name for name in names if by_name[name]["category"] == "base"]
+    others = [name for name in names if by_name[name]["category"] in ("uniques", "sets")]
+    if len(bases) == 1 and len(others) == len(names) - 1:
+        return bases[0]
+    return None
+
+
 def combine(products: list[dict], pairs: list[tuple[str, str]]) -> tuple[dict, dict]:
     by_key = by_normalized_name(products)
     by_name = {p["name"]: p for p in products}
@@ -436,12 +446,9 @@ def combine(products: list[dict], pairs: list[tuple[str, str]]) -> tuple[dict, d
         elif zh.setdefault(chinese, product["name"]) != product["name"]:
             ambiguous.setdefault(chinese, {zh[chinese]}).add(product["name"])
     for chinese, names in list(ambiguous.items()):
-        # A weapon-type word ("匕首") is also a heading followed by the first unique of that type. When exactly one
-        # candidate is a plain base item and the others are uniques or sets, the base item is the answer.
-        bases = [n for n in names if by_name[n]["category"] == "base"]
-        others = [n for n in names if by_name[n]["category"] in ("uniques", "sets")]
-        if len(bases) == 1 and len(others) == len(names) - 1:
-            zh[chinese] = bases[0]
+        base = base_item_for_ambiguous(names, by_name)
+        if base is not None:
+            zh[chinese] = base
             del ambiguous[chinese]
         else:
             del zh[chinese]  # one Chinese name for two products: better no translation than the wrong one
@@ -573,32 +580,44 @@ def load_pairs() -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
     return [tuple(p) for p in cached["pairs"]], [tuple(p) for p in cached["trusted"]]
 
 
+async def merge_translation_names(out: Path, force: bool) -> bool:
+    """`--add-translations`: read only d2r.world's translation pages and add their names to the table in `out`."""
+    existing = read_json(out)
+    async with open_dedicated_tab(Tab) as tab:
+        pairs = await read_translations(tab)
+    added, _ = combine(existing["products"], pairs)
+    fresh = {name: english for name, english in added.items() if name not in existing["zh"]}
+    existing["zh"] = dict(sorted({**existing["zh"], **fresh}.items()))
+    print(f"新增 {len(fresh)} 個中文名稱（含舊譯名），共 {len(existing['zh'])} 個。")
+    return publish(existing, out, force)
+
+
+async def read_sources(out: Path, reuse_products: bool) -> tuple[list[dict], list, list]:
+    """Open the dedicated Chrome and read the products and the names, then save the raw pairs for a later
+    `--from-cache` run. `reuse_products` skips Traderie and keeps the products already in `out`."""
+    async with open_dedicated_tab(Tab) as tab:
+        if reuse_products:
+            products = read_json(out)["products"]
+        else:
+            print("讀 Traderie 商品清單…", flush=True)
+            products = await read_traderie(tab)
+        print("讀 d2r.world 中英文名稱…", flush=True)
+        d2r_pairs, trusted = await read_d2r_world(tab)
+        pairs = d2r_pairs + await read_translations(tab)
+    save_pairs(pairs, trusted)
+    return products, pairs, trusted
+
+
 async def main_async(
     out: Path, reuse_products: bool, *, add_translations: bool = False, from_cache: bool = False, force: bool = False
 ) -> bool:
     if add_translations:
-        existing = read_json(out)
-        async with open_dedicated_tab(Tab) as tab:
-            pairs = await read_translations(tab)
-        added, _ = combine(existing["products"], pairs)
-        fresh = {k: v for k, v in added.items() if k not in existing["zh"]}
-        existing["zh"] = dict(sorted({**existing["zh"], **fresh}.items()))
-        print(f"新增 {len(fresh)} 個中文名稱（含舊譯名），共 {len(existing['zh'])} 個。")
-        return publish(existing, out, force)
+        return await merge_translation_names(out, force)
     if from_cache:
         pairs, trusted = load_pairs()
         products = read_json(out)["products"]
     else:
-        async with open_dedicated_tab(Tab) as tab:
-            if reuse_products:
-                products = read_json(out)["products"]
-            else:
-                print("讀 Traderie 商品清單…", flush=True)
-                products = await read_traderie(tab)
-            print("讀 d2r.world 中英文名稱…", flush=True)
-            d2r_pairs, trusted = await read_d2r_world(tab)
-            pairs = d2r_pairs + await read_translations(tab)
-        save_pairs(pairs, trusted)
+        products, pairs, trusted = await read_sources(out, reuse_products)
     data, report = build_table(products, pairs, trusted)
     write_json(REPORT, report)
     print(f"商品 {len(products)} 筆，中文名 {len(data['zh'])} 筆，底材 {len(data['bases'])} 筆")
