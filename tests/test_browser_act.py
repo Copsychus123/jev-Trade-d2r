@@ -17,7 +17,7 @@ from jev_ultrafast.browser import browser_operation
 
 def observed():
     """The plain `READ_STATE` payload the page script returns, before `browser_operation` hashes it."""
-    state = {
+    return {
         "url": "https://example.test/",
         "title": "Search",
         "text": "Search",
@@ -26,16 +26,21 @@ def observed():
             {"id": "e1", "kind": "click", "label": "Go", "role": "button", "value": "", "node": 20},
         ],
     }
-    return state
 
 
 SELECT_ACTION = {"id": "e1", "kind": "select", "node": 20, "value": "Design"}
 
 
+def _fake_cdp(monkeypatch, *args, **kwargs):
+    """Install a `cdp` double in place of the real CDP client and hand it back, so a test can read its calls."""
+    cdp = Mock(*args, **kwargs)
+    monkeypatch.setattr(browser, "cdp", cdp)
+    return cdp
+
+
 def test_a_scroll_wheels_at_the_fixed_point_and_never_resolves_a_target_or_presses(monkeypatch):
     """`kind == "scroll"` is the keyless branch: one wheel event at the fixed (550, 650) and nothing else."""
-    cdp = Mock(return_value={})
-    monkeypatch.setattr(browser, "cdp", cdp)
+    cdp = _fake_cdp(monkeypatch, return_value={})
 
     result = browser_operation(
         {"operation": "act", "session": "s", "action": {"id": "scroll_down", "kind": "scroll", "delta": 560}}
@@ -56,27 +61,23 @@ def test_a_scroll_wheels_at_the_fixed_point_and_never_resolves_a_target_or_press
 
 def test_a_select_is_performed_by_the_page_script_with_no_mouse_events(monkeypatch):
     """`kind == "select"` resolves the target, hands the chosen value to the page script and dispatches no input."""
-    action = {"id": "e1", "kind": "select", "node": 20, "value": "Design"}
-    cdp = Mock(return_value={"result": {"value": {"x": 12, "y": 34}}})
-    monkeypatch.setattr(browser, "cdp", cdp)
+    cdp = _fake_cdp(monkeypatch, return_value={"result": {"value": {"x": 12, "y": 34}}})
 
-    result = browser_operation({"operation": "act", "session": "s", "action": action})
+    result = browser_operation({"operation": "act", "session": "s", "action": SELECT_ACTION})
 
     assert result == {"executed": "e1"}
     assert cdp.call_count == 1
     (resolve,) = cdp.call_args_list
     assert resolve.args[0] == "Runtime.evaluate"
     # The value the caller chose is echoed into the page script's own call; the script (not CDP input) does the work.
-    expected = f'{browser.RESOLVE_TARGET}({{"id": "e1", "kind": "select", "node": 20, "value": "Design"}})'
-    assert resolve.kwargs["expression"] == expected
+    assert resolve.kwargs["expression"] == f"{browser.RESOLVE_TARGET}({json.dumps(SELECT_ACTION)})"
     assert resolve.kwargs["returnByValue"] is True
     assert [c.args[0] for c in cdp.call_args_list] == ["Runtime.evaluate"]
 
 
 def test_an_interrupted_select_reports_the_exact_message(monkeypatch):
     """A select whose evaluation died (e.g. the change event navigated) must not look like a retryable stale page."""
-    cdp = Mock(return_value={"exceptionDetails": {"text": "Execution context destroyed"}})
-    monkeypatch.setattr(browser, "cdp", cdp)
+    cdp = _fake_cdp(monkeypatch, return_value={"exceptionDetails": {"text": "Execution context destroyed"}})
 
     with pytest.raises(RuntimeError, match=r"^Dropdown execution was interrupted; inspect before retrying\.$"):
         browser_operation({"operation": "act", "session": "s", "action": SELECT_ACTION})
@@ -86,8 +87,7 @@ def test_an_interrupted_select_reports_the_exact_message(monkeypatch):
 
 def test_a_select_the_page_never_confirmed_reports_the_exact_message(monkeypatch):
     """"The page script could not select it" is a distinct message from the interrupted case, and needs one call."""
-    cdp = Mock(return_value={"result": {"value": None}})
-    monkeypatch.setattr(browser, "cdp", cdp)
+    cdp = _fake_cdp(monkeypatch, return_value={"result": {"value": None}})
 
     with pytest.raises(RuntimeError, match=r"^Dropdown execution was not confirmed; inspect before retrying\.$"):
         browser_operation({"operation": "act", "session": "s", "action": SELECT_ACTION})
@@ -97,8 +97,7 @@ def test_a_select_the_page_never_confirmed_reports_the_exact_message(monkeypatch
 
 def test_a_click_presses_then_releases_once_with_the_left_button(monkeypatch):
     """A click is exactly `mousePressed` then `mouseReleased`, both at the resolved point, left button, one click."""
-    cdp = Mock(side_effect=[{"result": {"value": {"x": 120, "y": 340}}}, {}, {}])
-    monkeypatch.setattr(browser, "cdp", cdp)
+    cdp = _fake_cdp(monkeypatch, side_effect=[{"result": {"value": {"x": 120, "y": 340}}}, {}, {}])
 
     result = browser_operation(
         {"operation": "act", "session": "s", "action": {"id": "e3", "kind": "click", "node": 20}}
@@ -122,12 +121,11 @@ def test_the_observation_fingerprint_is_a_hash_of_url_text_actions_and_scroll(mo
     first_state = observed()
     changed = deepcopy(first_state)
     changed["text"] = "No results"
-    cdp = Mock(side_effect=[
+    _fake_cdp(monkeypatch, side_effect=[
         {"result": {"value": deepcopy(first_state)}},
         {"result": {"value": deepcopy(first_state)}},
         {"result": {"value": changed}},
     ])
-    monkeypatch.setattr(browser, "cdp", cdp)
 
     first = browser_operation({"operation": "observe", "session": "s", "screenshot": False})
     second = browser_operation({"operation": "observe", "session": "s", "screenshot": False})
@@ -144,12 +142,11 @@ def test_the_observation_fingerprint_is_a_hash_of_url_text_actions_and_scroll(mo
 def test_a_screenshot_key_is_present_only_when_the_page_asked_for_one(monkeypatch):
     """`screenshot` is added for a real capture only when requested (it is `True` by default)."""
     state = observed()
-    cdp = Mock(side_effect=[
+    cdp = _fake_cdp(monkeypatch, side_effect=[
         {"result": {"value": deepcopy(state)}},
         {"result": {"value": deepcopy(state)}},
         {"data": "AAAA"},
     ])
-    monkeypatch.setattr(browser, "cdp", cdp)
 
     without = browser_operation({"operation": "observe", "session": "s", "screenshot": False})
     assert "screenshot" not in without
@@ -166,11 +163,10 @@ def test_a_screenshot_key_is_present_only_when_the_page_asked_for_one(monkeypatc
 
 def test_a_screenshot_is_taken_by_default_when_the_request_omits_the_flag(monkeypatch):
     """An observe request that does not mention `screenshot` still captures one (`request.get("screenshot", True)`)."""
-    cdp = Mock(side_effect=[
+    cdp = _fake_cdp(monkeypatch, side_effect=[
         {"result": {"value": observed()}},
         {"data": "BBBB"},
     ])
-    monkeypatch.setattr(browser, "cdp", cdp)
 
     info = browser_operation({"operation": "observe", "session": "s"})
 

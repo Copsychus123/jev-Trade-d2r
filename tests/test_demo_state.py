@@ -58,15 +58,21 @@ class _StubAgent:
         return {"page": self.page, "status": "ready", "history": [], "decision": None, "decisions": self.decisions}
 
 
-def test_response_state_stays_small_and_keeps_what_the_panels_need(monkeypatch):
+def stub_demo(monkeypatch, run=None) -> _StubAgent:
+    """Install a stub Agent and a RUN (an empty market by default), the pair every `response_state` test needs."""
     stub = _StubAgent()
     monkeypatch.setattr(demo, "AGENT", stub)
+    monkeypatch.setattr(demo, "RUN", {"item_name": "Shako", "market": {}} if run is None else run)
+    return stub
+
+
+def test_response_state_stays_small_and_keeps_what_the_panels_need(monkeypatch):
     market = {
         "trading": {"status": "PASSED", "rows": [], "text": "page text " * 1000},
         "recent_trades": {"status": "NOT_RUN", "rows": [], "text": ""},
         "verification": None,
     }
-    monkeypatch.setattr(demo, "RUN", {"item_name": "Shako", "market": market, "report_md": "r" * 50_000})
+    stub = stub_demo(monkeypatch, {"item_name": "Shako", "market": market, "report_md": "r" * 50_000})
 
     state = demo.response_state()
 
@@ -87,9 +93,7 @@ def test_response_state_stays_small_and_keeps_what_the_panels_need(monkeypatch):
 
 def test_response_state_gives_the_overlay_each_node_s_element_index(monkeypatch):
     """The overlay's numbers must be the choice list's element indices, not raw positions in `actions`."""
-    stub = _StubAgent()
-    monkeypatch.setattr(demo, "AGENT", stub)
-    monkeypatch.setattr(demo, "RUN", {"item_name": "Shako", "market": {}})
+    stub = stub_demo(monkeypatch)
 
     state = demo.response_state()
 
@@ -102,9 +106,7 @@ def test_response_state_gives_the_overlay_each_node_s_element_index(monkeypatch)
 
 
 def test_response_state_reports_usage_and_decision_labels_for_every_decision(monkeypatch):
-    stub = _StubAgent()
-    monkeypatch.setattr(demo, "AGENT", stub)
-    monkeypatch.setattr(demo, "RUN", {"item_name": "Shako", "market": {}})
+    stub = stub_demo(monkeypatch)
 
     state = demo.response_state()
 

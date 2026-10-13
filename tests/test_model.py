@@ -12,15 +12,28 @@ from jev_ultrafast import model
 from jev_ultrafast.config import Settings
 
 
+def _response(status, text="", payload=None):
+    """An `httpx.Response` double; `is_error` follows the statuses the client treats as transient (and retries)."""
+    resp = Mock(spec=httpx.Response)
+    resp.status_code = status
+    resp.is_error = status >= 400 and status not in {429, 503, 529}
+    resp.text = text
+    resp.json.return_value = payload
+    return resp
+
+
+def _unreadable_response(error, text=""):
+    """A 200 reply whose body cannot be read: `.json()` raises `error` instead of returning a payload."""
+    resp = _response(200, text=text)
+    resp.json.side_effect = error
+    return resp
+
+
 def test_json_decode_error_on_valid_status_200_raises_value_error(monkeypatch):
     """JSONDecodeError on valid status (200) -> ValueError raised with context, not silent crash."""
-    mock_resp = Mock(spec=httpx.Response)
-    mock_resp.status_code = 200
-    mock_resp.is_error = False
-    mock_resp.text = "invalid json payload"
-    mock_resp.json.side_effect = json.JSONDecodeError("Expecting value", "invalid json payload", 0)
-
-    monkeypatch.setattr(model.CLIENT, "post", Mock(return_value=mock_resp))
+    body = "invalid json payload"
+    error = json.JSONDecodeError("Expecting value", body, 0)
+    monkeypatch.setattr(model.CLIENT, "post", Mock(return_value=_unreadable_response(error, body)))
 
     with pytest.raises(ValueError, match="Failed to parse JSON response from model provider.*HTTP 200"):
         model.post_json("https://api.example.com", "fake-key", {"prompt": "test"})
@@ -29,13 +42,8 @@ def test_json_decode_error_on_valid_status_200_raises_value_error(monkeypatch):
 def test_json_partial_response_truncated_includes_body_preview(monkeypatch):
     """Partial JSON response (truncated) -> ValueError with body preview included."""
     partial_body = '{"choice": "e1", "confidence": 0.95, "pro'
-    mock_resp = Mock(spec=httpx.Response)
-    mock_resp.status_code = 200
-    mock_resp.is_error = False
-    mock_resp.text = partial_body
-    mock_resp.json.side_effect = json.JSONDecodeError("Unterminated string", partial_body, 35)
-
-    monkeypatch.setattr(model.CLIENT, "post", Mock(return_value=mock_resp))
+    error = json.JSONDecodeError("Unterminated string", partial_body, 35)
+    monkeypatch.setattr(model.CLIENT, "post", Mock(return_value=_unreadable_response(error, partial_body)))
 
     with pytest.raises(ValueError) as exc_info:
         model.post_json("https://api.example.com", "fake-key", {"prompt": "test"})
@@ -47,12 +55,8 @@ def test_json_partial_response_truncated_includes_body_preview(monkeypatch):
 
 def test_json_network_timeout_during_json_call_caught_and_logged(monkeypatch, caplog):
     """Network timeout during json() call -> caught, logged with error, and re-raised."""
-    mock_resp = Mock(spec=httpx.Response)
-    mock_resp.status_code = 200
-    mock_resp.is_error = False
-    mock_resp.json.side_effect = httpx.ReadTimeout("Stream read timed out")
-
-    monkeypatch.setattr(model.CLIENT, "post", Mock(return_value=mock_resp))
+    unreadable = _unreadable_response(httpx.ReadTimeout("Stream read timed out"))
+    monkeypatch.setattr(model.CLIENT, "post", Mock(return_value=unreadable))
 
     with caplog.at_level(logging.ERROR):
         with pytest.raises(httpx.TimeoutException):
@@ -63,17 +67,8 @@ def test_json_network_timeout_during_json_call_caught_and_logged(monkeypatch, ca
 
 def test_retry_valid_response_after_retry_succeeds(monkeypatch):
     """Valid response after retry -> succeeds."""
-    mock_429 = Mock(spec=httpx.Response)
-    mock_429.status_code = 429
-    mock_429.is_error = False
-
     expected_payload = {"answers": {"operation": {"choice": "CLICK"}}}
-    mock_200 = Mock(spec=httpx.Response)
-    mock_200.status_code = 200
-    mock_200.is_error = False
-    mock_200.json.return_value = expected_payload
-
-    mock_post = Mock(side_effect=[mock_429, mock_200])
+    mock_post = Mock(side_effect=[_response(429), _response(200, payload=expected_payload)])
     monkeypatch.setattr(model.CLIENT, "post", mock_post)
 
     sleep_calls = []
@@ -90,19 +85,7 @@ def test_retry_valid_response_after_retry_succeeds(monkeypatch):
 
 def test_retry_exhausted_retries_final_error_includes_all_attempts(monkeypatch):
     """Exhausted retries -> final error includes all attempts."""
-    mock_429 = Mock(spec=httpx.Response)
-    mock_429.status_code = 429
-    mock_429.is_error = False
-
-    mock_503 = Mock(spec=httpx.Response)
-    mock_503.status_code = 503
-    mock_503.is_error = False
-
-    mock_529 = Mock(spec=httpx.Response)
-    mock_529.status_code = 529
-    mock_529.is_error = False
-
-    mock_post = Mock(side_effect=[mock_429, mock_503, mock_529])
+    mock_post = Mock(side_effect=[_response(429), _response(503), _response(529)])
     monkeypatch.setattr(model.CLIENT, "post", mock_post)
     monkeypatch.setattr(model.time, "sleep", lambda s: None)
 
@@ -126,11 +109,7 @@ def test_retry_configurable_settings_and_max_backoff_cap(monkeypatch):
     )
     monkeypatch.setattr(model, "get_settings", lambda: custom_settings)
 
-    mock_429 = Mock(spec=httpx.Response)
-    mock_429.status_code = 429
-    mock_429.is_error = False
-
-    mock_post = Mock(return_value=mock_429)
+    mock_post = Mock(return_value=_response(429))
     monkeypatch.setattr(model.CLIENT, "post", mock_post)
 
     sleep_calls = []
@@ -151,9 +130,6 @@ def test_retry_configurable_settings_and_max_backoff_cap(monkeypatch):
 
 def test_api_timeout_during_choice_prediction_mocks_slow_response(monkeypatch):
     """API timeout during choice prediction (slow response) -> caught and retried."""
-    import time
-
-    # Mock a slow response that simulates a timeout
     call_times = []
 
     def slow_post(*args, **kwargs):
@@ -162,11 +138,7 @@ def test_api_timeout_during_choice_prediction_mocks_slow_response(monkeypatch):
             # First call times out
             raise httpx.TimeoutException("Request timed out")
         # Second call succeeds
-        mock_resp = Mock(spec=httpx.Response)
-        mock_resp.status_code = 200
-        mock_resp.is_error = False
-        mock_resp.json.return_value = {"choice": 0, "thoughts": "Selected first option"}
-        return mock_resp
+        return _response(200, payload={"choice": 0, "thoughts": "Selected first option"})
 
     monkeypatch.setattr(model.CLIENT, "post", slow_post)
     monkeypatch.setattr(model.time, "sleep", lambda s: None)
@@ -179,14 +151,8 @@ def test_api_timeout_during_choice_prediction_mocks_slow_response(monkeypatch):
 def test_json_response_very_large_timeout_during_parse(monkeypatch):
     """JSON parse timeout with very large response -> ValueError with size info."""
     huge_response = "x" * 10_000_000  # 10MB of invalid JSON
-
-    mock_resp = Mock(spec=httpx.Response)
-    mock_resp.status_code = 200
-    mock_resp.is_error = False
-    mock_resp.text = huge_response
-    mock_resp.json.side_effect = json.JSONDecodeError("Document too large", huge_response, 0)
-
-    monkeypatch.setattr(model.CLIENT, "post", Mock(return_value=mock_resp))
+    error = json.JSONDecodeError("Document too large", huge_response, 0)
+    monkeypatch.setattr(model.CLIENT, "post", Mock(return_value=_unreadable_response(error, huge_response)))
 
     with pytest.raises(ValueError, match="Failed to parse JSON response"):
         model.post_json("https://api.example.com", "fake-key", {"prompt": "test"})
@@ -201,11 +167,7 @@ def test_retry_exhaustion_with_full_backoff_sequence(monkeypatch):
     )
     monkeypatch.setattr(model, "get_settings", lambda: custom_settings)
 
-    # All requests fail with 503
-    mock_resp = Mock(spec=httpx.Response)
-    mock_resp.status_code = 503
-    mock_resp.is_error = False
-    mock_post = Mock(return_value=mock_resp)
+    mock_post = Mock(return_value=_response(503))  # every request fails with 503
     monkeypatch.setattr(model.CLIENT, "post", mock_post)
 
     sleep_calls = []
@@ -231,19 +193,12 @@ def test_retry_exhaustion_with_full_backoff_sequence(monkeypatch):
 def test_retry_mixed_success_failure_pattern(monkeypatch, status_code, should_retry):
     """Mixed success/failure retry pattern -> retries only on transient errors."""
     call_count = [0]
+
     def mock_post(*args, **kwargs):
         call_count[0] += 1
         if call_count[0] == 1:
-            mock_resp = Mock(spec=httpx.Response)
-            mock_resp.status_code = status_code
-            mock_resp.is_error = not should_retry
-            return mock_resp
-        # Success case on subsequent calls
-        mock_resp = Mock(spec=httpx.Response)
-        mock_resp.status_code = 200
-        mock_resp.is_error = False
-        mock_resp.json.return_value = {"result": "success"}
-        return mock_resp
+            return _response(status_code)
+        return _response(200, payload={"result": "success"})  # success case on subsequent calls
 
     monkeypatch.setattr(model.CLIENT, "post", mock_post)
     monkeypatch.setattr(model.time, "sleep", lambda s: None)
@@ -257,31 +212,18 @@ def test_retry_mixed_success_failure_pattern(monkeypatch, status_code, should_re
             model.post_json("https://api.example.com", "fake-key", {"prompt": "test"})
         assert call_count[0] == 1
 
+
 def test_json_decode_error_with_unicode_content_preserves_encoding(monkeypatch):
     """JSONDecodeError with unicode content -> error message preserves unicode."""
     unicode_text = 'Invalid JSON with emoji 🎯 and CJK 中文'
-    mock_resp = Mock(spec=httpx.Response)
-    mock_resp.status_code = 200
-    mock_resp.is_error = False
-    mock_resp.text = unicode_text
-    mock_resp.json.side_effect = json.JSONDecodeError("Invalid", unicode_text, 0)
-
-    monkeypatch.setattr(model.CLIENT, "post", Mock(return_value=mock_resp))
+    error = json.JSONDecodeError("Invalid", unicode_text, 0)
+    monkeypatch.setattr(model.CLIENT, "post", Mock(return_value=_unreadable_response(error, unicode_text)))
 
     with pytest.raises(ValueError) as exc_info:
         model.post_json("https://api.example.com", "fake-key", {"prompt": "test"})
 
     err_msg = str(exc_info.value)
     assert unicode_text in err_msg  # the provider's body is echoed verbatim, unicode included
-
-
-def _response(status, text="", payload=None):
-    resp = Mock(spec=httpx.Response)
-    resp.status_code = status
-    resp.is_error = status >= 400 and status not in {429, 503, 529}
-    resp.text = text
-    resp.json.return_value = payload
-    return resp
 
 
 def test_default_call_sends_no_per_call_timeout(monkeypatch):
@@ -491,6 +433,38 @@ def test_choose_reask_names_the_operation_it_dropped_and_sums_both_replies_usage
     assert decision["model_calls"] == 2 and decision["operation"] == "WAIT"
     assert decision["reasked"] == {"operation": "CLICK", "target_probability": 0.4}
     assert decision["usage"] == {"input_tokens": 140, "output_tokens": 32}
+
+
+def test_choose_a_target_exactly_at_the_threshold_is_trusted_and_one_below_it_is_not(monkeypatch):
+    """`MIN_TARGET_PROBABILITY` is an exclusive lower bound. The 40 %/90 % cases above pass for any threshold between
+    them, so only a target at exactly 0.5 pins the comparison: 0.5 acts at once, 0.49 is asked again."""
+    for target_probability, expected_requests in ((0.5, 1), (0.49, 2)):
+        requests = []
+
+        def post(_url, _key, body, **limits):
+            requests.append(body)
+            operations = list(body["questions"]["operation"]["criteria"])
+            chosen = "CLICK" if "CLICK" in operations else "WAIT"
+            others = [name for name in operations if name != chosen]
+            answers = {
+                "operation": {
+                    "choice": chosen,
+                    "probabilities": {name: 0.5 / max(1, len(others)) for name in others} | {chosen: 0.5},
+                }
+            }
+            if chosen == "CLICK":
+                rest = 1 - target_probability  # the candidates must sum to 1 (validate_choice) with the choice on top
+                answers["click_target"] = {
+                    "choice": "1",
+                    "probabilities": {"1": target_probability, "2": rest * 0.6, "3": rest * 0.4},
+                }
+            return {"model": "test", "usage": {"input_tokens": 10, "output_tokens": 5}, "answers": answers}
+
+        monkeypatch.setenv("TYPESAFE_API_KEY", "test")
+        monkeypatch.setattr(model, "post_json", post)
+        decision = model.choose(_choose_page(), "goal", [], timeout=12, deadline=time.monotonic() + 40)
+        assert len(requests) == expected_requests, target_probability
+        assert (decision["reasked"] is None) == (expected_requests == 1), target_probability
 
 
 def test_choose_a_sure_target_is_not_reasked_and_keeps_the_single_reply_usage(monkeypatch):

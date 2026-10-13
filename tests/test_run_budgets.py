@@ -53,24 +53,32 @@ def _budget_rows() -> dict[str, list[str]]:
     return rows
 
 
+def _first_number(cell: str) -> int | None:
+    """The first integer a table cell states, or None when it states no number at all."""
+    found = re.findall(r"\d+", cell)
+    return int(found[0]) if found else None
+
+
+def _budget_row(rows: dict[str, list[str]], hint: str) -> list[str]:
+    """The Budgets table row whose owner column mentions `hint`."""
+    for owner, cells in rows.items():
+        if hint in owner:
+            return cells
+    raise AssertionError(f"docs/design.md's Budgets table has no row for {hint}")
+
+
 def test_the_design_document_states_the_same_budgets_as_the_code():
     """`docs/design.md` is the document the rulebook sends a reader to for the budgets; it states the same numbers
     the code declares, and nothing but this test keeps the two from drifting apart."""
     rows = _budget_rows()
 
-    def first_number(cell: str) -> int | None:
-        found = re.findall(r"\d+", cell)
-        return int(found[0]) if found else None
-
-    def row(hint: str) -> list[str]:
-        for owner, cells in rows.items():
-            if hint in owner:
-                return cells
-        raise AssertionError(f"docs/design.md's Budgets table has no row for {hint}")
-
     steps = _code_number("src/jev_ultrafast/config.py", r"MAX_STEPS = (\d+)")
     calls = _code_number("extension/src/agent.js", r"const JEV_CALL_LIMIT = (\d+);")
-    core, extension, backend = row("config.py"), row("agent.js"), row("app.py")
-    assert first_number(core[0]) == steps and first_number(core[1]) == steps * 2
-    assert first_number(extension[0]) == steps and first_number(extension[1]) == calls
-    assert first_number(backend[1]) == calls
+    core, extension, backend = (
+        _budget_row(rows, "config.py"),
+        _budget_row(rows, "agent.js"),
+        _budget_row(rows, "app.py"),
+    )
+    assert _first_number(core[0]) == steps and _first_number(core[1]) == steps * 2
+    assert _first_number(extension[0]) == steps and _first_number(extension[1]) == calls
+    assert _first_number(backend[1]) == calls

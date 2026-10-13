@@ -36,7 +36,7 @@ def test_app_js_is_served_with_its_csv_module():
 
 def test_table_cells_are_written_as_text_and_never_as_markup():
     """Listing and trade rows come from a scraped page, so `fillMarketTable` writes every cell with `textContent`
-    (app.js states the rule at lines 49 and 257). The decision panels do build markup, but every page-derived string
-    there goes through `escape()`."""
+    (`appendCells` in app.js is the single place a cell is filled). The decision panels do build markup, but every
+    page-derived string there goes through `escape()`."""
     assert "td.textContent = dash(cell);" in JS
     assert "td.innerHTML" not in JS
