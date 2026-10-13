@@ -200,7 +200,8 @@ summary {
   gap: 8px;
   margin-top: 8px;
 }
-.summary-text {
+.summary-text,
+.mode-title {
   font-weight: 600;
   min-width: 0;
   overflow-wrap: anywhere;
@@ -243,7 +244,8 @@ summary {
   color: var(--muted);
   overflow-wrap: anywhere;
 }
-.keep-open {
+.keep-open,
+.notes {
   padding: 6px 8px;
   border-left: 3px solid var(--warn);
   background: var(--warn-wash);
@@ -271,11 +273,6 @@ summary {
 .trust ul {
   margin: 4px 0 0;
   padding-left: 20px;
-}
-.notes {
-  padding: 6px 8px;
-  border-left: 3px solid var(--warn);
-  background: var(--warn-wash);
 }
 .banner {
   margin-top: 10px;
@@ -337,7 +334,8 @@ summary {
   font-size: 12px;
   overflow-wrap: anywhere;
 }
-.listings {
+.listings,
+.affixes {
   list-style: none;
   margin: 6px 0 0;
   padding: 0;
@@ -570,7 +568,8 @@ summary {
 .choice-sub {
   font-size: 13px;
 }
-.choice-eg {
+.choice-eg,
+.suggest-hint {
   font-size: 12px;
   color: var(--muted);
 }
@@ -580,11 +579,6 @@ summary {
   justify-content: space-between;
   gap: 8px;
   margin-top: 8px;
-}
-.mode-title {
-  font-weight: 600;
-  min-width: 0;
-  overflow-wrap: anywhere;
 }
 .suggest {
   position: absolute;
@@ -609,22 +603,18 @@ summary {
 .suggest li[aria-selected="true"], .suggest li:hover {
   background: color-mix(in srgb, var(--accent) 15%, Canvas);
 }
-.suggest-hint {
-  font-size: 12px;
-  color: var(--muted);
-}
 .quality {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 4px 12px;
-  margin: 10px 0 0;
+  margin: 12px 0 0;
   padding: 0;
   border: 0;
 }
 .quality legend {
   float: left;
-  margin-right: 12px;
+  margin: 0 12px 0 0;
   padding: 0;
   font-weight: 600;
 }
@@ -632,11 +622,6 @@ summary {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-}
-.affixes {
-  margin: 6px 0 0;
-  padding: 0;
-  list-style: none;
 }
 .affix {
   display: flex;
@@ -648,10 +633,11 @@ summary {
 }
 .affix-name {
   display: flex;
-  flex: 1 1 120px;
+  flex: 1 1 130px;
   align-items: center;
   gap: 6px;
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 .affix-limits {
   display: flex;
@@ -689,12 +675,6 @@ input[type="radio"] {
   margin: 0;
   font-weight: 400;
 }
-.quality {
-  margin-top: 12px;
-}
-.quality legend {
-  margin: 0 12px 0 0;
-}
 #part-stats h2 {
   margin-top: 14px;
 }
@@ -702,10 +682,6 @@ input[type="radio"] {
   flex: 1 1 0;
   min-width: 0;
   width: auto;
-}
-.affix-name {
-  flex: 1 1 130px;
-  overflow-wrap: anywhere;
 }
 .affix-remove {
   flex: none;
