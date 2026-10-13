@@ -42,11 +42,14 @@ let state = null,
   automatic = false;
 // The run is over in these states: the automatic loop stops and the "live page" checks fail.
 const STOPPED_STATUSES = ["done", "blocked"];
+// The five characters that can end an attribute or a tag. The apostrophe is in the set even though every sink today
+// sits in a double-quoted attribute: this helper is the page's only encoder, so a future single-quoted attribute must
+// not be able to inject through it.
 const escape = (value) =>
   String(value ?? "").replace(
-    /[&<>"]/g,
+    /[&<>"']/g,
     (c) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c],
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
   );
 const percent = (value) => `${(value * 100).toFixed(value < 0.01 ? 1 : 0)}%`;
 const statusDot = $("status-dot");
