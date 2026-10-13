@@ -78,6 +78,9 @@ test("an empty item name means no known name, as in the Python reader", () => {
 test("only ASCII digits make a time line, here and in the Python reader", () => {
   // Python's `\d` matches every Unicode digit while JavaScript's is ASCII, so a card whose time shows full-width digits
   // was kept by the Python reader and dropped here. Both patterns now say `[0-9]`; this is the case that differed.
+  // For a mutation tester: putting `\d` back into parsing.js changes nothing at all here, because JavaScript's `\d` was
+  // already ASCII -- the edit was for parity, and the Python test of the same name is the one that goes red for its
+  // revert. What this test does catch is a JS pattern that would start accepting full-width digits.
   const card = (time) =>
     ["seller", "1 X Axe", "PC •", "Softcore •", "Trading For", "1 X Pul Rune", time].join("\n");
   assert.equal(parseTradingTxt(card("123 小時前"), { itemName: "Axe" })[0].posted_time, "123 小時前");
