@@ -404,6 +404,14 @@ def _trade_env(gave_raw: list[str]) -> tuple[str | None, str | None, str | None,
     return platform, mode, ladder, game_version
 
 
+def is_trade_start(line: str) -> bool:
+    """A finished trade's block starts at this line, whatever its case.
+
+    The parser and the controller's marker count must agree on it, or the row count can disagree with the parse.
+    """
+    return line.lower() == TRADE_START.lower()
+
+
 def _trade_block(lines: list[str], start: int) -> tuple[TradeRecord | None, int]:
     """Read the "They Give" block that starts at `start` (the index of its "They Give" line). Returns its trade
     record, or None when the block is not a finished trade, and the line index the scan continues from."""
@@ -413,7 +421,7 @@ def _trade_block(lines: list[str], start: int) -> tuple[TradeRecord | None, int]
     received: list[str] = []
     trade_time = ""
     j = start + 1
-    while j < len(lines) and lines[j].lower() != TRADE_START.lower():
+    while j < len(lines) and not is_trade_start(lines[j]):
         line = lines[j]
         low = line.lower()
         if low == "i give":
@@ -472,13 +480,33 @@ def _they_give_trades(lines: list[str]) -> list[TradeRecord]:
     trades: list[TradeRecord] = []
     i = 0
     while i < len(lines):
-        if lines[i].lower() == TRADE_START.lower():
+        if is_trade_start(lines[i]):
             record, i = _trade_block(lines, i)
             if record:
                 trades.append(record)
             continue
         i += 1
     return trades
+
+
+def _collect_trades(lines: list[str]) -> list[TradeRecord]:
+    """Every finished trade in `lines`: the "They Give" blocks, or the marker fallback when the page has none."""
+    return _they_give_trades(lines) or _marker_trades(lines)
+
+
+def _login_wall(url: str, reason: str, *, notice: str | None = None) -> dict[str, Any]:
+    """A Recent Trades read that stopped at a sign-in wall: BLOCKED with no trades, whatever the page said."""
+    result = {
+        "code": "login_required",
+        "mode": "B",
+        "blocked": True,
+        "reason": reason,
+        "trades": [],
+        "direct_url": url,
+    }
+    if notice is not None:
+        result["notice"] = notice
+    return result
 
 
 def parse_recent_trades(text_content: str) -> dict[str, Any]:
@@ -488,38 +516,21 @@ def parse_recent_trades(text_content: str) -> dict[str, Any]:
     url = f"{TRADERIE_D2R_URL}/product/harlequin-crest/recent"
 
     if SIGN_IN_PROMPT.lower() in low or "please sign in" in low:
-        return {
-            "code": "login_required",
-            "mode": "B",
-            "blocked": True,
-            "reason": "需要登入 (Please sign in to view offers)",
-            "trades": [],
-            "direct_url": url,
-            "notice": "Traderie 成交紀錄頁面需要登入帳號方可查看。",
-        }
+        return _login_wall(
+            url,
+            "需要登入 (Please sign in to view offers)",
+            notice="Traderie 成交紀錄頁面需要登入帳號方可查看。",
+        )
 
-    lines = _text_lines(text)
+    trades = _collect_trades(_text_lines(text))
 
-    trades = _they_give_trades(lines)
-
-    if not trades:
-        trades = _marker_trades(lines)
-
-    if not trades:
-        if "sign in" in low or "login" in low:
-            return {
-                "code": "login_required",
-                "mode": "B",
-                "blocked": True,
-                "reason": "未偵測到成交數據或需要登入",
-                "trades": [],
-                "direct_url": url,
-            }
+    if not trades and ("sign in" in low or "login" in low):
+        return _login_wall(url, "未偵測到成交數據或需要登入")
 
     return {
         "code": None,
         "mode": "A" if trades else "B",
-        "blocked": False if trades else True,
+        "blocked": not trades,
         "reason": None if trades else "無成交紀錄",
         "trades": [t.to_dict() for t in trades],
         "direct_url": url,

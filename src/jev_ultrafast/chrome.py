@@ -119,6 +119,11 @@ def chrome_binary() -> str:
     raise RuntimeError("找不到 Chrome，請安裝 Chrome 或設定 CHROME_PATH")
 
 
+def _debugger_url() -> str:
+    """This Chrome's DevTools HTTP endpoint (the port the launch args open)."""
+    return f"http://127.0.0.1:{CHROME_PORT}"
+
+
 def _answering(url: str) -> bool:
     try:
         with urllib.request.urlopen(f"{url}/json/version", timeout=1):
@@ -171,7 +176,7 @@ def _ensure_chrome() -> str | None:
     mode = chrome_mode()
     if mode == "existing":
         return None
-    url = f"http://127.0.0.1:{CHROME_PORT}"
+    url = _debugger_url()
     # One daemon per process: a daemon left over from an earlier run still points at a dead Chrome.
     _DAEMON = f"jev-{os.getpid()}"
     os.environ["BU_NAME"] = _DAEMON
@@ -217,7 +222,7 @@ def _stop_daemon(name: str) -> None:
 
 def _graceful_close(timeout: float = 3.0) -> bool:
     """Ask the dedicated Chrome to quit through its own DevTools socket (about 0.5 s). True once the port is dead."""
-    url = f"http://127.0.0.1:{CHROME_PORT}"
+    url = _debugger_url()
     try:
         with urllib.request.urlopen(f"{url}/json/version", timeout=1) as response:
             socket_url = json.load(response)["webSocketDebuggerUrl"]

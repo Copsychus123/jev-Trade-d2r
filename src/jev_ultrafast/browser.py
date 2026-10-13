@@ -4,6 +4,7 @@ import hashlib
 import json
 import sys
 import time
+from functools import partial
 from pathlib import Path
 
 import browser_harness.helpers
@@ -25,6 +26,9 @@ AFTER_INPUT = Path(__file__).with_name("after_input.js").read_text(encoding="utf
 RESOLVE_TARGET = Path(__file__).with_name("resolve_target.js").read_text(encoding="utf-8").strip()
 SETTLE = Path(__file__).with_name("settle.js").read_text(encoding="utf-8").strip()
 
+# How often `observe` re-reads a document that navigated under the previous read before it gives up.
+_STALE_READ_RETRIES = 10
+
 def _inject_traderie_auth(call):
     for spec in cookie_specs(get_settings()):
         result = call("Network.setCookie", **spec)
@@ -43,8 +47,9 @@ NAVIGATION_ERRORS = (
 def evaluation_error(details):
     """StalePage for a navigation that destroyed the evaluation; RuntimeError with the script's own error text for
     anything else (a real bug in a page script must not look like an ordinary page change)."""
-    message = (details.get("exception") or {}).get("description") or details.get("text") or "unknown error"
-    if any(known in f"{details.get('text', '')} {message}".lower() for known in NAVIGATION_ERRORS):
+    text = details.get("text", "")
+    message = (details.get("exception") or {}).get("description") or text or "unknown error"
+    if any(known in f"{text} {message}".lower() for known in NAVIGATION_ERRORS):
         return StalePage("Document changed during evaluation")
     return RuntimeError(f"Page script failed: {message}")
 
@@ -52,6 +57,16 @@ def evaluation_error(details):
 def _cdp_call(session, method, _response_timeout=30.0, **params):
     """One CDP call on an attached session: the single place the session id is bound."""
     return cdp(method, session_id=session, _response_timeout=_response_timeout, **params)
+
+
+def _read_value(call, expression, *, await_promise=False, on_exception=evaluation_error):
+    """One `Runtime.evaluate` read (by value), so `Browser.evaluate` and `browser_operation` share one shape;
+    `on_exception` decides how the page script's own failure is reported."""
+    response = call("Runtime.evaluate", expression=expression, returnByValue=True, awaitPromise=await_promise)
+    details = response.get("exceptionDetails")
+    if details:
+        raise on_exception(details)
+    return response.get("result", {}).get("value")
 
 
 class Browser:
@@ -104,15 +119,7 @@ class Browser:
         return _cdp_call(self.session, method, _response_timeout, **params)
 
     def evaluate(self, expression, *, await_promise=False):
-        response = self.call(
-            "Runtime.evaluate",
-            expression=expression,
-            returnByValue=True,
-            awaitPromise=await_promise,
-        )
-        if response.get("exceptionDetails"):
-            raise evaluation_error(response["exceptionDetails"])
-        return response.get("result", {}).get("value")
+        return _read_value(self.call, expression, await_promise=await_promise)
 
     def navigate(self, url, *, timeout_seconds=30, interactive_grace_seconds=1.5):
         """Wait for load. A page that is interactive but never reaches `complete` (a hung ad or
@@ -161,13 +168,13 @@ class Browser:
                 )
             except RuntimeError:
                 pass
-        for attempt in range(10):
+        for attempt in range(_STALE_READ_RETRIES):
             try:
                 return browser_operation(
                     {"operation": "observe", "session": self.session, "screenshot": screenshot}
                 )
             except StalePage:
-                if attempt == 9:
+                if attempt == _STALE_READ_RETRIES - 1:
                     raise
                 time.sleep(0.02)
 
@@ -250,19 +257,17 @@ def _act_operation(call, evaluate, request):
 
 def browser_operation(request):
     operation = request["operation"]
-    session = request["session"]
+    call = partial(_cdp_call, request["session"])
+    select_interrupted = operation == "act" and request["action"]["kind"] == "select"
 
-    def call(method, _response_timeout=30.0, **params):
-        return _cdp_call(session, method, _response_timeout, **params)
+    def exception(details):
+        """A select whose evaluation died is not a retryable stale page: its `change` event may have navigated."""
+        if select_interrupted:
+            return RuntimeError("Dropdown execution was interrupted; inspect before retrying.")
+        return evaluation_error(details)
 
     def evaluate(expression):
-        result = call("Runtime.evaluate", expression=expression, returnByValue=True)
-        details = result.get("exceptionDetails")
-        if details:
-            if operation == "act" and request["action"]["kind"] == "select":
-                raise RuntimeError("Dropdown execution was interrupted; inspect before retrying.")
-            raise evaluation_error(details)
-        return result.get("result", {}).get("value")
+        return _read_value(call, expression, on_exception=exception)
 
     if operation == "act":
         return _act_operation(call, evaluate, request)

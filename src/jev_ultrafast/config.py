@@ -43,6 +43,10 @@ class Settings:
         return self.typesafe_api_key
 
 
+# The dataclass holds every default once; get_settings only overrides what the environment actually sets.
+_DEFAULTS = Settings()
+
+
 def get_settings(environ: Mapping[str, str] | None = None) -> Settings:
     """Construct a fresh Settings instance from environment variables."""
     env = os.environ if environ is None else environ
@@ -71,20 +75,20 @@ def get_settings(environ: Mapping[str, str] | None = None) -> Settings:
 
     return Settings(
         typesafe_api_key=get_clean("TYPESAFE_API_KEY"),
-        typesafe_model=get_clean("TYPESAFE_MODEL", "jev-latest"),
-        demo_port=number("TYPESAFE_DEMO_PORT", int, Settings.demo_port, "an integer"),
-        traderie_cookie=get_clean("TRADERIE_COOKIE", ""),
-        traderie_session_token=get_clean("TRADERIE_SESSION_TOKEN", ""),
-        traderie_session_cookie_name=get_clean("TRADERIE_SESSION_COOKIE_NAME", "session"),
-        api_retry_count=number("API_RETRY_COUNT", int, Settings.api_retry_count, "an integer"),
+        typesafe_model=get_clean("TYPESAFE_MODEL", _DEFAULTS.typesafe_model),
+        demo_port=number("TYPESAFE_DEMO_PORT", int, _DEFAULTS.demo_port, "an integer"),
+        traderie_cookie=get_clean("TRADERIE_COOKIE", _DEFAULTS.traderie_cookie),
+        traderie_session_token=get_clean("TRADERIE_SESSION_TOKEN", _DEFAULTS.traderie_session_token),
+        traderie_session_cookie_name=get_clean("TRADERIE_SESSION_COOKIE_NAME", _DEFAULTS.traderie_session_cookie_name),
+        api_retry_count=number("API_RETRY_COUNT", int, _DEFAULTS.api_retry_count, "an integer"),
         api_initial_retry_delay_seconds=number(
-            "API_INITIAL_RETRY_DELAY_SECONDS", float, Settings.api_initial_retry_delay_seconds, "a number"
+            "API_INITIAL_RETRY_DELAY_SECONDS", float, _DEFAULTS.api_initial_retry_delay_seconds, "a number"
         ),
         api_max_retry_delay_seconds=number(
-            "API_MAX_RETRY_DELAY_SECONDS", float, Settings.api_max_retry_delay_seconds, "a number"
+            "API_MAX_RETRY_DELAY_SECONDS", float, _DEFAULTS.api_max_retry_delay_seconds, "a number"
         ),
-        jev_input_usd_per_million=price("JEV_INPUT_USD_PER_MILLION", Settings.jev_input_usd_per_million),
-        jev_output_usd_per_million=price("JEV_OUTPUT_USD_PER_MILLION", Settings.jev_output_usd_per_million),
+        jev_input_usd_per_million=price("JEV_INPUT_USD_PER_MILLION", _DEFAULTS.jev_input_usd_per_million),
+        jev_output_usd_per_million=price("JEV_OUTPUT_USD_PER_MILLION", _DEFAULTS.jev_output_usd_per_million),
     )
 
 
@@ -99,10 +103,10 @@ def load_dotenv(path: Path | str | None = None, environ: MutableMapping[str, str
         stripped = EXPORT_PREFIX.sub("", line.strip(), count=1)
         if not stripped or stripped.startswith("#") or "=" not in stripped:
             continue
-        key, val = stripped.split("=", 1)
-        k = key.strip()
-        v = val.strip()
-        if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
-            v = v[1:-1]
-        env.setdefault(k, v)
+        key, value = stripped.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        env.setdefault(key, value)
     return True

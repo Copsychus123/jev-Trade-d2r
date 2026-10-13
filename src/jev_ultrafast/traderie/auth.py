@@ -41,11 +41,15 @@ def parse_cookie_pairs(raw: str) -> list[tuple[str, str]]:
     return pairs
 
 
+def _spec(name: str, value: str) -> dict[str, Any]:
+    """One `Network.setCookie` argument: pinned to Traderie's origin, carrying exactly url/name/value."""
+    return {"url": COOKIE_ORIGIN, "name": name, "value": value}
+
+
 def cookie_specs(settings: Settings) -> list[dict[str, Any]]:
     """Generate Network.setCookie parameter dictionaries from settings."""
-    pairs = parse_cookie_pairs(settings.traderie_cookie)
-    specs = [{"url": COOKIE_ORIGIN, "name": name, "value": value} for name, value in pairs]
+    specs = [_spec(name, value) for name, value in parse_cookie_pairs(settings.traderie_cookie)]
     if settings.traderie_session_token:
         name = settings.traderie_session_cookie_name or "session"
-        specs.append({"url": COOKIE_ORIGIN, "name": name, "value": settings.traderie_session_token})
+        specs.append(_spec(name, settings.traderie_session_token))
     return specs

@@ -19,7 +19,7 @@ from typing import Any
 
 from jev_ultrafast import fs
 from jev_ultrafast.errors import StalePage
-from jev_ultrafast.traderie.parsing import TRADE_START, parse_recent_trades, parse_trading_txt
+from jev_ultrafast.traderie.parsing import is_trade_start, parse_recent_trades, parse_trading_txt
 from jev_ultrafast.traderie.site import TRADING_MARKERS, detect_guard, product_root_url, product_section
 from jev_ultrafast.traderie.verification import page_matches_item, read_settled_page
 
@@ -31,11 +31,11 @@ EMPTY_TRADING = "there are no listings"
 EMPTY_RECENT = "there are no offers"
 
 
-def _view(status: str, reason: str | None = None, code: str | None = None) -> dict[str, Any]:
+def _view(status: str) -> dict[str, Any]:
     return {
         "status": status,
-        "reason": reason,
-        "reason_code": code,
+        "reason": None,
+        "reason_code": None,
         "url": None,
         "title": None,
         "observed_at": None,
@@ -71,27 +71,24 @@ def _fail(result: dict[str, Any], code: str, reason: str, status: str = "FAILED"
 def _parse_view(view: str, text: str, item_name: str) -> dict[str, Any]:
     lines = [line.strip() for line in text.splitlines()]
     if view == "trading":
-        return {
-            "trading": True,
-            "rows": [card.to_dict() for card in parse_trading_txt(text, item_name=item_name)],
-            "markers": sum(1 for line in lines if line in TRADING_MARKERS),
-            "lines": lines,
-            "empty_text": EMPTY_TRADING,
-            "empty_reason": "目前沒有掛單",
-            "fallback_reason": "頁面上沒有讀到任何掛單",
-            "blocked": None,
-        }
-    parsed = parse_recent_trades(text)
-    if parsed["code"] in ("login_required", "login_or_no_data"):
-        return {"blocked": (parsed["code"], parsed["reason"])}
+        rows = [card.to_dict() for card in parse_trading_txt(text, item_name=item_name)]
+        markers = sum(1 for line in lines if line in TRADING_MARKERS)
+        empty_text, empty_reason, fallback_reason = EMPTY_TRADING, "目前沒有掛單", "頁面上沒有讀到任何掛單"
+    else:
+        parsed = parse_recent_trades(text)
+        if parsed["code"] in ("login_required", "login_or_no_data"):
+            return {"blocked": (parsed["code"], parsed["reason"])}
+        rows = parsed["trades"]
+        markers = sum(1 for line in lines if is_trade_start(line))
+        empty_text, empty_reason, fallback_reason = EMPTY_RECENT, "目前沒有成交紀錄", parsed["reason"]
     return {
-        "trading": False,
-        "rows": parsed["trades"],
-        "markers": sum(1 for line in lines if line.lower() == TRADE_START.lower()),
+        "trading": view == "trading",
+        "rows": rows,
+        "markers": markers,
         "lines": lines,
-        "empty_text": EMPTY_RECENT,
-        "empty_reason": "目前沒有成交紀錄",
-        "fallback_reason": parsed["reason"],
+        "empty_text": empty_text,
+        "empty_reason": empty_reason,
+        "fallback_reason": fallback_reason,
         "blocked": None,
     }
 

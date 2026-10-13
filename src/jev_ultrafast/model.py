@@ -49,6 +49,12 @@ def _preview(response):
     return text[:200] if isinstance(text, str) else ""
 
 
+def _attempt_note(attempt, detail, preview=""):
+    """One failed attempt as the final error reports it, with the provider's body preview when there is one."""
+    note = f"attempt {attempt + 1}: {detail}"
+    return f"{note} {preview}" if preview else note
+
+
 def post_json(url, key, body, *, timeout=None, deadline=None):
     """POST `body` and return the JSON reply; retries only network errors and HTTP 429/503/529.
 
@@ -64,13 +70,13 @@ def post_json(url, key, body, *, timeout=None, deadline=None):
     for attempt in range(max_retries):
         seconds = _request_timeout(timeout, deadline)
         if seconds is not None and seconds <= 0:
-            attempts.append(f"attempt {attempt + 1}: time limit reached")
+            attempts.append(_attempt_note(attempt, "time limit reached"))
             break
         options = {} if seconds is None else {"timeout": seconds}
         try:
             response = CLIENT.post(url, json=body, headers={"Authorization": f"Bearer {key}"}, **options)
         except httpx.HTTPError as exc:
-            attempts.append(f"attempt {attempt + 1}: network error ({exc})")
+            attempts.append(_attempt_note(attempt, f"network error ({exc})"))
             if _retry_pause(attempt, max_retries, initial_delay, max_delay, deadline):
                 continue
             raise RuntimeError(
@@ -78,9 +84,7 @@ def post_json(url, key, body, *, timeout=None, deadline=None):
             ) from None
 
         if response.status_code in {429, 529, 503}:
-            preview = _preview(response)
-            note = f"attempt {attempt + 1}: HTTP {response.status_code}"
-            attempts.append(f"{note} {preview}" if preview else note)
+            attempts.append(_attempt_note(attempt, f"HTTP {response.status_code}", _preview(response)))
             if _retry_pause(attempt, max_retries, initial_delay, max_delay, deadline):
                 continue
             break
@@ -134,8 +138,8 @@ def validate_choice(answer, ids):
             answer["choice"] in ids
             and set(probabilities) == set(ids)
             and all(_is_number(n) and 0 <= n <= 1 for n in numbers)
-            and abs(sum(probabilities.values()) - 1) < 0.02
-            and probabilities[answer["choice"]] >= max(probabilities.values()) - 1e-6
+            and abs(sum(numbers) - 1) < 0.02
+            and probabilities[answer["choice"]] >= max(numbers) - 1e-6
         )
     except (KeyError, TypeError, ValueError, AttributeError):
         valid = False
@@ -176,13 +180,13 @@ def action_space(actions):
             elements.append(element)
         index = indices[node]
         operation = operations[kind]
-        group = targets.setdefault(operation, {})
+        operation_targets = targets.setdefault(operation, {})
         element = elements[int(index) - 1]
         target = index
         if kind == "select":
             target = f"{index}:{len(element['options']) + 1}"
             element["options"].append({"index": target, "label": action["label"], "value": action["value"]})
-        group[target] = action
+        operation_targets[target] = action
     return elements, targets, controls
 
 
@@ -206,6 +210,11 @@ def _target_question(goal, operation, candidates):
     }
 
 
+def _request_body(state, questions):
+    """One TypeSafe request body: the configured model, the state block and the questions."""
+    return {"model": get_settings().typesafe_model, "state": state, "questions": questions}
+
+
 def _build_request(state, goal, history, elements, targets, controls, allow_blocked=True):
     labels = {
         "CLICK": "Click an element, button, menu option, autocomplete suggestion, or calendar day.",
@@ -222,21 +231,17 @@ def _build_request(state, goal, history, elements, targets, controls, allow_bloc
     }
     for operation, candidates in targets.items():
         questions[operation.lower() + "_target"] = _target_question(goal, operation, candidates)
-    body = {
-        "model": get_settings().typesafe_model,
-        "state": {
-            "page": {k: state[k] for k in ("url", "title", "text")},
-            "elements": elements,
-            "recent_actions": [
-                {k: h.get(k) for k in ("action", "kind", "text", "page_changed")} for h in history[-30:]
-            ],
-            # How often each action was already executed (the caller passes the current phase only): counting a
-            # limit such as "at most N presses" from a list of actions was unreliable.
-            "action_counts": dict(Counter(h.get("action") for h in history)),
-        },
-        "questions": questions,
+    session_state = {
+        "page": {k: state[k] for k in ("url", "title", "text")},
+        "elements": elements,
+        "recent_actions": [
+            {k: h.get(k) for k in ("action", "kind", "text", "page_changed")} for h in history[-30:]
+        ],
+        # How often each action was already executed (the caller passes the current phase only): counting a
+        # limit such as "at most N presses" from a list of actions was unreliable.
+        "action_counts": dict(Counter(h.get("action") for h in history)),
     }
-    return body, operations
+    return _request_body(session_state, questions), operations
 
 
 def _resolve(result, operations, targets, controls):
@@ -245,7 +250,6 @@ def _resolve(result, operations, targets, controls):
     operation = operation_answer["choice"]
     target = None
     target_answer = None
-    probabilities = {}
     if operation in targets:
         # Unused target heads cannot cause an action. Validate the head selected by the operation.
         target_answer = validate_choice(result["answers"].get(operation.lower() + "_target", {}), targets[operation])
@@ -254,7 +258,7 @@ def _resolve(result, operations, targets, controls):
         probabilities = {a["id"]: target_answer["probabilities"][index] for index, a in targets[operation].items()}
     else:
         choice = controls[operation]["id"] if operation in controls else operation
-        probabilities[choice] = operation_answer["probabilities"][operation]
+        probabilities = {choice: operation_answer["probabilities"][operation]}
     return {
         "choice": choice,
         "operation": operation,
@@ -355,7 +359,7 @@ def pick_base(item, options, *, timeout=None, deadline=None):
             "criteria": criteria,
             "instructions": {"goal": f'Wanted item: "{item}"', "rules": BASE_PICK},
         }
-    body = {"model": get_settings().typesafe_model, "state": {"wanted_item": item}, "questions": questions}
+    body = _request_body({"wanted_item": item}, questions)
     started = time.perf_counter()
     result = _answers(body, key=key, limits=_limits(timeout, deadline))
     best, best_probability = None, 0.0

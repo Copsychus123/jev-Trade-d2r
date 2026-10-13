@@ -21,7 +21,8 @@ def title_has_words(title: str) -> bool:
 
 
 def matches_item(item_name: str, text: str) -> bool:
-    """Whole-word match: 'Ist' must not be found inside 'listing'."""
+    """True when either word string contains the other as whole words: the item name and the page text match
+    whichever of the two is the longer."""
     expected = words(item_name)
     actual = words(text)
     if not (expected and actual):

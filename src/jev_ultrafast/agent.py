@@ -171,6 +171,16 @@ class Agent:
             state["status"] = "blocked"
             raise ValueError(f"Stopped at the {MAX_STEPS}-action demo budget")
 
+    def _require_runnable(self, state):
+        """Refuse a prediction that cannot go anywhere, before any page read or model call costs anything."""
+        if state.get("awaiting_handoff"):
+            raise ValueError("Controller handoff required before continuing this run.")
+        if state["status"] in {"done", "blocked"}:
+            raise ValueError("This run has stopped. Start a fresh demo.")
+        self._require_step_budget(state)
+        if len(state["decisions"]) >= MAX_STEPS * 2:
+            raise ValueError("Reached the demo's model-call budget")
+
     def _apply_verdict(self, state, selected):
         """A DONE or BLOCKED choice is a verdict about the view, not an input: ads may change the text between the
         decision and now, and the controller reads and checks the live page itself right after, so no freshness gate."""
@@ -259,7 +269,11 @@ class Agent:
             action = _action_by_id(state["page"]["actions"], choice)
             label = (action["label"] if action else choice).split(" → ")[0][:60]
         others = sorted(
-            ((name, p) for name, p in decision["operation_probabilities"].items() if name != decision["operation"]),
+            (
+                (name, probability)
+                for name, probability in decision["operation_probabilities"].items()
+                if name != decision["operation"]
+            ),
             key=lambda item: item[1],
             reverse=True,
         )
@@ -303,14 +317,7 @@ class Agent:
             raise ValueError("Start a demo first")
         if state["started_at"] is None:
             state["started_at"] = time.perf_counter()
-        if state.get("awaiting_handoff"):
-            raise ValueError("Controller handoff required before continuing this run.")
-        # Nothing below may cost anything (a page read, a model call) for a run that cannot continue.
-        if state["status"] in {"done", "blocked"}:
-            raise ValueError("This run has stopped. Start a fresh demo.")
-        self._require_step_budget(state)
-        if len(state["decisions"]) >= MAX_STEPS * 2:
-            raise ValueError("Reached the demo's model-call budget")
+        self._require_runnable(state)
         # Cleared before the page read: a stale read is a navigation, not a target that keeps failing, and it must not
         # be charged to the step before (whose action may have succeeded).
         state["last_attempt"] = None
@@ -388,6 +395,25 @@ class Agent:
             entry.update(page_changed=True, url=None, elapsed_ms=self._elapsed_ms())  # tick fills the url in
             raise
 
+    def _confirmed_fill_text(self, state, page, action):
+        """The text a fill will type, once the field is confirmed still on the page (a CDP read, and two raises);
+        None for any other action. Named for the work, not as a getter: `_act` relies on this happening before the
+        action is logged and executed."""
+        if action["kind"] != "fill":
+            return None
+        if not state["browser"].fresh(page, action):
+            raise StalePage("Page changed before text generation. Choose again.")
+        if self.text is None:
+            raise ValueError("Supply the text to type: Agent(..., text=...)")
+        return self.text
+
+    def _no_progress(self, state) -> bool:
+        """Three executed actions in a row that left the page unchanged; a wait never counts as progress."""
+        last_three = state["history"][-3:]
+        return len(last_three) == 3 and all(
+            h["page_changed"] is False and h["kind"] != "wait" for h in last_three
+        )
+
     def _act(self, body):
         state = self.state
         decision, page = state["decision"], state["page"]
@@ -404,13 +430,7 @@ class Agent:
             raise StalePage("Chosen element is no longer available. Choose again.")
         state["last_attempt"] = {"choice": selected, "fingerprint": page["fingerprint"], "label": action["label"]}
         self._require_step_budget(state)
-        text = None
-        if action["kind"] == "fill":
-            if not state["browser"].fresh(page, action):
-                raise StalePage("Page changed before text generation. Choose again.")
-            if self.text is None:
-                raise ValueError("Supply the text to type: Agent(..., text=...)")
-            text = self.text
+        text = self._confirmed_fill_text(state, page, action)
         # Log the action before it can happen: if the browser call dies half-way, history still says it was tried.
         self._sync_elapsed(state)
         entry = self._history_entry(state, action, selected, decision, text, page)
@@ -424,12 +444,7 @@ class Agent:
         )
         if self._stop_if_off_scope(state):
             return
-        repeated = state["history"][-3:]
-        state["status"] = (
-            "blocked"
-            if len(repeated) == 3 and all(h["page_changed"] is False and h["kind"] != "wait" for h in repeated)
-            else "ready"
-        )
+        state["status"] = "blocked" if self._no_progress(state) else "ready"
         if state["status"] == "ready":
             self._finish_phase_by_rule(state)
 

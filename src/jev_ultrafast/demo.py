@@ -74,23 +74,36 @@ def _phase_labels():
     return [f"階段 {i + 1}：{goal[:30]}…" for i, goal in enumerate(AGENT.state["plan"])]
 
 
+def _page_for_browser(page):
+    """The page as the browser sees it: only the fields the overlay uses, each observed node's element index, and a
+    content-addressed id for the screenshot (the image itself is fetched from `/api/screenshot`)."""
+    screenshot = page.get("screenshot")
+    trimmed = _pick({**page, "node_indices": _node_indices(page.get("actions") or [])}, PAGE_FIELDS)
+    trimmed["screenshot_id"] = format(hash(screenshot) & 0xFFFFFFFF, "x") if screenshot else None
+    return trimmed
+
+
+def _market_views(market):
+    """A copy of the market with each stored view's raw text replaced by its length (the browser fetches that text
+    from `/api/raw?view=` on demand); every other key, such as the verification result, passes through unchanged."""
+    views = dict(market)
+    for name in VIEW_NAMES:
+        if name in views:
+            view = views[name]
+            views[name] = {**_omit(view, ("text",)), "text_length": len(view["text"])}
+    return views
+
+
 def response_state():
     state = AGENT.snapshot() if AGENT else {"page": None, "status": "idle", "history": [], "decision": None}
     usage = None
     if "decisions" in state:
         usage = usage_summary(state["decisions"], state["history"])
         state["decisions"] = _trim_decisions(state["decisions"])
-    market = dict(RUN.get("market", {}))
-    for key in VIEW_NAMES:
-        if key in market:
-            view = _omit(market[key], ("text",))
-            market[key] = {**view, "text_length": len(market[key]["text"])}
+    market = _market_views(RUN.get("market", {}))
     page = state.get("page")
     if page:
-        shot = page.get("screenshot")
-        page = _pick({**page, "node_indices": _node_indices(page.get("actions") or [])}, PAGE_FIELDS)
-        page["screenshot_id"] = format(hash(shot) & 0xFFFFFFFF, "x") if shot else None
-        state["page"] = page
+        state["page"] = _page_for_browser(page)
     run = _omit(RUN, ("report_md",))
     return {
         **state,

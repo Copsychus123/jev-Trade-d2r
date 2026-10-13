@@ -18,6 +18,8 @@ ROOT_PATH = "/diablo2resurrected"
 WHITESPACE = re.compile(r"\s+")
 LOAD_MORE_LIMIT = 2
 MAX_LOAD_MORE = 5
+LOAD_MORE_LABEL = "Load More"
+
 # The product page views a run reads, in the order the phases visit them. One name for all readers: the phase plan
 # below, the demo's raw-text endpoint and the backend's phase check.
 VIEW_NAMES = ("trading", "recent_trades")
@@ -41,8 +43,6 @@ def validate_load_more(value) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= MAX_LOAD_MORE:
         raise ValueError(f"載入更多次數必須是 0 到 {MAX_LOAD_MORE} 的整數")
     return value
-
-LOAD_MORE_LABEL = "Load More"
 
 
 def phase_finish_rule(load_more: int) -> tuple[str, int] | None:
