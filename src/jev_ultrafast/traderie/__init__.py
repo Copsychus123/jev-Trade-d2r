@@ -6,6 +6,7 @@ from jev_ultrafast.traderie.controller import (
     read_view,
     run_agent,
     save_report,
+    step,
 )
 from jev_ultrafast.traderie.site import (
     TRADERIE_D2R_URL,
@@ -26,4 +27,5 @@ __all__ = [
     "read_view",
     "run_agent",
     "save_report",
+    "step",
 ]

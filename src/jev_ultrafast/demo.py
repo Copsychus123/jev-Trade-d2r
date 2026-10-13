@@ -14,7 +14,7 @@ from jev_ultrafast.agent import Agent
 from jev_ultrafast.chrome import close_chrome, ensure_chrome
 from jev_ultrafast.config import DEMO_HOST, MAX_STEPS, TRADERIE_LATEST_DIR, Settings, get_settings, load_dotenv
 from jev_ultrafast.model import action_space
-from jev_ultrafast.traderie import TRADERIE_D2R_URL, advance, build_goal, clean_item_name, new_market, save_report
+from jev_ultrafast.traderie import TRADERIE_D2R_URL, build_goal, clean_item_name, new_market, save_report, step
 from jev_ultrafast.traderie.site import LOAD_MORE_LIMIT, VIEW_NAMES, phase_finish_rule, validate_load_more
 from jev_ultrafast.usage import usage_summary
 
@@ -150,10 +150,11 @@ def _require_agent():
         raise ValueError("請先按「開始查詢」")
 
 
-def _tick_command(body):
+def _tick_command(_body):
+    """One demo step: the controller's own `step`, so the work that tick made due is done even when it raised, and
+    leftover work from an earlier step is finished before the next tick (the CLI's loop uses the same function)."""
     _require_agent()
-    AGENT.command("tick", body)
-    advance(AGENT, RUN["item_name"], RUN["market"])
+    step(AGENT, RUN["item_name"], RUN["market"])
 
 
 def _report_command(_body):
