@@ -974,16 +974,30 @@ def test_predict_without_a_browser_asks_for_a_demo_first(runner):
 
 
 def test_the_first_prediction_starts_the_clock(runner, monkeypatch):
+    """The stamp and the step's measured time come from the same clock, 250 ms apart per reading.
+
+    A frozen clock cannot show this: every reading is equal, so `elapsed_ms` is 0 whatever the code measures
+    (and also if it stopped measuring at all). A clock that moves makes the number the code reports checkable.
+    """
     monkeypatch.setattr(loop, "choose", lambda *_a, **_k: _jev_answer("e3", "CLICK", {"CLICK": 1.0}))
-    monkeypatch.setattr(loop.time, "perf_counter", lambda: 4321.0)  # a known clock reading
+    reading = {"at": 1000.0}
+
+    def clock():
+        reading["at"] += 0.25  # 250 ms a reading
+        return reading["at"]
+
+    monkeypatch.setattr(loop.time, "perf_counter", clock)
     runner.state["started_at"] = None
     runner.state["decision"] = None
     runner.state["status"] = "ready"
 
     runner.command("predict")
 
-    assert runner.state["started_at"] == 4321.0  # the first prediction stamps the clock
-    assert runner.state["decisions"][-1]["elapsed_ms"] == 0  # and the same reading measures the step
+    started = runner.state["started_at"]
+    measured = runner.state["decisions"][-1]["elapsed_ms"]
+    assert started == 1000.25  # the first prediction stamps the clock
+    assert measured > 0  # the step's time is measured, not a constant
+    assert measured == round((reading["at"] - started) * 1000)  # and measured from that stamp
 
 
 def test_predict_during_a_pending_handoff_is_refused(runner):
