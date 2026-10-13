@@ -131,7 +131,12 @@ class Browser:
         deadline = time.monotonic() + timeout_seconds
         interactive_since = None
         while time.monotonic() < deadline:
-            state = self.evaluate("document.readyState")
+            try:
+                state = self.evaluate("document.readyState")
+            except StalePage:
+                # A redirect or a process swap destroyed the context this poll was running in: that is the navigation
+                # itself, not a failure, so read again (the JS twin wraps the same poll in `_readStable`).
+                state = None
             if state == "complete":
                 return
             if state == "interactive":

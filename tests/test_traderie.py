@@ -525,6 +525,25 @@ def test_every_verification_check_can_still_fail_on_its_own(broken):
     assert broken in result["failed_checks"]
 
 
+def test_browser_navigate_survives_a_stale_read_under_its_poll():
+    """A redirect or a process swap destroys the context the readiness poll runs in -- that is the navigation itself,
+    not a failure. The JS twin wraps the same poll; here the StalePage used to escape and abort `Browser.__init__`, so
+    the demo answered 400 to 「開始查詢」 and the player had to press it again."""
+    browser = browser_module.Browser.__new__(browser_module.Browser)
+    reads = iter([browser_module.StalePage("Document changed during evaluation"), "complete"])
+
+    def evaluate(_expression):
+        value = next(reads)
+        if isinstance(value, BaseException):
+            raise value  # a read that *raises*, which is what a destroyed context does
+        return value
+
+    browser.call = lambda *_a, **_k: {}
+    browser.evaluate = evaluate
+
+    browser.navigate("https://example.test/redirected")
+
+
 def test_browser_navigate_accepts_page_stuck_in_interactive_after_grace(monkeypatch):
     browser = browser_module.Browser.__new__(browser_module.Browser)
     clock = [0.0]
