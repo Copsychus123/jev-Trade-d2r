@@ -8,6 +8,8 @@ const URL_OK = "https://www.traderie.com/diablo2resurrected/product/1234567890";
 
 const click = (id, label) => ({ id, kind: "click", label, node: 1 });
 const SCROLL = { id: "scroll_bottom", kind: "scroll", label: "Scroll to bottom", delta: 3000 };
+const WAIT = { id: "wait", kind: "wait", label: "Wait" };
+const SEARCH_FILL = { id: "a1", kind: "fill", label: "Search", node: 5 };
 
 function page(fingerprint, actions, url = URL_OK) {
   return { url, title: "t", text: "x", actions, fingerprint, marker: fingerprint, page_key: "k", guards: {} };
@@ -64,9 +66,20 @@ function makeChoose(...decisions) {
   return choose;
 }
 
+/** Tick the agent until a command throws, and hand back the error it threw. */
+async function tickUntilFailure(agent, ticks = 100) {
+  for (let i = 0; i < ticks; i += 1) {
+    try {
+      await agent.command("tick");
+    } catch (error) {
+      return error;
+    }
+  }
+  return null;
+}
+
 test("stale page on act raises StalePage and never acts", async () => {
-  const fill = { id: "a1", kind: "fill", label: "Search", node: 5 };
-  const tab = new FakeTab([page("p1", [fill])]);
+  const tab = new FakeTab([page("p1", [SEARCH_FILL])]);
   const agent = await Agent.create({ tab, text: "Harlequin", choose: makeChoose(decide("a1", "TYPE_TEXT")) });
   await agent.command("predict");
   tab.isFresh = false;
@@ -127,8 +140,7 @@ test("three clicks that change nothing block the run", async () => {
 });
 
 test("fill types exactly the agent text", async () => {
-  const fill = { id: "a1", kind: "fill", label: "Search", node: 5 };
-  const tab = new FakeTab([page("p1", [fill]), page("p2", [fill])]);
+  const tab = new FakeTab([page("p1", [SEARCH_FILL]), page("p2", [SEARCH_FILL])]);
   const agent = await Agent.create({ tab, text: "Harlequin Crest", choose: makeChoose(decide("a1", "TYPE_TEXT")) });
   await agent.command("tick");
   assert.deepEqual(tab.acts, [{ id: "a1", text: "Harlequin Crest" }]);
@@ -136,46 +148,30 @@ test("fill types exactly the agent text", async () => {
 });
 
 test("the agent stops asking Jev when two more calls would not fit under the limit", async () => {
-  const wait = { id: "wait", kind: "wait", label: "Wait" };
-  const tab = new FakeTab([page("p1", [wait])]);
+  const tab = new FakeTab([page("p1", [WAIT])]);
   let calls = 0;
   const choose = async () => {
     calls += 1;
     return decide("wait", "WAIT");
   };
   const agent = await Agent.create({ tab, text: "Harlequin", choose });
-  let failure = null;
-  for (let i = 0; i < 100 && !failure; i++) {
-    try {
-      await agent.command("tick");
-    } catch (error) {
-      failure = error;
-    }
-  }
+  const failure = await tickUntilFailure(agent);
   assert.match(failure.message, /上限（30 次）/);
   assert.equal(calls, 29); // 29 + 2 would exceed 30
 });
 
 test("the call limit counts the whole run: a second agent continues the first one's count", async () => {
-  const wait = { id: "wait", kind: "wait", label: "Wait" };
   const callBudget = newCallBudget();
   let calls = 0;
   const choose = async () => {
     calls += 1;
     return decide("wait", "WAIT");
   };
-  const first = await Agent.create({ tab: new FakeTab([page("p1", [wait])]), choose, callBudget });
+  const first = await Agent.create({ tab: new FakeTab([page("p1", [WAIT])]), choose, callBudget });
   for (let i = 0; i < 10; i++) await first.command("tick");
   assert.equal(calls, 10);
-  const second = await Agent.create({ tab: new FakeTab([page("p2", [wait])]), choose, callBudget });
-  let failure = null;
-  for (let i = 0; i < 100 && !failure; i++) {
-    try {
-      await second.command("tick");
-    } catch (error) {
-      failure = error;
-    }
-  }
+  const second = await Agent.create({ tab: new FakeTab([page("p2", [WAIT])]), choose, callBudget });
+  const failure = await tickUntilFailure(second);
   assert.match(failure.message, /上限（30 次）/);
   assert.equal(calls, 29); // the same ceiling as one agent: 10 + 19
 });
@@ -289,6 +285,19 @@ test("a stale stop without an overlay, or with a failing measurement, keeps the 
     assert.equal(agent.state.stale_events[plain], 1, note);
     assert.equal(tab.overlayChecks, 1, note);
   }
+});
+
+test("the action budget also stops a run whose every press was refused", async () => {
+  // `history` grows only for an executed action; `attempts` counts every attempt, refused or not. A run whose presses
+  // are all refused therefore reaches the cap with an empty history, and only this half of the bound ends it
+  // (AGENTS.md keeps both halves: a covered element must not be retried forever without counting toward the budget).
+  const tab = new StaleTab([page("p1", [click("a1", "Load More")])], ["a1"]);
+  const agent = await Agent.create({ tab, choose: makeChoose(decide("a1", "CLICK")) });
+  agent.state.attempts = 60 + 1; // MAX_STEPS + 1, as a run that was refused every time would have it
+
+  await assert.rejects(() => agent.command("tick"), /已達 60 個動作的上限/);
+  assert.equal(agent.state.status, "blocked");
+  assert.equal(agent.state.history.length, 0, "the stop must come from the attempt counter, not from history");
 });
 
 /** A fake tab whose next `staleOnce()` page reads fail and every read after that returns the current page.

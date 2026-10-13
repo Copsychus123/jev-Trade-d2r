@@ -9,6 +9,11 @@ const { AbortedError, StalePage, TimeoutError } = await import("../src/errors.js
 
 const scripts = { snapshot: "(() => ({}))()", resolveTarget: "(a => null)" };
 
+/** A `globalThis.chrome` whose debugger only answers commands, for tests that exercise a single method. */
+function debuggerChrome(sendCommand) {
+  globalThis.chrome = { debugger: { ...debuggerEvents, sendCommand } };
+}
+
 test("a page-level action is fresh when the marker is equal by value, not by identity", async () => {
   const tab = new Tab(1, scripts);
   const marker = [1700000000000.5, "https://www.traderie.com/diablo2resurrected", 0, 0, 1120, 780, "t", "text", [], []];
@@ -110,14 +115,9 @@ test("the read-only steps (observe, fresh, settle, page reads, readyState pollin
 });
 
 test("a page script that throws is a real error with the page's description, not a stale page", async () => {
-  globalThis.chrome = {
-    debugger: {
-      ...debuggerEvents,
-      sendCommand: async () => ({
-        exceptionDetails: { text: "Uncaught", exception: { description: "TypeError: x is not a function\n    at <anonymous>" } },
-      }),
-    },
-  };
+  debuggerChrome(async () => ({
+    exceptionDetails: { text: "Uncaught", exception: { description: "TypeError: x is not a function\n    at <anonymous>" } },
+  }));
   const tab = new Tab(1, scripts);
   await assert.rejects(tab.evaluate("1"), (error) => !(error instanceof StalePage) && /x is not a function/.test(error.message));
 });
@@ -129,15 +129,10 @@ test("only navigation failures are a stale page, whether Chrome reports them as 
     new Error("Cannot find context with specified id"),
   ];
   for (const failure of failures) {
-    globalThis.chrome = {
-      debugger: {
-        ...debuggerEvents,
-        sendCommand: async () => {
-          if (failure instanceof Error) throw failure;
-          return failure;
-        },
-      },
-    };
+    debuggerChrome(async () => {
+      if (failure instanceof Error) throw failure;
+      return failure;
+    });
     await assert.rejects(new Tab(1, scripts).evaluate("1"), StalePage);
   }
 });
@@ -345,19 +340,23 @@ function fakeClock(start = 100000) {
   };
 }
 
-test("navigate returns the interactive-grace result only after the grace has elapsed", async () => {
-  const sent = [];
-  globalThis.chrome = {
-    debugger: {
-      ...debuggerEvents,
-      sendCommand: async (_target, method, params) => {
-        sent.push([method, params?.expression]);
-        return method === "Runtime.evaluate" ? { result: { value: "interactive" } } : { result: {} };
-      },
-    },
-  };
+/** Run `body` with the virtual clock installed, and always put the real timers back. */
+async function withFakeClock(body) {
   const clock = fakeClock();
   try {
+    return await body(clock);
+  } finally {
+    clock.restore();
+  }
+}
+
+test("navigate returns the interactive-grace result only after the grace has elapsed", async () => {
+  const sent = [];
+  debuggerChrome(async (_target, method, params) => {
+    sent.push([method, params?.expression]);
+    return method === "Runtime.evaluate" ? { result: { value: "interactive" } } : { result: {} };
+  });
+  await withFakeClock(async () => {
     const tab = new Tab(1, scripts);
     // The page sits at "interactive" forever; grace 50 ms means the 4th poll at t+60 crosses it (polls at 0/20/40/60).
     const result = await tab.navigate("https://www.traderie.com/diablo2resurrected", 10000, 50);
@@ -366,79 +365,53 @@ test("navigate returns the interactive-grace result only after the grace has ela
       sent.filter(([method, expression]) => method === "Runtime.evaluate" && expression === "document.readyState").length,
       4,
     );
-  } finally {
-    clock.restore();
-  }
+  });
 });
 
 test("waitUntilReady keeps polling until a later poll reports the page ready", async () => {
   let polls = 0;
-  globalThis.chrome = {
-    debugger: {
-      ...debuggerEvents,
-      sendCommand: async (_target, method) => {
-        if (method !== "Runtime.evaluate") return { result: {} };
-        polls += 1;
-        return { result: { value: polls >= 3 } };
-      },
-    },
-  };
-  const clock = fakeClock();
-  try {
+  debuggerChrome(async (_target, method) => {
+    if (method !== "Runtime.evaluate") return { result: {} };
+    polls += 1;
+    return { result: { value: polls >= 3 } };
+  });
+  await withFakeClock(async () => {
     const tab = new Tab(1, scripts);
     assert.equal(await tab.waitUntilReady(2000, 50), true);
     assert.equal(polls, 3);
-  } finally {
-    clock.restore();
-  }
+  });
 });
 
 test("waitUntilReady gives up at its deadline and reports the page was not ready", async () => {
   let polls = 0;
-  globalThis.chrome = {
-    debugger: {
-      ...debuggerEvents,
-      sendCommand: async (_target, method) => {
-        if (method === "Runtime.evaluate") polls += 1;
-        return { result: { value: false } };
-      },
-    },
-  };
-  const clock = fakeClock();
-  try {
+  debuggerChrome(async (_target, method) => {
+    if (method === "Runtime.evaluate") polls += 1;
+    return { result: { value: false } };
+  });
+  await withFakeClock(async () => {
     const tab = new Tab(1, scripts);
     assert.equal(await tab.waitUntilReady(100, 50), false);
     assert.equal(polls, 3); // t+0, t+50, t+100: the deadline check ends it after the third poll
-  } finally {
-    clock.restore();
-  }
+  });
 });
 
 test("observe repeats a snapshot the navigation interrupted and reports both timing fields", async () => {
   const expressions = [];
-  globalThis.chrome = {
-    debugger: {
-      ...debuggerEvents,
-      sendCommand: async (_target, method, params) => {
-        expressions.push(params?.expression);
-        if (expressions.length === 1) throw new Error("Execution context was destroyed.");
-        return {
-          result: { value: { url: "https://www.traderie.com/diablo2resurrected", text: "hi", actions: [], scroll: 0, marker: ["m"] } },
-        };
-      },
-    },
-  };
-  const clock = fakeClock();
-  try {
+  debuggerChrome(async (_target, method, params) => {
+    expressions.push(params?.expression);
+    if (expressions.length === 1) throw new Error("Execution context was destroyed.");
+    return {
+      result: { value: { url: "https://www.traderie.com/diablo2resurrected", text: "hi", actions: [], scroll: 0, marker: ["m"] } },
+    };
+  });
+  await withFakeClock(async () => {
     const tab = new Tab(1, { snapshot: "SNAPSHOT" });
     const info = await tab.observe();
     assert.deepEqual(expressions, ["SNAPSHOT", "SNAPSHOT"]); // the interrupted read is retried exactly once
     assert.deepEqual(info.marker, ["m"]);
     assert.deepEqual(info.timing, { after_input_ms: null, snapshot_ms: 20 }); // the retry's 20 ms sleep is the measured cost
     assert.match(info.fingerprint, /^[0-9a-f]{64}$/);
-  } finally {
-    clock.restore();
-  }
+  });
 });
 
 function settlingChrome() {
@@ -471,15 +444,12 @@ function settlingChrome() {
 
 test("the settle measurement the tab opened with is recorded where the caller reads it", async () => {
   settlingChrome();
-  const clock = fakeClock();
-  try {
+  await withFakeClock(async () => {
     const tab = await Tab.open("https://www.traderie.com/diablo2resurrected", { snapshot: "(() => ({}))()", settle: "SETTLE_SCRIPT" });
     assert.deepEqual(Object.keys(tab.openTiming).sort(), ["navigate", "settle"]);
     assert.deepEqual(tab.openTiming.settle, { capped: true, ms: 4321, visibility: "hidden" });
     assert.deepEqual(tab.openTiming.navigate, { how: "complete", ms: 0 });
-  } finally {
-    clock.restore();
-  }
+  });
 });
 
 test("closing a tab releases its window bookkeeping and a second close does nothing", async () => {
@@ -508,8 +478,7 @@ test("a command in flight when the tab is aborted fails with AbortedError and it
     windows: { remove: async (id) => calls.push(["remove", id]) },
     debugger: { ...debuggerEvents, detach: async () => calls.push(["detach"]), sendCommand: () => new Promise(() => {}) },
   };
-  const clock = fakeClock();
-  try {
+  await withFakeClock(async (clock) => {
     const tab = new Tab(1, scripts);
     tab.windowId = 9;
     const failure = tab.send("Input.dispatchMouseEvent", {}).then(() => null, (error) => error);
@@ -521,7 +490,5 @@ test("a command in flight when the tab is aborted fails with AbortedError and it
     assert.equal(clock.pending(), 0); // the command's 30 s deadline was cleared, so nothing fires later
     await assert.rejects(tab.send("Runtime.evaluate", {}), AbortedError);
     assert.equal(calls.length, 2); // and after Stop nothing more is sent
-  } finally {
-    clock.restore();
-  }
+  });
 });

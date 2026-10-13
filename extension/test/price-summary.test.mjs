@@ -4,6 +4,7 @@ import test from "node:test";
 import { priceSummary } from "../src/traderie/price-summary.js";
 
 const row = (highRuneValue) => ({ highRuneValue });
+const priced = (value) => row(`High Rune Value: ${value}`);
 
 test("an empty batch has nothing to summarize", () => {
   assert.deepEqual(priceSummary([]), {
@@ -19,7 +20,7 @@ test("an empty batch has nothing to summarize", () => {
 });
 
 test("a single priced row is its own minimum and median but has no quartiles", () => {
-  const summary = priceSummary([row("High Rune Value: 36")]);
+  const summary = priceSummary([priced(36)]);
   assert.equal(summary.count, 1);
   assert.equal(summary.priced, 1);
   assert.equal(summary.min, 36);
@@ -29,7 +30,7 @@ test("a single priced row is its own minimum and median but has no quartiles", (
 });
 
 test("three rows are still too few a sample for quartiles", () => {
-  const summary = priceSummary([row("High Rune Value: 1"), row("High Rune Value: 2"), row("High Rune Value: 3")]);
+  const summary = priceSummary([priced(1), priced(2), priced(3)]);
   assert.equal(summary.priced, 3);
   assert.equal(summary.min, 1);
   assert.equal(summary.median, 2);
@@ -39,10 +40,10 @@ test("three rows are still too few a sample for quartiles", () => {
 
 test("four rows give nearest-rank quartiles over the sorted values", () => {
   const summary = priceSummary([
-    row("High Rune Value: 4"),
-    row("High Rune Value: 1"),
-    row("High Rune Value: 3"),
-    row("High Rune Value: 2"),
+    priced(4),
+    priced(1),
+    priced(3),
+    priced(2),
   ]);
   assert.equal(summary.priced, 4);
   assert.equal(summary.min, 1);
@@ -53,13 +54,13 @@ test("four rows give nearest-rank quartiles over the sorted values", () => {
 
 test("priced and unpriced rows are counted and only the priced ones are summarized", () => {
   const summary = priceSummary([
-    row("High Rune Value: 36"),
-    row("High Rune Value: 0.06"),
+    priced(36),
+    priced(0.06),
     row(null),
     row(""),
     row("Unknown"),
     row(3),
-    row("High Rune Value: 0"),
+    priced(0),
   ]);
   assert.equal(summary.count, 7);
   assert.equal(summary.priced, 4);
@@ -71,14 +72,14 @@ test("priced and unpriced rows are counted and only the priced ones are summariz
 });
 
 test("a zero High Rune Value counts as priced", () => {
-  const summary = priceSummary([row("High Rune Value: 0")]);
+  const summary = priceSummary([priced(0)]);
   assert.equal(summary.priced, 1);
   assert.equal(summary.unpriced, 0);
   assert.equal(summary.median, 0);
 });
 
 test("rows keep their order, so summarizing does not sort the caller's batch", () => {
-  const rows = [row("High Rune Value: 3"), row("High Rune Value: 1"), row("High Rune Value: 2")];
+  const rows = [priced(3), priced(1), priced(2)];
   const before = rows.map((r) => r.highRuneValue);
   priceSummary(rows);
   assert.deepEqual(

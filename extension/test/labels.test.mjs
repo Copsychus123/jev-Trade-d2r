@@ -21,6 +21,9 @@ const nameMarket = (overrides = {}) => ({
   ...overrides,
 });
 
+/** progressSteps over one market, defaulting the phase and the running flag most callers do not vary. */
+const stepsFor = (market, { phase = null, running = false } = {}) => progressSteps({ market, phase, running });
+
 test("STATUS_LABELS exports all four constants", () => {
   assert.equal(STATUS_LABELS.NOT_RUN, "未讀取");
   assert.equal(STATUS_LABELS.PASSED, "已讀取");
@@ -129,7 +132,7 @@ test("verificationSummary for failed verification returns kind warn with reasons
 
 test("progressSteps idle state has all pending steps", () => {
   const market = nameMarket();
-  const result = progressSteps({ market, phase: null, running: false });
+  const result = stepsFor(market);
   assert.equal(result.length, 4);
   assert.equal(result[0].state, "pending");
   assert.equal(result[1].state, "pending");
@@ -139,7 +142,7 @@ test("progressSteps idle state has all pending steps", () => {
 
 test("progressSteps with running and phase trading has find and trading active", () => {
   const market = nameMarket();
-  const result = progressSteps({ market, phase: "trading", running: true });
+  const result = stepsFor(market, { phase: "trading", running: true });
   assert.equal(result[0].state, "done"); // find: phase is non-null
   assert.equal(result[1].state, "active"); // trading: phase === "trading"
   assert.equal(result[2].state, "pending");
@@ -148,7 +151,7 @@ test("progressSteps with running and phase trading has find and trading active",
 
 test("progressSteps with trading PASSED marks trading done", () => {
   const market = nameMarket({ trading: { status: "PASSED", reason: null } });
-  const result = progressSteps({ market, phase: "trading", running: true });
+  const result = stepsFor(market, { phase: "trading", running: true });
   assert.equal(result[0].state, "done");
   assert.equal(result[1].state, "done");
   assert.equal(result[2].state, "pending");
@@ -159,7 +162,7 @@ test("progressSteps with recent_trades PASSED marks recent_trades done", () => {
     trading: { status: "PASSED", reason: null },
     recent_trades: { status: "PASSED", reason: null },
   });
-  const result = progressSteps({ market, phase: "recent_trades", running: true });
+  const result = stepsFor(market, { phase: "recent_trades", running: true });
   assert.equal(result[0].state, "done");
   assert.equal(result[1].state, "done");
   assert.equal(result[2].state, "done");
@@ -172,7 +175,7 @@ test("progressSteps with verification passed marks verify done", () => {
     recent_trades: { status: "PASSED", reason: null },
     verification: { passed: true, failed_checks: [] },
   });
-  const result = progressSteps({ market, phase: "recent_trades", running: true });
+  const result = stepsFor(market, { phase: "recent_trades", running: true });
   assert.equal(result[3].state, "done");
 });
 
@@ -182,20 +185,20 @@ test("progressSteps with verification failed marks verify failed", () => {
     recent_trades: { status: "PASSED", reason: null },
     verification: { passed: false, failed_checks: ["product_page"] },
   });
-  const result = progressSteps({ market, phase: null, running: false });
+  const result = stepsFor(market);
   assert.equal(result[3].state, "failed");
 });
 
 test("progressSteps with trading FAILED marks trading failed with reason", () => {
   const market = nameMarket({ trading: { status: "FAILED", reason: "讀取失敗", title: null } });
-  const result = progressSteps({ market, phase: null, running: false });
+  const result = stepsFor(market);
   assert.equal(result[1].state, "failed");
   assert.equal(result[1].detail, "讀取失敗");
 });
 
 test("progressSteps with trading BLOCKED marks trading failed with reason", () => {
   const market = nameMarket({ trading: { status: "BLOCKED", reason: "網站阻擋", title: null } });
-  const result = progressSteps({ market, phase: null, running: false });
+  const result = stepsFor(market);
   assert.equal(result[1].state, "failed");
   assert.equal(result[1].detail, "網站阻擋");
 });
@@ -205,20 +208,20 @@ test("progressSteps with recent_trades FAILED marks recent_trades failed with re
     trading: { status: "PASSED", reason: null },
     recent_trades: { status: "FAILED", reason: "找不到資料", title: null },
   });
-  const result = progressSteps({ market, phase: "recent_trades", running: true });
+  const result = stepsFor(market, { phase: "recent_trades", running: true });
   assert.equal(result[2].state, "failed");
   assert.equal(result[2].detail, "找不到資料");
 });
 
 test("progressSteps without detail when status FAILED has no reason", () => {
   const market = nameMarket({ trading: { status: "FAILED", reason: null } });
-  const result = progressSteps({ market, phase: null, running: false });
+  const result = stepsFor(market);
   assert.equal(result[1].detail, "");
 });
 
 test("progressSteps sets find detail from lookup layer", () => {
   const market = nameMarket({ lookup: { layer: "search" } });
-  const result = progressSteps({ market, phase: null, running: false });
+  const result = stepsFor(market);
   assert.equal(result[0].state, "done");
   assert.equal(result[0].detail, "站內搜尋");
 });
@@ -228,40 +231,40 @@ test("progressSteps handles all LAYER_LABELS keys", () => {
   const expected = ["查表直接開啟", "站內搜尋", "底材清單"];
   for (let i = 0; i < layers.length; i++) {
     const market = nameMarket({ lookup: { layer: layers[i] } });
-    const result = progressSteps({ market, phase: null, running: false });
+    const result = stepsFor(market);
     assert.equal(result[0].detail, expected[i], `detail for layer ${layers[i]}`);
   }
 });
 
 test("progressSteps with phase null and find done marks trading active when running", () => {
   const market = nameMarket({ lookup: { layer: "search" } });
-  const result = progressSteps({ market, phase: null, running: true });
+  const result = stepsFor(market, { running: true });
   assert.equal(result[0].state, "done"); // find done
   assert.equal(result[1].state, "active"); // trading: find done and phase null and running
 });
 
 test("progressSteps with phase null and find done does not mark trading active when not running", () => {
   const market = nameMarket({ lookup: { layer: "search" } });
-  const result = progressSteps({ market, phase: null, running: false });
+  const result = stepsFor(market);
   assert.equal(result[0].state, "done");
   assert.equal(result[1].state, "pending"); // trading: not running
 });
 
 test("progressSteps handles lookup null gracefully", () => {
   const market = nameMarket();
-  const result = progressSteps({ market, phase: null, running: false });
+  const result = stepsFor(market);
   assert.equal(result[0].detail, "");
 });
 
 test("progressSteps find is done when any view status is not NOT_RUN", () => {
   const market = nameMarket({ trading: { status: "FAILED", reason: null } });
-  const result = progressSteps({ market, phase: null, running: false });
+  const result = stepsFor(market);
   assert.equal(result[0].state, "done");
 });
 
 test("progressSteps step keys and labels are correct", () => {
   const market = nameMarket();
-  const result = progressSteps({ market, phase: null, running: false });
+  const result = stepsFor(market);
   assert.equal(result[0].key, "find");
   assert.equal(result[0].label, "找到商品");
   assert.equal(result[1].key, "trading");
@@ -277,19 +280,19 @@ test("progressSteps verify is active when both views are BLOCKED", () => {
     trading: { status: "BLOCKED", reason: "網站阻擋" },
     recent_trades: { status: "BLOCKED", reason: "網站阻擋" },
   });
-  const result = progressSteps({ market, phase: null, running: true });
+  const result = stepsFor(market, { running: true });
   assert.equal(result[3].state, "active");
 });
 
 test("progressSteps verify is pending when only one view is PASSED", () => {
   const market = nameMarket({ trading: { status: "PASSED", reason: null } });
-  const result = progressSteps({ market, phase: null, running: true });
+  const result = stepsFor(market, { running: true });
   assert.equal(result[3].state, "pending");
 });
 
 test("progressSteps with phase undefined and nothing read yet has find pending", () => {
   const market = nameMarket();
-  const result = progressSteps({ market, phase: undefined, running: false });
+  const result = stepsFor(market, { phase: undefined });
   assert.equal(result[0].state, "pending"); // phase undefined != null is false, so find not done
 });
 
@@ -303,13 +306,13 @@ const statsMarket = (lookup, trading = { status: "NOT_RUN", reason: null }, veri
 const states = (steps) => steps.map((s) => s.state);
 
 test("stats progress has its own four steps and never mentions recent trades", () => {
-  const steps = progressSteps({ market: statsMarket(null), phase: null, running: false });
+  const steps = stepsFor(statsMarket(null));
   assert.deepEqual(steps.map((s) => s.label), ["取得屬性清單", "套用條件", "讀取掛單", "核對資料"]);
   assert.deepEqual(states(steps), ["pending", "pending", "pending", "pending"]);
 });
 
 test("stats progress moves from the property list to applying the filters to reading the list", () => {
-  const at = (stage, running = true) => states(progressSteps({ market: statsMarket({ mode: "stats", stage }), phase: null, running }));
+  const at = (stage, running = true) => states(stepsFor(statsMarket({ mode: "stats", stage }), { running }));
   assert.deepEqual(at("properties"), ["active", "pending", "pending", "pending"]);
   assert.deepEqual(at("apply"), ["done", "active", "pending", "pending"]);
   assert.deepEqual(at("read"), ["done", "done", "active", "pending"]);
@@ -317,29 +320,13 @@ test("stats progress moves from the property list to applying the filters to rea
 
 test("stats progress ends done when the list was read and checked, and failed where it stopped", () => {
   const lookup = { mode: "stats", stage: "read" };
-  const done = progressSteps({
-    market: statsMarket(lookup, { status: "PASSED", reason: null }, { passed: true }),
-    phase: null,
-    running: false,
-  });
+  const done = stepsFor(statsMarket(lookup, { status: "PASSED", reason: null }, { passed: true }));
   assert.deepEqual(states(done), ["done", "done", "done", "done"]);
-  const unchecked = progressSteps({
-    market: statsMarket(lookup, { status: "PASSED", reason: null }),
-    phase: null,
-    running: true,
-  });
+  const unchecked = stepsFor(statsMarket(lookup, { status: "PASSED", reason: null }), { running: true });
   assert.equal(unchecked[3].state, "active");
-  const unmapped = progressSteps({
-    market: statsMarket({ mode: "stats", stage: "apply", unmapped: ["fcr"] }),
-    phase: null,
-    running: false,
-  });
+  const unmapped = stepsFor(statsMarket({ mode: "stats", stage: "apply", unmapped: ["fcr"] }));
   assert.deepEqual(states(unmapped), ["done", "failed", "pending", "pending"]);
-  const blocked = progressSteps({
-    market: statsMarket(lookup, { status: "BLOCKED", reason: "網站阻擋" }),
-    phase: null,
-    running: false,
-  });
+  const blocked = stepsFor(statsMarket(lookup, { status: "BLOCKED", reason: "網站阻擋" }));
   assert.deepEqual([blocked[2].state, blocked[2].detail], ["failed", "網站阻擋"]);
 });
 
@@ -374,7 +361,7 @@ test("the source line names where the input came from, and nothing for typing", 
 
 test("progressSteps with nothing found yet and a run underway marks find active", () => {
   const market = nameMarket();
-  const result = progressSteps({ market, phase: null, running: true });
+  const result = stepsFor(market, { running: true });
   assert.equal(result[0].key, "find");
   assert.equal(result[0].state, "active"); // nothing found (no layer, no phase, both views NOT_RUN) and running
   assert.equal(result[1].state, "pending"); // find is not done yet, so trading waits

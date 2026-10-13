@@ -74,7 +74,7 @@ class FakeNode {
     this.children = [];
     this.attributes = {};
     this.dataset = {};
-    this.className = "";
+    this.classes = new Set();
     this.hidden = hidden;
     this.disabled = disabled;
     this.value = "";
@@ -82,12 +82,27 @@ class FakeNode {
     this.tabIndex = 0;
     this._text = "";
     this._handlers = {};
+    // classList is backed by className, so a `classList.toggle` the panel does is observable here (a no-op stub
+    // would let a class bug through this suite; stats-form.test.mjs's node is the same shape).
     this.classList = {
-      add: () => {},
-      remove: () => {},
-      toggle: () => {},
-      contains: () => false,
+      add: (...names) => names.forEach((name) => this.classes.add(name)),
+      remove: (...names) => names.forEach((name) => this.classes.delete(name)),
+      toggle: (name, force) => {
+        const want = force === undefined ? !this.classes.has(name) : force;
+        if (want) this.classes.add(name);
+        else this.classes.delete(name);
+        return want;
+      },
+      contains: (name) => this.classes.has(name),
     };
+  }
+
+  get className() {
+    return [...this.classes].join(" ");
+  }
+
+  set className(value) {
+    this.classes = new Set(String(value).split(/\s+/).filter(Boolean));
   }
 
   // An id makes a node findable, the way the browser registers one put in the tree under that id.
@@ -335,17 +350,13 @@ test("the fake DOM starts from the shipped markup: shipped-hidden nodes stay hid
 
 // --- the first render -----------------------------------------------------------------------------------------
 
-test("the panel boots into the invite screen and pins the untouched result lists", async () => {
-  const panel = await boot();
+/**
+ * Every cell of both result lists on a market that has not been read: the header says so, nothing drew rows, the
+ * three buttons under the tabs are refused and the name search's four steps are all pending.
+ */
+function assertUnreadResultLists(panel) {
   const { get } = panel;
 
-  assert.equal(panel.document.body.dataset.view, "welcome");
-  assert.equal(get("part-welcome").hidden, false);
-  for (const id of ["part-choose", "part-form", "part-run", "part-results", "part-scan", "part-settings"]) {
-    assert.equal(get(id).hidden, true, id);
-  }
-
-  // The market has not been read: every cell of the results header says so, and nothing draws rows.
   assert.equal(get("trading-tab").dataset.status, "NOT_RUN");
   assert.equal(get("trading-count").textContent, "");
   assert.equal(get("trading-mark").textContent, "未讀取");
@@ -378,20 +389,12 @@ test("the panel boots into the invite screen and pins the untouched result lists
     "○找到商品（還沒開始）|○讀取目前掛單（還沒開始）|○讀取近期成交（還沒開始）|○核對資料（還沒開始）",
   );
   assert.equal(get("progress-status").textContent, "");
+}
 
-  // Nothing to trust yet, nothing to note, nothing said about the quota.
-  assert.equal(get("trust").dataset.kind, "none");
-  assert.equal(get("trust-line").hidden, true);
-  assert.equal(get("trust-head").textContent, "");
-  assert.equal(get("part-notes").textContent, "");
-  assert.equal(get("part-notes").hidden, true);
-  assert.equal(get("quota").textContent, "");
-  assert.equal(get("invite-masked").textContent, "（還沒有邀請碼）");
-  assert.equal(get("invite-note").hidden, true);
-  assert.equal(get("invite-quota").textContent, "");
-  assert.equal(get("invite-quota").hidden, true);
+/** The form before a search kind is chosen: the name-search labels, with the whole affix half hidden. */
+function assertUntouchedForm(panel) {
+  const { get } = panel;
 
-  // The form before a search kind is chosen.
   assert.equal(panel.document.body.dataset.mode, "");
   assert.equal(get("mode-title").textContent, "");
   assert.equal(get("mode-help").textContent, "");
@@ -407,6 +410,33 @@ test("the panel boots into the invite screen and pins the untouched result lists
   assert.equal(get("more-plus").disabled, false);
   assert.equal(get("start").hidden, false);
   assert.equal(get("stop").hidden, true);
+}
+
+test("the panel boots into the invite screen and pins the untouched result lists", async () => {
+  const panel = await boot();
+  const { get } = panel;
+
+  assert.equal(panel.document.body.dataset.view, "welcome");
+  assert.equal(get("part-welcome").hidden, false);
+  for (const id of ["part-choose", "part-form", "part-run", "part-results", "part-scan", "part-settings"]) {
+    assert.equal(get(id).hidden, true, id);
+  }
+
+  assertUnreadResultLists(panel);
+
+  // Nothing to trust yet, nothing to note, nothing said about the quota.
+  assert.equal(get("trust").dataset.kind, "none");
+  assert.equal(get("trust-line").hidden, true);
+  assert.equal(get("trust-head").textContent, "");
+  assert.equal(get("part-notes").textContent, "");
+  assert.equal(get("part-notes").hidden, true);
+  assert.equal(get("quota").textContent, "");
+  assert.equal(get("invite-masked").textContent, "（還沒有邀請碼）");
+  assert.equal(get("invite-note").hidden, true);
+  assert.equal(get("invite-quota").textContent, "");
+  assert.equal(get("invite-quota").hidden, true);
+
+  assertUntouchedForm(panel);
 
   // The results summary names the name search's list.
   assert.equal(get("results-caption").hidden, true);
@@ -699,16 +729,8 @@ test("without the item table the base form has no suggestions to offer", async (
 
 // --- queries that fail -----------------------------------------------------------------------------------------
 
-test("a name query whose window cannot be opened ends in the problem view, with the quota the backend counted", async () => {
-  const panel = await boot({ storage: { invite: "STORED-ABC" } });
-  const { get, fire } = panel;
-
-  await fire("choose-name", "click");
-  get("item").value = "Monarch";
-  const pending = fire("start", "click");
-
-  // Everything a query locks is locked from the first frame of the running screen.
-  assert.equal(panel.document.body.dataset.view, "running");
+/** Every control a running query locks, on the first frame of the running screen. */
+function assertRunningScreenLocksEverything(get) {
   assert.equal(get("start").hidden, true);
   assert.equal(get("stop").hidden, false);
   assert.equal(get("summary-text").textContent, "查詢：Monarch");
@@ -725,6 +747,19 @@ test("a name query whose window cannot be opened ends in the problem view, with 
   assert.equal(get("more-plus").disabled, true);
   assert.equal(get("more-minus").disabled, true);
   assert.equal(get("part-progress").hidden, false);
+}
+
+test("a name query whose window cannot be opened ends in the problem view, with the quota the backend counted", async () => {
+  const panel = await boot({ storage: { invite: "STORED-ABC" } });
+  const { get, fire } = panel;
+
+  await fire("choose-name", "click");
+  get("item").value = "Monarch";
+  const pending = fire("start", "click");
+
+  // Everything a query locks is locked from the first frame of the running screen.
+  assert.equal(panel.document.body.dataset.view, "running");
+  assertRunningScreenLocksEverything(get);
 
   await pending;
 
@@ -881,6 +916,9 @@ const PAGE = {
   marker: ["monarch"],
 };
 
+/** The window the table jump opens for that page: what sidepanel.js hands chrome.windows.create. */
+const PRODUCT_WINDOW = { url: PAGE.url, state: "minimized" };
+
 /** The page scripts the panel's Tab runs, each a sentinel so the fake debugger can tell one read from another. */
 const pageScriptFetch = defaultFetch({
   "/page/snapshot.js": () => okText("__snapshot__"),
@@ -930,9 +968,7 @@ test("the query builds its Agent with the run's cleaned name and the load-more r
   const built = globalThis.__jevAgentCreates;
 
   // The table jump really opened the product window and the finder went on to make exactly one Agent.
-  assert.deepEqual(panel.calls.windows, [
-    { url: "https://www.traderie.com/diablo2resurrected/product/monarch", state: "minimized" },
-  ]);
+  assert.deepEqual(panel.calls.windows, [PRODUCT_WINDOW]);
   assert.equal(built.length, 1);
   // The two kinds of search the Agent reads, and the rule that ends a phase after the count the run asked for.
   assert.deepEqual(built[0].phases, ["trading", "recent_trades"]);
@@ -985,7 +1021,5 @@ test("the row drawing stays out of reach, as the design says", async () => {
 
   assert.equal(panel.get("trading-list").children.length, 0);
   assert.equal(panel.get("trading-count").textContent, "");
-  assert.deepEqual(panel.calls.windows, [
-    { url: "https://www.traderie.com/diablo2resurrected/product/monarch", state: "minimized" },
-  ]);
+  assert.deepEqual(panel.calls.windows, [PRODUCT_WINDOW]);
 });

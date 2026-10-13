@@ -6,6 +6,11 @@ import { indexTables } from "../src/traderie/lookup.js";
 import { newMarket } from "../src/traderie/controller.js";
 
 const ROOT = "https://www.traderie.com/diablo2resurrected";
+const CREST_TITLE = "Harlequin Crest - Diablo II: Resurrected (D2R) Trade";
+const SHAKO_TITLE = "Shako - Diablo II: Resurrected (D2R) Trade";
+
+/** A fresh per-run table-jump counter, so each test's misses and jumps start from zero. */
+const freshTableStats = () => ({ jumps: 0, misses: 0 });
 const tables = indexTables({
   generated_at: "2026-01-01T00:00:00+00:00",
   products: [
@@ -71,7 +76,7 @@ const noResults = { status: "blocked", page: { text: "Best Match\nNo results cou
 
 test("a name in the table opens its product page directly and never searches or asks for a base", async () => {
   const { args, calls, session } = setup({
-    landing: { url: `${ROOT}/product/harlequin-crest`, title: "Harlequin Crest - Diablo II: Resurrected (D2R) Trade" },
+    landing: { url: `${ROOT}/product/harlequin-crest`, title: CREST_TITLE },
     agents: [done],
   });
   assert.equal(await findAndRead(args), "ran");
@@ -83,7 +88,7 @@ test("a name in the table opens its product page directly and never searches or 
 
 test("a table page that is not the promised item falls back to search from the home page", async () => {
   const { args, calls } = setup({
-    landing: { url: `${ROOT}/product/harlequin-crest`, title: "Shako - Diablo II: Resurrected (D2R) Trade" },
+    landing: { url: `${ROOT}/product/harlequin-crest`, title: SHAKO_TITLE },
     agents: [done],
   });
   assert.equal(await findAndRead(args), "ran");
@@ -93,9 +98,9 @@ test("a table page that is not the promised item falls back to search from the h
 });
 
 test("table jumps and misses are counted across runs and each miss note says how old the table is", async () => {
-  const tableStats = { jumps: 0, misses: 0 };
-  const wrong = { url: `${ROOT}/product/harlequin-crest`, title: "Shako - Diablo II: Resurrected (D2R) Trade" };
-  const right = { url: `${ROOT}/product/harlequin-crest`, title: "Harlequin Crest - Diablo II: Resurrected (D2R) Trade" };
+  const tableStats = freshTableStats();
+  const wrong = { url: `${ROOT}/product/harlequin-crest`, title: SHAKO_TITLE };
+  const right = { url: `${ROOT}/product/harlequin-crest`, title: CREST_TITLE };
   const notes = [];
   for (const landing of [right, wrong, wrong]) {
     const { args } = setup({ landing, agents: [done] });
@@ -110,7 +115,7 @@ test("table jumps and misses are counted across runs and each miss note says how
 });
 
 test("a site challenge on the table page is not counted as a miss", async () => {
-  const tableStats = { jumps: 0, misses: 0 };
+  const tableStats = freshTableStats();
   const { args } = setup({ landing: { url: `${ROOT}/product/harlequin-crest`, title: "Just a moment...", text: "" }, agents: [] });
   assert.equal(await findAndRead({ ...args, tableStats }), "guard");
   assert.deepEqual(tableStats, { jumps: 1, misses: 0 });
@@ -166,7 +171,7 @@ test("a table landing whose page never settles is a miss and search takes over",
     calls.tab = stuck;
     return stuck;
   };
-  const tableStats = { jumps: 0, misses: 0 };
+  const tableStats = freshTableStats();
   assert.equal(await findAndRead({ ...args, tableStats }), "ran");
   assert.equal(args.market.lookup.layer, "search");
   assert.deepEqual(tableStats, { jumps: 1, misses: 1 });

@@ -13,6 +13,8 @@ import { newTimeline } from "../src/timeline.js";
 const list = readFileSync(new URL("../../tests/fixtures/home_stats.txt", import.meta.url), "utf8");
 const apiProperties = JSON.parse(readFileSync(new URL("./fixtures/properties.json", import.meta.url), "utf8"));
 const HOME_TEXT = ["Marketplace", "Stats", "Item Type", "Amulet", "Ring", "Skills", "Apply FiltersClear Filters"].join("\n");
+const NO_LISTINGS_TEXT =
+  "Marketplace\nStats\nActive Filters\n+X% Faster Cast Rate\nApply FiltersClear Filters\nThere are no listings";
 
 class FlowTab {
   constructor({ home = HOME_TEXT, results = list, properties = { status: 200, body: apiProperties } } = {}) {
@@ -49,6 +51,13 @@ class FakeStore {
   }
 }
 
+/** A home tab whose settled read dies for a reason that is neither a timeout nor a stale page. */
+class BrokenHome extends FlowTab {
+  async readSettledPage() {
+    throw new Error("cdp socket died");
+  }
+}
+
 const cond = (key, label, min, on = true) => ({ key, label, kind: "percent", on, min, max: null });
 const DAY_MS = 24 * 3600 * 1000;
 
@@ -66,6 +75,7 @@ async function run(tab, input) {
     market,
     session,
     onStatus: (text) => stages.push(text),
+    readOptions: { waitMs: 0 }, // the retry loop is what this suite checks, not the real wait between attempts
     ...input,
   });
   return { outcome, market, stages, tab };
@@ -155,8 +165,7 @@ test("the property list of an earlier query is reused", async () => {
 });
 
 test("a search nothing matches ends with a sentence", async () => {
-  const none = "Marketplace\nStats\nActive Filters\n+X% Faster Cast Rate\nApply FiltersClear Filters\nThere are no listings";
-  const { outcome, market } = await run(new FlowTab({ results: none }), { conditions: [cond("fcr", "施法速度", 10)], base: "Ring" });
+  const { outcome, market } = await run(new FlowTab({ results: NO_LISTINGS_TEXT }), { conditions: [cond("fcr", "施法速度", 10)], base: "Ring" });
   assert.equal(outcome, "ran");
   assert.equal(market.trading.rows.length, 0);
   assert.ok(market.lookup.notes.includes("沒有符合條件的掛單"));
@@ -203,11 +212,6 @@ test("a home page that never settles is reported as such, not as a raw timeout",
 });
 
 test("a home read that fails for another reason is propagated unchanged", async () => {
-  class BrokenHome extends FlowTab {
-    async readSettledPage() {
-      throw new Error("cdp socket died");
-    }
-  }
   await assert.rejects(
     () => run(new BrokenHome(), { conditions: [cond("fcr", "施法速度", 10)] }),
     /cdp socket died/u,
@@ -260,11 +264,6 @@ test("an expired Item Type list is read from the home page again and refreshed",
 });
 
 test("a failed home read with an expired Item Type list is an error, not the stale list", async () => {
-  class BrokenHome extends FlowTab {
-    async readSettledPage() {
-      throw new Error("cdp socket died");
-    }
-  }
   const store = new FakeStore({ [ITEM_TYPES_KEY]: { fetchedAt: Date.now() - 9 * DAY_MS, itemTypes: ["Ring"] } });
   await assert.rejects(
     () => run(new BrokenHome(), { conditions: [cond("fcr", "施法速度", 10)], base: "Ring", store }),

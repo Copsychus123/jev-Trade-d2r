@@ -21,6 +21,9 @@ import {
 const properties = normalizeProperties(JSON.parse(readFileSync(new URL("./fixtures/properties.json", import.meta.url), "utf8")));
 const homePage = readFileSync(new URL("../../tests/fixtures/home_stats.txt", import.meta.url), "utf8");
 
+// Traderie's own list with the Faster Cast Rate property removed: what "Traderie has no property for it" looks like.
+const WITHOUT_FCR = properties.filter((p) => p.id !== 520);
+
 const on = (key, min, max = null) => ({ key, label: AFFIXES.find((a) => a.key === key).zh, on: true, min, max });
 
 test("every affix the reader knows is exactly one property of Traderie's real list", () => {
@@ -46,8 +49,7 @@ test("a condition that is switched off is not searched", () => {
 });
 
 test("a condition Traderie has no property for is reported, not guessed", () => {
-  const cut = properties.filter((p) => p.id !== 520);
-  const { mapped, unmapped } = mapConditions([on("fcr", 10), on("life", 36)], cut);
+  const { mapped, unmapped } = mapConditions([on("fcr", 10), on("life", 36)], WITHOUT_FCR);
   assert.deepEqual(unmapped, ["fcr"]);
   assert.deepEqual(mapped.map((m) => m.key), ["life"]);
   const twice = [...properties, { ...properties.find((p) => p.id === 418), id: 99999 }];
@@ -74,8 +76,7 @@ test("a ticked yes/no condition has no value to have, so it is still mapped", ()
 });
 
 test("a ticked condition with no property is unmapped even when it has no value", () => {
-  const cut = properties.filter((p) => p.id !== 520);
-  assert.deepEqual(mapConditions([on("fcr", null, null)], cut).unmapped, ["fcr"]);
+  assert.deepEqual(mapConditions([on("fcr", null, null)], WITHOUT_FCR).unmapped, ["fcr"]);
 });
 
 test("the address carries the numbers, the quality and the type exactly as the site writes them", () => {

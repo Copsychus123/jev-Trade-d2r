@@ -7,7 +7,11 @@ import { TIME_REGEX } from "../src/traderie/parsing.js";
 import { TRADERIE_D2R_URL, isTraderieHost, productSection } from "../src/traderie/site.js";
 
 const ROOT = `${TRADERIE_D2R_URL}/product/harlequin-crest`;
+const CREST = "Harlequin Crest";
 const ONE_TRADE = ["They Give", "1 X Harlequin Crest", "I Give", "1 X Um Rune", "39 分鐘前"].join("\n");
+
+/** A market object the way `newMarket()` hands it over: a trading view to fill in, the rest untouched. */
+const freshMarket = (trading = { status: "NOT_RUN" }) => ({ trading, recent_trades: { status: "NOT_RUN" }, verification: null });
 
 const tabFor = (url, text, { more = false, settled = true } = {}) => ({
   async readSettledPage() {
@@ -28,18 +32,18 @@ test("only the product's own page has no section; /buying and /wiki are not the 
 });
 
 test("a page that never settled is a typed failure, not a silent pass", async () => {
-  const result = await readView(tabFor(`${ROOT}/recent`, ONE_TRADE, { settled: false }), "Harlequin Crest", "recent_trades");
+  const result = await readView(tabFor(`${ROOT}/recent`, ONE_TRADE, { settled: false }), CREST, "recent_trades");
   assert.deepEqual([result.status, result.reason_code, result.settled], ["FAILED", "unsettled", false]);
 });
 
 test("has_more is unknown (null) when the Load More probe cannot run", async () => {
-  const result = await readView(tabFor(`${ROOT}/recent`, ONE_TRADE, { more: "raise" }), "Harlequin Crest", "recent_trades");
+  const result = await readView(tabFor(`${ROOT}/recent`, ONE_TRADE, { more: "raise" }), CREST, "recent_trades");
   assert.deepEqual([result.status, result.has_more], ["PASSED", null]);
 });
 
 test("the title decides the item when the page has one", () => {
-  assert.equal(pageMatchesItem("Harlequin Crest", "Shako - Traderie", "Harlequin Crest"), false);
-  assert.equal(pageMatchesItem("Harlequin Crest", "", "Harlequin Crest"), true);
+  assert.equal(pageMatchesItem(CREST, "Shako - Traderie", CREST), false);
+  assert.equal(pageMatchesItem(CREST, "", CREST), true);
 });
 
 test("one regex ends a card for every relative time form", () => {
@@ -53,7 +57,7 @@ function fakeAgent({ state, commands }) {
   const calls = [];
   return {
     state,
-    tab: { evaluate: async () => null, readSettledPage: async () => ({ url: `${ROOT}`, title: "Harlequin Crest", text: "x" }) },
+    tab: { evaluate: async () => null, readSettledPage: async () => ({ url: `${ROOT}`, title: CREST, text: "x" }) },
     calls,
     async command(name) {
       calls.push(name);
@@ -70,8 +74,8 @@ test("controller work runs first even when the previous tick threw during a hand
       tick: () => { throw new Error("stopped"); },
     },
   });
-  const market = { trading: { status: "NOT_RUN" }, recent_trades: { status: "NOT_RUN" }, verification: null };
-  await assert.rejects(step(agent, "Harlequin Crest", market), /stopped/);
+  const market = freshMarket();
+  await assert.rejects(step(agent, CREST, market), /stopped/);
   assert.deepEqual(agent.calls, ["handoff", "tick"]);
   assert.notEqual(market.trading.status, "NOT_RUN");
 });
@@ -83,8 +87,8 @@ test("an aborted tick does not trigger page reads", async () => {
       tick: (a) => { a.state.status = "done"; throw new AbortedError(); },
     },
   });
-  const market = { trading: { status: "PASSED" }, recent_trades: { status: "NOT_RUN" }, verification: null };
-  await assert.rejects(step(agent, "Harlequin Crest", market), AbortedError);
+  const market = freshMarket({ status: "PASSED" });
+  await assert.rejects(step(agent, CREST, market), AbortedError);
   assert.equal(market.recent_trades.status, "NOT_RUN");
 });
 
@@ -93,14 +97,10 @@ test("the run's last update already has the recent trades read when the agent fi
     state: { awaiting_handoff: false, status: "ready" },
     commands: { tick: (a) => { a.state.status = "done"; return { status: "done" }; } },
   });
-  agent.tab.readSettledPage = async () => ({ url: `${ROOT}/recent`, title: "Harlequin Crest", text: ONE_TRADE, settled: true });
-  const market = {
-    trading: { status: "PASSED", url: ROOT, title: "Harlequin Crest", text: "" },
-    recent_trades: { status: "NOT_RUN" },
-    verification: null,
-  };
+  agent.tab.readSettledPage = async () => ({ url: `${ROOT}/recent`, title: CREST, text: ONE_TRADE, settled: true });
+  const market = freshMarket({ status: "PASSED", url: ROOT, title: CREST, text: "" });
   const seen = [];
-  await runAgent(agent, "Harlequin Crest", market, { onUpdate: (snapshot, m) => seen.push(m.recent_trades.status) });
+  await runAgent(agent, CREST, market, { onUpdate: (snapshot, m) => seen.push(m.recent_trades.status) });
   assert.deepEqual(seen, ["PASSED"]);
   assert.ok(market.verification);
 });

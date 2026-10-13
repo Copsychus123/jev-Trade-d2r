@@ -251,14 +251,29 @@ function boot({ properties = PROPERTIES } = {}) {
 
   const calls = [];
   const form = initStatsForm({ getProperties: async () => properties, onChange: (...args) => calls.push(args) });
+  const get = (id) => document.getElementById(id);
+  const row = (key) => get("affix-list").children.find((li) => li.dataset.key === key);
   return {
     document,
     form,
     calls,
-    get: (id) => document.getElementById(id),
+    get,
     radios: () => [...document.querySelectorAll('input[name="quality"]')],
-    rows: () => document.getElementById("affix-list").children,
-    row: (key) => document.getElementById("affix-list").children.find((li) => li.dataset.key === key),
+    rows: () => get("affix-list").children,
+    row,
+    /** The min and max boxes of a number row, in that order. */
+    limitBoxes: (key) => row(key).children[1].children,
+    /** Adds the affix with that key through the menu, as the player would. */
+    pick: async (key) => {
+      const select = get("affix-select");
+      select.value = key;
+      await select.dispatch("change");
+    },
+    /** Types a value into one limit box and lets the module's input handler read it. */
+    type: async (box, value) => {
+      box.value = value;
+      await get("affix-list").dispatch("input", { target: box });
+    },
   };
 }
 
@@ -328,9 +343,7 @@ test("the first render draws the quality radios, the empty list and the add menu
 
 test("picking an affix from the menu adds one ticked-off row with the player-facing name, its limits and a remove button", async () => {
   const panel = boot();
-  const select = panel.get("affix-select");
-  select.value = "fcr";
-  await select.dispatch("change");
+  await panel.pick("fcr");
 
   const row = panel.row("fcr");
   assert.equal(row.dataset.key, "fcr");
@@ -368,9 +381,7 @@ test("picking an affix from the menu adds one ticked-off row with the player-fac
 
 test("a bool affix gets a row with no limit boxes at all", async () => {
   const panel = boot();
-  const select = panel.get("affix-select");
-  select.value = "ethereal";
-  await select.dispatch("change");
+  await panel.pick("ethereal");
 
   const row = panel.row("ethereal");
   assert.equal(row.children.length, 2, "a bool has no 最小/最大 boxes");
@@ -397,8 +408,7 @@ test("a value read from a picture is marked on the box that carries it, and not 
     ],
   );
 
-  const minBox = panel.row("fcr").children[1].children[0];
-  const maxBox = panel.row("fcr").children[1].children[1];
+  const [minBox, maxBox] = panel.limitBoxes("fcr");
   assert.equal(minBox.value, 7);
   assert.equal(minBox.classList.contains("from-capture"), true);
   assert.equal(minBox.title, FROM_CAPTURE_TITLE);
@@ -417,11 +427,10 @@ test("editing a captured number clears the mark on the box the player is typing 
   const panel = boot();
   await panel.form.fillFromText("+7% Faster Cast Rate", { carryValues: true });
 
-  const minBox = panel.row("fcr").children[1].children[0];
+  const [minBox] = panel.limitBoxes("fcr");
   assert.equal(panel.form.get().conditions[0].fromCapture, true);
   assert.equal(minBox.title, FROM_CAPTURE_TITLE);
-  minBox.value = "9";
-  await panel.get("affix-list").dispatch("input", { target: minBox });
+  await panel.type(minBox, "9");
 
   assert.equal(panel.form.get().conditions[0].min, 9);
   assert.equal(panel.form.get().conditions[0].fromCapture, false, "the player's own number is not a captured one");
@@ -431,10 +440,8 @@ test("editing a captured number clears the mark on the box the player is typing 
   assert.equal(minBox.title, null);
 
   // Any structural change redraws the list, and the rebuilt box carries the player's number with no mark.
-  const select = panel.get("affix-select");
-  select.value = "mana";
-  await select.dispatch("change");
-  const rebuilt = panel.row("fcr").children[1].children[0];
+  await panel.pick("mana");
+  const [rebuilt] = panel.limitBoxes("fcr");
   assert.notEqual(rebuilt, minBox);
   assert.equal(rebuilt.value, 9);
   assert.equal(rebuilt.className, "affix-min");
@@ -486,14 +493,12 @@ test("a ticked number condition with no value refuses the search, and 0 counts a
   // The base is still missing too, but the values are what the player is told about first.
   assert.equal(panel.form.get().base, "");
 
-  const minBox = panel.row("fcr").children[1].children[0];
-  minBox.value = "0";
-  await panel.get("affix-list").dispatch("input", { target: minBox });
+  const [minBox] = panel.limitBoxes("fcr");
+  await panel.type(minBox, "0");
   assert.equal(panel.form.get().conditions[0].min, 0);
   assert.equal(panel.form.startBlocker(), NEED_SOMETHING, "0 is a value; only the base is missing now");
 
-  minBox.value = "";
-  await panel.get("affix-list").dispatch("input", { target: minBox });
+  await panel.type(minBox, "");
   assert.equal(panel.form.startBlocker(), NEED_VALUES + "施法速度", "cleared again: refused once more");
 });
 
@@ -521,17 +526,14 @@ test("a bool condition needs no number, and ticking nothing at all stays legal a
 test("a maximum below its minimum is refused first and marks the row invalid", async () => {
   const panel = boot();
   await panel.form.fillFromText("+7% Faster Cast Rate");
-  const [minBox, maxBox] = panel.row("fcr").children[1].children;
-  minBox.value = "20";
-  await panel.get("affix-list").dispatch("input", { target: minBox });
-  maxBox.value = "10";
-  await panel.get("affix-list").dispatch("input", { target: maxBox });
+  const [minBox, maxBox] = panel.limitBoxes("fcr");
+  await panel.type(minBox, "20");
+  await panel.type(maxBox, "10");
 
   assert.equal(panel.row("fcr").classList.contains("invalid"), true);
   assert.equal(panel.form.startBlocker(), FIX_LIMITS, "before the missing base is even mentioned");
 
-  maxBox.value = "";
-  await panel.get("affix-list").dispatch("input", { target: maxBox });
+  await panel.type(maxBox, "");
   assert.equal(panel.row("fcr").classList.contains("invalid"), false);
   assert.equal(panel.form.startBlocker(), NEED_SOMETHING);
 });
@@ -541,7 +543,7 @@ test("a maximum below its minimum is refused first and marks the row invalid", a
 test("a limit box admits digits only, is bounded below by zero, and carries the affix's name in its label", async () => {
   const panel = boot();
   await panel.form.fillFromText("+7% Faster Cast Rate");
-  const [minBox, maxBox] = panel.row("fcr").children[1].children;
+  const [minBox, maxBox] = panel.limitBoxes("fcr");
 
   assert.equal(minBox.type, "number");
   assert.equal(minBox.getAttribute("min"), "0");
@@ -550,27 +552,26 @@ test("a limit box admits digits only, is bounded below by zero, and carries the 
   assert.equal(maxBox.placeholder, "最大");
   assert.deepEqual([minBox.getAttribute("aria-label"), maxBox.getAttribute("aria-label")], ["施法速度最小值", "施法速度最大值"]);
 
-  const type = async (input, value) => {
-    input.value = value;
-    await panel.get("affix-list").dispatch("input", { target: input });
-  };
   // A negative or unreadable entry is refused by the state (the fake does not enforce type=number, so this is the rule, not the widget).
-  await type(minBox, "-5");
+  await panel.type(minBox, "-5");
   assert.equal(panel.form.get().conditions[0].min, null);
-  await type(minBox, "abc");
+  await panel.type(minBox, "abc");
   assert.equal(panel.form.get().conditions[0].min, null);
-  await type(minBox, "12.5");
+  await panel.type(minBox, "12.5");
   assert.equal(panel.form.get().conditions[0].min, 12.5);
-  await type(minBox, "0");
+  await panel.type(minBox, "0");
   assert.equal(panel.form.get().conditions[0].min, 0);
-  await type(minBox, "");
+  await panel.type(minBox, "");
   assert.equal(panel.form.get().conditions[0].min, null);
 });
 
 // --- the base field ---------------------------------------------------------------------------------------------
 
-test("the base field suggests the shipped item types and restricts nothing", async () => {
-  const panel = boot();
+/**
+ * The binder leaves the field unrestricted: the datalist sidepanel.js filled stays as it is, and any name the player
+ * types is taken as the base and reported to the caller - a suggestion, not a membership test.
+ */
+async function assertBaseIsOnlyASuggestion(panel) {
   const base = panel.get("stats-base");
 
   assert.equal(base.disabled, false);
@@ -583,11 +584,16 @@ test("the base field suggests the shipped item types and restricts nothing", asy
     BASES.slice(0, 2),
   );
 
-  // A name that is not one of them is still the base: a suggestion, not a membership test.
   base.value = "Not A Real Base";
   await base.dispatch("input");
   assert.equal(panel.form.get().base, "Not A Real Base");
   assert.equal(panel.calls.length, 1, "typing the base is a change the caller hears about");
+}
+
+test("the base field suggests the shipped item types and restricts nothing", async () => {
+  const panel = boot();
+  const base = panel.get("stats-base");
+  await assertBaseIsOnlyASuggestion(panel);
 
   // A base the player typed is never replaced by a later reading, and is not marked.
   panel.form.setBaseFromScreenshot("Monarch");
@@ -624,9 +630,7 @@ test("the base field suggests the shipped item types and restricts nothing", asy
 test("busy locks every control without telling the caller anything changed", async () => {
   const panel = boot();
   await panel.form.fillFromText("+7% Faster Cast Rate");
-  const select = panel.get("affix-select");
-  select.value = "life";
-  await select.dispatch("change");
+  await panel.pick("life");
   const before = panel.calls.length;
 
   panel.form.setBusy(true);

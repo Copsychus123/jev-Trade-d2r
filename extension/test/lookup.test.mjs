@@ -34,17 +34,19 @@ const tables = indexTables({
   game_only: ["Cow King's Leathers"],
 });
 
+/** The one shape every local test table has; `indexTables`' four optional lists with `generated_at` lifted out. */
+const buildTables = ({ generatedAt = "x", products = [], zh = {}, bases = [], gameOnly = [] } = {}) =>
+  indexTables({ generated_at: generatedAt, products, zh, bases, game_only: gameOnly });
+
 test("resolveBase resolves Chinese and English base names and handles empty/unknown cases", () => {
-  const testTables = indexTables({
-    generated_at: "2026-01-01T00:00:00+00:00",
-    products: [],
+  const testTables = buildTables({
+    generatedAt: "2026-01-01T00:00:00+00:00",
     zh: {
       戒指: "Ring",
       頭環: "Circlet",
       非底材裝備: "Non Base Item",
     },
     bases: ["Ring", "Circlet"],
-    game_only: [],
   });
 
   // Chinese base
@@ -78,15 +80,15 @@ test("resolveBase resolves Chinese and English base names and handles empty/unkn
 });
 
 test("indexTables works on a table with only the fields the build ships (no category, no sources)", () => {
-  const shipped = indexTables({
-    generated_at: "2026-01-01T00:00:00+00:00",
+  const shipped = buildTables({
+    generatedAt: "2026-01-01T00:00:00+00:00",
     products: [
       { name: "The Stone of Jordan", slug: "the-stone-of-jordan" },
       { name: "Ring", slug: "ring" },
     ],
     zh: { 哈勒昆之冠: "Harlequin Crest" },
     bases: ["Ring"],
-    game_only: ["Cow King's Leathers"],
+    gameOnly: ["Cow King's Leathers"],
   });
   assert.equal(productUrlFor(shipped.byKey.get(normalizeName("Ring"))), "https://www.traderie.com/diablo2resurrected/product/ring");
   assert.equal(shipped.zh.get("哈勒昆之冠"), "Harlequin Crest");
@@ -129,16 +131,12 @@ test("name status tells a catalog item from a game-only item and from an unknown
 });
 
 test("a name that two products share is never jumped to, and the shipped table has no unlisted duplicates", async () => {
-  const shared = indexTables({
-    generated_at: "x",
+  const shared = buildTables({
     products: [
       { name: "Crescent Moon", slug: "crescent-moon", category: "runewords" },
       { name: "Crescent Moon", slug: "crescent-moon-amulet", category: "uniques" },
       { name: "Harlequin Crest", slug: "harlequin-crest", category: "uniques" },
     ],
-    zh: {},
-    bases: [],
-    game_only: [],
   });
   assert.equal(findProduct("crescent moon", shared), null);
   assert.equal(nameStatus("Crescent Moon", shared), "traderie");
@@ -163,8 +161,7 @@ test("the empty search page is recognised", () => {
 });
 
 test("leading words are dropped until the rest is a plain item type, longest rest first", () => {
-  const withBases = indexTables({
-    generated_at: "x", products: [], zh: {}, game_only: [],
+  const withBases = buildTables({
     bases: ["Ring", "Grand Charm", "Charm", "Archon Plate"],
   });
   assert.equal(stripToBase("Rare Ring", withBases), "Ring");
@@ -175,12 +172,9 @@ test("leading words are dropped until the rest is a plain item type, longest res
 });
 
 test("a typed Chinese name finds its English name whether or not the source wrote a period, dot or hyphen in it", () => {
-  const t = indexTables({
-    generated_at: "x",
+  const t = buildTables({
     products: [{ name: "Tal Rasha's Guardianship", slug: "tal-rashas-guardianship", category: "sets" }],
     zh: { "塔.拉夏的守護": "Tal Rasha's Guardianship" },
-    bases: [],
-    game_only: [],
   });
   for (const typed of ["塔拉夏的守護", "塔.拉夏的守護", "塔·拉夏的守護", "塔-拉夏的守護"]) {
     assert.equal(resolveInput(typed, t).query, "Tal Rasha's Guardianship", typed);
@@ -215,8 +209,8 @@ test("the shipped table carries a date the age helper can read", async () => {
 });
 
 test("suggestions come from the tables, best match first, and never repeat what was typed", () => {
-  const suggestTables = indexTables({
-    generated_at: "2026-01-01T00:00:00+00:00",
+  const suggestTables = buildTables({
+    generatedAt: "2026-01-01T00:00:00+00:00",
     products: [
       { name: "Shako", slug: "shako", category: "uniques" },
       { name: "Shadow Dancer", slug: "shadow-dancer", category: "uniques" },
@@ -225,8 +219,6 @@ test("suggestions come from the tables, best match first, and never repeat what 
       { name: "Crescent Moon", slug: "crescent-moon-amazon", category: "uniques" }, // duplicate name
     ],
     zh: { "塔.拉夏的守護": "Tal Rasha's Guardianship", 軍帽: "Shako", 戒指: "Ring" },
-    bases: [],
-    game_only: [],
   });
   // English: "sha" → Shako (starts with), Shadow Dancer (starts with), shorter first
   const sha = suggestNames("sha", suggestTables);
@@ -260,8 +252,7 @@ test("suggestions come from the tables, best match first, and never repeat what 
 });
 
 test("a candidate label pairs the English name with its Chinese name, and stays plain when there is none", () => {
-  const t = indexTables({
-    generated_at: "x",
+  const t = buildTables({
     products: [{ name: "Arachnid Mesh", slug: "arachnid-mesh", category: "uniques" }],
     zh: {
       權冠: "Diadem",
@@ -272,7 +263,6 @@ test("a candidate label pairs the English name with its Chinese name, and stays 
       蜘蛛之網: "Arachnid Mesh",
     },
     bases: ["Diadem", "Defender", "Ring", "Circlet", "Kite Shield"],
-    game_only: [],
   });
   assert.equal(labelWithChinese("Diadem", t), "Diadem（權冠）");
   assert.equal(labelWithChinese("Defender", t), "Defender（防禦盾）");
@@ -286,9 +276,7 @@ test("a candidate label pairs the English name with its Chinese name, and stays 
 });
 
 test("a Chinese screenshot's own name is echoed, and anything else falls back to the reverse map", () => {
-  const t = indexTables({
-    generated_at: "x",
-    products: [],
+  const t = buildTables({
     zh: {
       權冠: "Diadem",
       防禦盾: "Defender",
@@ -299,7 +287,6 @@ test("a Chinese screenshot's own name is echoed, and anything else falls back to
       君主盾: "Monarch",
     },
     bases: ["Diadem", "Defender", "Ring", "Circlet", "Monarch"],
-    game_only: [],
   });
   // The picture spells the alias the reverse map would not pick: echo what the player sees.
   assert.equal(labelWithChinese("Circlet", t, "頭飾"), "Circlet（頭飾）");
@@ -317,12 +304,9 @@ test("a Chinese screenshot's own name is echoed, and anything else falls back to
 });
 
 test("the Chinese half of a label comes from the reverse map", () => {
-  const t = indexTables({
-    generated_at: "x",
-    products: [],
+  const t = buildTables({
     zh: { 權冠: "Diadem", 戒指: "Ring", 蜘蛛之網: "Arachnid Mesh" },
     bases: ["Diadem", "Ring", "Arachnid Mesh"],
-    game_only: [],
   });
   assert.equal(chineseName("Diadem", t), "權冠");
   assert.equal(chineseName("Ring", t), "戒指");
@@ -330,12 +314,9 @@ test("the Chinese half of a label comes from the reverse map", () => {
 });
 
 test("a Chinese name the screenshot itself spells wins over the reverse map", () => {
-  const t = indexTables({
-    generated_at: "x",
-    products: [],
+  const t = buildTables({
     zh: { 頭飾: "Circlet", 頭環: "Circlet", 統治者大盾: "Monarch", 君主盾: "Monarch" },
     bases: ["Circlet", "Monarch"],
-    game_only: [],
   });
   // 頭飾 is the alias the reverse map does not pick, but the picture spells it: echo what the player sees.
   assert.equal(chineseName("Circlet", t, "頭飾"), "頭飾");
@@ -344,12 +325,9 @@ test("a Chinese name the screenshot itself spells wins over the reverse map", ()
 });
 
 test("an unknown or English-only name has no Chinese half", () => {
-  const t = indexTables({
-    generated_at: "x",
-    products: [],
+  const t = buildTables({
     zh: { 權冠: "Diadem" },
     bases: ["Diadem", "Kite Shield"],
-    game_only: [],
   });
   assert.equal(chineseName("Kite Shield", t), ""); // in the tables, but no Chinese name
   assert.equal(chineseName("No Such Thing", t), ""); // unknown
@@ -359,12 +337,9 @@ test("an unknown or English-only name has no Chinese half", () => {
 });
 
 test("the helper is the Chinese half of the label, so the two cannot drift", () => {
-  const t = indexTables({
-    generated_at: "x",
-    products: [],
+  const t = buildTables({
     zh: { 權冠: "Diadem", 戒指: "Ring", 頭飾: "Circlet", 頭環: "Circlet", 統治者大盾: "Monarch", 君主盾: "Monarch" },
     bases: ["Diadem", "Ring", "Circlet", "Monarch", "Kite Shield"],
-    game_only: [],
   });
   // Parse the display string here, in the test: if the bracket format ever moves, this is what notices.
   const displayChinese = (label) => /（(.*)）$/u.exec(label)?.[1] ?? "";

@@ -22,6 +22,14 @@ class FakeStore {
 
 const save = (fetchedAt, itemTypes) => ({ [ITEM_TYPES_KEY]: { fetchedAt, itemTypes } });
 
+/** A home-page reader that returns exactly these item types. */
+const readTypes = (itemTypes) => async () => ({ itemTypes });
+
+/** A home-page reader that fails the way the real one does when the page never loads. */
+const readFails = async () => {
+  throw new Error("Traderie 首頁一直沒有載入完成");
+};
+
 test("a copy younger than a week is used without reading the home page", async () => {
   const itemTypes = ["Amulet", "Ring"];
   let reads = 0;
@@ -38,13 +46,13 @@ test("a copy younger than a week is used without reading the home page", async (
 
 test("an old or missing copy is read once and stored with its time", async () => {
   const store = new FakeStore(save(NOW - ITEM_TYPES_TTL_MS - 1, ["Old"]));
-  const { itemTypes, cacheHit } = await loadItemTypes({ read: async () => ({ itemTypes: ["Amulet", "Ring"] }), store, now: NOW });
+  const { itemTypes, cacheHit } = await loadItemTypes({ read: readTypes(["Amulet", "Ring"]), store, now: NOW });
   assert.deepEqual(itemTypes, ["Amulet", "Ring"]);
   assert.equal(cacheHit, false);
   assert.deepEqual(store.data[ITEM_TYPES_KEY], { fetchedAt: NOW, itemTypes: ["Amulet", "Ring"] });
   assert.equal(store.writes, 1);
   const missing = new FakeStore();
-  assert.deepEqual(await loadItemTypes({ read: async () => ({ itemTypes: ["Ring"] }), store: missing, now: NOW }), {
+  assert.deepEqual(await loadItemTypes({ read: readTypes(["Ring"]), store: missing, now: NOW }), {
     itemTypes: ["Ring"],
     cacheHit: false,
   });
@@ -54,7 +62,7 @@ test("an old or missing copy is read once and stored with its time", async () =>
 test("a failed read with no copy is an error and nothing is stored", async () => {
   const store = new FakeStore();
   await assert.rejects(
-    loadItemTypes({ read: async () => { throw new Error("Traderie 首頁一直沒有載入完成"); }, store, now: NOW }),
+    loadItemTypes({ read: readFails, store, now: NOW }),
     /^Error: Traderie 首頁一直沒有載入完成$/u,
   );
   assert.equal(store.writes, 0);
@@ -63,7 +71,7 @@ test("a failed read with no copy is an error and nothing is stored", async () =>
 test("a failed read with an expired copy is an error that names it, and the stale copy is not used", async () => {
   const store = new FakeStore(save(NOW - 9 * DAY, ["Old"]));
   await assert.rejects(
-    loadItemTypes({ read: async () => { throw new Error("Traderie 首頁一直沒有載入完成"); }, store, now: NOW }),
+    loadItemTypes({ read: readFails, store, now: NOW }),
     /^Error: Traderie 首頁一直沒有載入完成（上次取得：2026-09-26）$/u,
   );
   assert.equal(store.writes, 0);
@@ -77,7 +85,7 @@ test("a site challenge is not a list and is never stored", async () => {
 
 test("an empty read is not stored, so a week of 'no type' never keeps a base out of the filter", async () => {
   const store = new FakeStore();
-  assert.deepEqual(await loadItemTypes({ read: async () => ({ itemTypes: [] }), store, now: NOW }), {
+  assert.deepEqual(await loadItemTypes({ read: readTypes([]), store, now: NOW }), {
     itemTypes: [],
     cacheHit: false,
   });

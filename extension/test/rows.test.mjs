@@ -35,6 +35,14 @@ const full = {
   game_version: "Reign of the Warlock",
 };
 
+/** One view of the market, as viewNote/filteredAway/tabCount read it. */
+const viewOf = (status, rows, reason = null) => ({ status, rows, reason });
+
+/** Every cell of the parsed row is somewhere in the two-line row the table draws. */
+function assertEveryCellReachesTheRow(cells, onScreen) {
+  for (const cell of cells) assert.ok(onScreen.includes(String(cell)), `${cell} is missing from the row`);
+}
+
 test("the listing layout uses every column of the table, so a new column cannot be left off the screen", () => {
   const used = [LISTING_LAYOUT.price, LISTING_LAYOUT.seller, ...LISTING_LAYOUT.details];
   assert.deepEqual([...used].sort(), [...TRADING_COLUMNS].sort());
@@ -43,8 +51,7 @@ test("the listing layout uses every column of the table, so a new column cannot 
 test("every cell the CSV gets also reaches the two-line row", () => {
   const cells = tradingCells(full);
   const row = listingRow(TRADING_COLUMNS, cells);
-  const onScreen = [row.price, row.seller, ...row.details];
-  for (const cell of cells) assert.ok(onScreen.includes(String(cell)), `${cell} is missing from the row`);
+  assertEveryCellReachesTheRow(cells, [row.price, row.seller, ...row.details]);
   assert.equal(row.price, "2 X Ist Rune");
   assert.equal(row.seller, "Dave");
 });
@@ -67,13 +74,12 @@ test("dash replaces only a missing value, not zero", () => {
 });
 
 test("a tab with rows needs no note; an empty or failed one says why", () => {
-  const view = (status, rows, reason = null) => ({ status, rows, reason });
-  assert.equal(viewNote(view("PASSED", [{}], null)), "");
-  assert.equal(viewNote(view("PASSED", [{}], "stale reason")), "");
-  assert.equal(viewNote(view("PASSED", [], "目前沒有掛單")), "目前沒有掛單");
-  assert.equal(viewNote(view("BLOCKED", [], "需要登入")), "需要登入");
-  assert.equal(viewNote(view("FAILED", [], null)), "讀取失敗");
-  assert.equal(viewNote(view("NOT_RUN", [], null)), "尚未讀取。");
+  assert.equal(viewNote(viewOf("PASSED", [{}], null)), "");
+  assert.equal(viewNote(viewOf("PASSED", [{}], "stale reason")), "");
+  assert.equal(viewNote(viewOf("PASSED", [], "目前沒有掛單")), "目前沒有掛單");
+  assert.equal(viewNote(viewOf("BLOCKED", [], "需要登入")), "需要登入");
+  assert.equal(viewNote(viewOf("FAILED", [], null)), "讀取失敗");
+  assert.equal(viewNote(viewOf("NOT_RUN", [], null)), "尚未讀取。");
 });
 
 const trade = {
@@ -98,8 +104,7 @@ test("the recent layout uses every recent column and every cell reaches the row"
   assert.deepEqual([...[RECENT_LAYOUT.title, RECENT_LAYOUT.price, ...RECENT_LAYOUT.details]].sort(), [...RECENT_COLUMNS].sort());
   const cells = recentCells(trade);
   const row = recentRow(RECENT_COLUMNS, cells);
-  const onScreen = [row.title, row.price, ...row.details];
-  for (const cell of cells) assert.ok(onScreen.includes(String(cell)), `${cell} is missing from the row`);
+  assertEveryCellReachesTheRow(cells, [row.title, row.price, ...row.details]);
 });
 
 test("a recent row leaves out empty details and dashes an empty title or price", () => {
@@ -115,7 +120,7 @@ test("a listing row puts the game version after the environment", () => {
 });
 
 test("a view that the filter empties says so, with how many rows were read", () => {
-  const view = { status: "PASSED", rows: [{}, {}, {}], reason: null };
+  const view = viewOf("PASSED", [{}, {}, {}]);
   assert.equal(viewNote(view, 0), "篩選後沒有符合的資料（原本讀到 3 筆）");
   assert.equal(viewNote(view, 2), "");
   assert.ok(filteredAway(view, 0));
@@ -123,16 +128,16 @@ test("a view that the filter empties says so, with how many rows were read", () 
 });
 
 test("a view that read zero rows keeps its own reason, filter or not", () => {
-  const view = { status: "PASSED", rows: [], reason: "目前沒有掛單" };
+  const view = viewOf("PASSED", [], "目前沒有掛單");
   assert.equal(viewNote(view, 0), "目前沒有掛單");
   assert.ok(!filteredAway(view, 0));
 });
 
 test("the tab count is kept/read only while a filter is active", () => {
-  const view = { status: "PASSED", rows: new Array(50).fill({}) };
+  const view = viewOf("PASSED", new Array(50).fill({}));
   assert.equal(tabCount(view, 50, false), "50");
   assert.equal(tabCount(view, 12, true), "12/50");
-  assert.equal(tabCount({ status: "NOT_RUN", rows: [] }, 0, true), "");
+  assert.equal(tabCount(viewOf("NOT_RUN", []), 0, true), "");
 });
 
 test("the filter line names the filter, the hidden rows and the unlabelled ones", () => {

@@ -156,6 +156,16 @@ test("trust: no verification at all shows neither line nor reasons", () => {
 
 // --- drawProgress ---------------------------------------------------------------------------------------------
 
+/** The market shape the progress tests start from; each test overrides only the part it is about. */
+const nameMarket = (overrides = {}) => ({
+  mode: "name",
+  lookup: null,
+  trading: { status: "NOT_RUN" },
+  recent_trades: { status: "NOT_RUN" },
+  verification: null,
+  ...overrides,
+});
+
 const stepTree = (state, mark, label, name, detail) => {
   const li = { tag: "li", dataset: { state }, children: [
     { tag: "span", className: "mark", ariaHidden: "true", text: mark },
@@ -167,13 +177,11 @@ const stepTree = (state, mark, label, name, detail) => {
 };
 
 test("progress: the four steps carry mark, screen-reader name and the current status line", () => {
-  const market = {
-    mode: "name",
+  const market = nameMarket({
     lookup: { layer: "table" },
     trading: { status: "PASSED" },
     recent_trades: { status: "FAILED", reason: "沒有打開近期成交頁面" },
-    verification: null,
-  };
+  });
   drawProgress({ market, phase: null, running: true, statusText: "讀取中…" });
   assert.deepEqual(tree(byId.get("steps")).children, [
     stepTree("done", "✔", "找到商品", "完成", "查表直接開啟"),
@@ -185,13 +193,7 @@ test("progress: the four steps carry mark, screen-reader name and the current st
 });
 
 test("progress: every step is pending before anything runs", () => {
-  const market = {
-    mode: "name",
-    lookup: null,
-    trading: { status: "NOT_RUN" },
-    recent_trades: { status: "NOT_RUN" },
-    verification: null,
-  };
+  const market = nameMarket();
   drawProgress({ market, phase: null, running: false, statusText: "" });
   assert.deepEqual(tree(byId.get("steps")).children, [
     stepTree("pending", "○", "找到商品", "還沒開始", ""),
@@ -202,23 +204,12 @@ test("progress: every step is pending before anything runs", () => {
 });
 
 test("progress: the step being worked on is active, and verification done/failed follow its verdict", () => {
-  const findActive = {
-    mode: "name",
-    lookup: null,
-    trading: { status: "NOT_RUN" },
-    recent_trades: { status: "NOT_RUN" },
-    verification: null,
-  };
+  const findActive = nameMarket();
   drawProgress({ market: findActive, phase: null, running: true, statusText: "" });
   assert.equal(byId.get("steps").children[0].dataset.state, "active");
   assert.equal(byId.get("steps").children[1].dataset.state, "pending");
 
-  const verifying = {
-    mode: "name",
-    lookup: { layer: "base" },
-    trading: { status: "PASSED" },
-    recent_trades: { status: "PASSED" },
-  };
+  const verifying = nameMarket({ lookup: { layer: "base" }, trading: { status: "PASSED" }, recent_trades: { status: "PASSED" } });
   drawProgress({ market: { ...verifying, verification: { passed: true } }, phase: null, running: true, statusText: "" });
   assert.equal(byId.get("steps").children[3].dataset.state, "done");
   assert.equal(byId.get("steps").children[3].children[0].textContent, "✔");

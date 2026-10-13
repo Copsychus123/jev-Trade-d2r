@@ -40,8 +40,10 @@ const reply = ({ status = 200, body, jsonError = false }) => ({
 /**
  * Installs a recording fake fetch plus a fake AbortController and fake timers (so the module's 300 s deadline is
  * inspected, never waited on). `answer(href, init)` scripts the response; the default is an empty 200 JSON object.
+ * Takes the running test's context `t`, which restores the real globals when the test ends.
  */
-function install({ answer = () => okJson({}), fetchImpl = null } = {}) {
+function install(t, { answer = () => okJson({}), fetchImpl = null } = {}) {
+  t.after(() => Object.assign(globalThis, real));
   const calls = [];
   const timers = [];
   const cleared = [];
@@ -77,22 +79,21 @@ function install({ answer = () => okJson({}), fetchImpl = null } = {}) {
     return id;
   };
   globalThis.clearTimeout = (id) => cleared.push(id);
-  return {
-    calls,
-    timers,
-    cleared,
-    controllers,
-    restore: () => Object.assign(globalThis, real),
-  };
+  return { calls, timers, cleared, controllers };
 }
 
 const bodyOf = (call) => JSON.parse(call.init.body);
 
+/** A page shape just big enough for the calls that never read it: the four fields the client forwards. */
+const A_PAGE = { url: "u", title: "t", text: "x", actions: [] };
+
+/** The rejection a call ends with, so a test can assert on the ApiError without a `.then(() => null, …)` dance. */
+const errorOf = (promise) => promise.then(() => null, (error) => error);
+
 // --- the request each call sends --------------------------------------------------------------------------------
 
 test("startRun POSTs the invite, item name and load-more to /api/run/start and returns the parsed run", async (t) => {
-  const h = install({ answer: () => okJson({ run_token: "tok", item_name: "Monarch", load_more: 25, used: 3, limit: 5 }) });
-  t.after(h.restore);
+  const h = install(t, { answer: () => okJson({ run_token: "tok", item_name: "Monarch", load_more: 25, used: 3, limit: 5 }) });
 
   const run = await startRun(BASE, { invite: "INV-123", itemName: "君主盾", loadMore: 25 });
 
@@ -106,8 +107,7 @@ test("startRun POSTs the invite, item name and load-more to /api/run/start and r
 });
 
 test("chooseNext POSTs the run token, phase, the page's four fields and the mapped history to /api/choose", async (t) => {
-  const h = install({ answer: () => okJson({ action: "click", kind: "next_page" }) });
-  t.after(h.restore);
+  const h = install(t, { answer: () => okJson({ action: "click", kind: "next_page" }) });
 
   const page = { url: "https://traderie.test/x", title: "T", text: "hello", actions: [{ i: 0, t: "Next" }], html: "<sink>" };
   const history = [
@@ -133,10 +133,9 @@ test("chooseNext POSTs the run token, phase, the page's four fields and the mapp
 });
 
 test("chooseNext adds no_block only when asked for, and reports the decision the server returned", async (t) => {
-  const h = install({ answer: () => okJson({ action: "stop", kind: "settled" }) });
-  t.after(h.restore);
+  const h = install(t, { answer: () => okJson({ action: "stop", kind: "settled" }) });
 
-  const page = { url: "u", title: "t", text: "x", actions: [] };
+  const page = A_PAGE;
   await chooseNext(BASE, { runToken: "tok", phase: "trading", page, history: [] });
   await chooseNext(BASE, { runToken: "tok", phase: "trading", page, history: [], noBlock: true });
 
@@ -150,7 +149,7 @@ test("pickBase POSTs the options (which the server ignores) and includes base on
   // The wire body is the client's contract: pick_base_step (services/jevsvc/app.py) ignores a list in the request and
   // picks from the server's own BASES. A non-null pick answers with the real `_base_reply` shape - base, probability,
   // usage, item_name and a fresh run_token (services/jevsvc/app.py `_base_reply`) - so the fake replies with that.
-  const h = install({
+  const h = install(t, {
     answer: () => okJson({
       base: "Monarch",
       probability: 0.9,
@@ -159,7 +158,6 @@ test("pickBase POSTs the options (which the server ignores) and includes base on
       run_token: "tok-base",
     }),
   });
-  t.after(h.restore);
 
   await pickBase(BASE, { runToken: "tok", options: ["Monarch", "Bone Wand"] });
   await pickBase(BASE, { runToken: "tok", options: ["Monarch", "Bone Wand"], base: "Monarch" });
@@ -180,7 +178,7 @@ test("every call arms a 300 s timer that aborts the signal handed to fetch, then
   // no-op, the awaited promise below would never settle and this test would hang, taking its `t.after` fakes and the
   // rest of the file with it. Checked this way, the same mutation fails right here.
   let sawAbort = false;
-  const h = install({
+  const h = install(t, {
     fetchImpl: (_href, init) =>
       new Promise((_resolve, reject) => {
         init.signal.addEventListener("abort", () => {
@@ -189,7 +187,6 @@ test("every call arms a 300 s timer that aborts the signal handed to fetch, then
         });
       }),
   });
-  t.after(h.restore);
 
   const pending = startRun(BASE, { invite: "i", itemName: "Monarch", loadMore: 0 }).then(
     () => "resolved",
@@ -219,8 +216,7 @@ test("every call arms a 300 s timer that aborts the signal handed to fetch, then
 });
 
 test("a successful call also clears its timer", async (t) => {
-  const h = install({ answer: () => okJson({ run_token: "tok" }) });
-  t.after(h.restore);
+  const h = install(t, { answer: () => okJson({ run_token: "tok" }) });
 
   await startRun(BASE, { invite: "i", itemName: "Monarch", loadMore: 0 });
 
@@ -233,13 +229,9 @@ test("a refused invite reaches the caller as the server's own message, with its 
   // "邀請碼無效或已停用" is the server's wording for a bad or disabled invite (services/jevsvc/invites.py, raised as
   // InviteError and handed straight through as the body's `error` by services/jevsvc/http.py). The client must echo
   // that field, not invent a message of its own.
-  const h = install({ answer: () => reply({ status: 401, body: { error: "邀請碼無效或已停用", code: "invite_invalid" } }) });
-  t.after(h.restore);
+  const h = install(t, { answer: () => reply({ status: 401, body: { error: "邀請碼無效或已停用", code: "invite_invalid" } }) });
 
-  const error = await startRun(BASE, { invite: "bad", itemName: "Monarch", loadMore: 0 }).then(
-    () => null,
-    (e) => e,
-  );
+  const error = await errorOf(startRun(BASE, { invite: "bad", itemName: "Monarch", loadMore: 0 }));
 
   assert.ok(error instanceof ApiError);
   assert.equal(error.status, 401);
@@ -249,13 +241,9 @@ test("a refused invite reaches the caller as the server's own message, with its 
 test("an exhausted quota reaches the caller as the server's own message, with its status", async (t) => {
   // The server builds this one from its own cap: "…已達上限（30 次）…" with MAX_MODEL_CALLS = 30
   // (services/jevsvc/app.py, `_reserve_call_budget`). The client echoes the body's `error` verbatim.
-  const h = install({ answer: () => reply({ status: 429, body: { error: "這次查詢的 Jev 呼叫次數已達上限（30 次），請重新開始", code: "call_limit" } }) });
-  t.after(h.restore);
+  const h = install(t, { answer: () => reply({ status: 429, body: { error: "這次查詢的 Jev 呼叫次數已達上限（30 次），請重新開始", code: "call_limit" } }) });
 
-  const error = await chooseNext(BASE, { runToken: "tok", phase: "trading", page: { url: "u", title: "t", text: "x", actions: [] }, history: [] }).then(
-    () => null,
-    (e) => e,
-  );
+  const error = await errorOf(chooseNext(BASE, { runToken: "tok", phase: "trading", page: A_PAGE, history: [] }));
 
   assert.ok(error instanceof ApiError);
   assert.equal(error.status, 429);
@@ -265,39 +253,27 @@ test("an exhausted quota reaches the caller as the server's own message, with it
 test("a non-OK answer without a message falls back to 伺服器沒有回應 and keeps the status", async (t) => {
   // Synthetic: the server's `_error` (services/jevsvc/app.py) always sends `error` next to `code`, so a body with
   // only `code` is a shape app.py never sends - kept to prove the client's defensive fallback when `error` is absent.
-  const h = install({ answer: () => reply({ status: 500, body: { code: "not_configured" } }) });
-  t.after(h.restore);
+  const h = install(t, { answer: () => reply({ status: 500, body: { code: "not_configured" } }) });
 
-  const error = await startRun(BASE, { invite: "i", itemName: "x", loadMore: 0 }).then(
-    () => null,
-    (e) => e,
-  );
+  const error = await errorOf(startRun(BASE, { invite: "i", itemName: "x", loadMore: 0 }));
 
   assert.equal(error.status, 500);
   assert.equal(error.message, "伺服器沒有回應");
 });
 
 test("a body that is not JSON inside a non-OK answer is the same 伺服器沒有回應", async (t) => {
-  const h = install({ answer: () => reply({ status: 502, jsonError: true }) });
-  t.after(h.restore);
+  const h = install(t, { answer: () => reply({ status: 502, jsonError: true }) });
 
-  const error = await startRun(BASE, { invite: "i", itemName: "x", loadMore: 0 }).then(
-    () => null,
-    (e) => e,
-  );
+  const error = await errorOf(startRun(BASE, { invite: "i", itemName: "x", loadMore: 0 }));
 
   assert.equal(error.status, 502);
   assert.equal(error.message, "伺服器沒有回應");
 });
 
 test("an OK answer whose body is not JSON is a 伺服器沒有回應 too, not a silent success", async (t) => {
-  const h = install({ answer: () => reply({ status: 200, jsonError: true }) });
-  t.after(h.restore);
+  const h = install(t, { answer: () => reply({ status: 200, jsonError: true }) });
 
-  const error = await startRun(BASE, { invite: "i", itemName: "x", loadMore: 0 }).then(
-    () => null,
-    (e) => e,
-  );
+  const error = await errorOf(startRun(BASE, { invite: "i", itemName: "x", loadMore: 0 }));
 
   assert.ok(error instanceof ApiError);
   assert.equal(error.status, 200);
@@ -305,15 +281,11 @@ test("an OK answer whose body is not JSON is a 伺服器沒有回應 too, not a 
 });
 
 test("a transport failure is status 0 with the network wording", async (t) => {
-  const h = install({ answer: () => {
+  const h = install(t, { answer: () => {
     throw new TypeError("Failed to fetch");
   } });
-  t.after(h.restore);
 
-  const error = await startRun(BASE, { invite: "i", itemName: "x", loadMore: 0 }).then(
-    () => null,
-    (e) => e,
-  );
+  const error = await errorOf(startRun(BASE, { invite: "i", itemName: "x", loadMore: 0 }));
 
   assert.ok(error instanceof ApiError);
   assert.equal(error.status, 0);

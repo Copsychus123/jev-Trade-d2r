@@ -15,6 +15,10 @@ import {
 const DAY = 24 * 3600 * 1000;
 const NOW = Date.parse("2026-10-05T12:00:00Z");
 const API = { properties: [{ id: 520, name: "+{{value}}% Faster Cast Rate", type: "number", options: null }] };
+const PROPERTIES = normalizeProperties(API);
+
+/** The stored-copy shape every test hands to its `FakeStore`. */
+const cached = (fetchedAt) => ({ [PROPERTIES_KEY]: { fetchedAt, properties: PROPERTIES } });
 
 class FakeStore {
   constructor(data = {}) {
@@ -56,15 +60,14 @@ test("the answer is reduced to id, name, type, options and a label with X for th
 });
 
 test("a copy younger than a week is used without asking Traderie", async () => {
-  const properties = normalizeProperties(API);
-  const store = new FakeStore({ [PROPERTIES_KEY]: { fetchedAt: NOW - 3 * DAY, properties } });
+  const store = new FakeStore(cached(NOW - 3 * DAY));
   const tab = new FakeTab({ status: 500, body: "" });
-  assert.deepEqual(await loadProperties({ tab, scripts, store, now: NOW }), { properties, cacheHit: true });
+  assert.deepEqual(await loadProperties({ tab, scripts, store, now: NOW }), { properties: PROPERTIES, cacheHit: true });
   assert.equal(tab.calls.length, 0);
 });
 
 test("an old or missing copy is read once from Traderie and stored with its time", async () => {
-  const store = new FakeStore({ [PROPERTIES_KEY]: { fetchedAt: NOW - PROPERTIES_TTL_MS - 1, properties: normalizeProperties(API) } });
+  const store = new FakeStore(cached(NOW - PROPERTIES_TTL_MS - 1));
   const tab = new FakeTab({ status: 200, body: API });
   const { properties, cacheHit } = await loadProperties({ tab, scripts, store, now: NOW });
   assert.equal(properties[0].id, 520);
@@ -77,7 +80,7 @@ test("an old or missing copy is read once from Traderie and stored with its time
 });
 
 test("a refused read is an error that names the last good copy, and the old copy is not used", async () => {
-  const store = new FakeStore({ [PROPERTIES_KEY]: { fetchedAt: NOW - 9 * DAY, properties: normalizeProperties(API) } });
+  const store = new FakeStore(cached(NOW - 9 * DAY));
   const tab = new FakeTab({ status: 403, body: "Just a moment" });
   await assert.rejects(loadProperties({ tab, scripts, store, now: NOW }), /HTTP 403.*上次取得：2026-09-26/u);
   assert.equal(store.writes, 0);
@@ -85,19 +88,18 @@ test("a refused read is an error that names the last good copy, and the old copy
 });
 
 test("ensureProperties uses a fresh copy without opening a Traderie tab", async () => {
-  const properties = normalizeProperties(API);
-  const store = new FakeStore({ [PROPERTIES_KEY]: { fetchedAt: NOW - 3 * DAY, properties } });
+  const store = new FakeStore(cached(NOW - 3 * DAY));
   let opened = 0;
   const openTab = async () => {
     opened += 1;
     return new FakeTab({ status: 500, body: "" });
   };
-  assert.deepEqual(await ensureProperties({ openTab, scripts, store, now: NOW }), { properties, cacheHit: true });
+  assert.deepEqual(await ensureProperties({ openTab, scripts, store, now: NOW }), { properties: PROPERTIES, cacheHit: true });
   assert.equal(opened, 0);
 });
 
 test("ensureProperties opens one tab, reads once and stores the list when the copy is old, then closes that tab", async () => {
-  const store = new FakeStore({ [PROPERTIES_KEY]: { fetchedAt: NOW - PROPERTIES_TTL_MS - 1, properties: normalizeProperties(API) } });
+  const store = new FakeStore(cached(NOW - PROPERTIES_TTL_MS - 1));
   const tab = new FakeTab({ status: 200, body: API });
   let opened = 0;
   const openTab = async () => {
@@ -115,7 +117,7 @@ test("ensureProperties opens one tab, reads once and stores the list when the co
 });
 
 test("ensureProperties treats a failed read as an error, keeps no old copy and always closes the tab", async () => {
-  const store = new FakeStore({ [PROPERTIES_KEY]: { fetchedAt: NOW - 9 * DAY, properties: normalizeProperties(API) } });
+  const store = new FakeStore(cached(NOW - 9 * DAY));
   const tab = new FakeTab({ status: 403, body: "Just a moment" });
   await assert.rejects(ensureProperties({ openTab: async () => tab, scripts, store, now: NOW }), /HTTP 403.*上次取得：2026-09-26/u);
   assert.equal(store.writes, 0);

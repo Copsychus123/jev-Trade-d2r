@@ -41,13 +41,18 @@ class FakeTab {
 
 const lines = (...items) => items.join("\n");
 
+const HARLEQUIN = "Harlequin Crest";
+
+/** Read a view from a tab that holds `text`, as the run's own item ("Harlequin Crest"). */
+const readText = (url, text, view, options) => readView(new FakeTab(url, text, options), HARLEQUIN, view);
+
 test("recent view with a trade lacking its time line is FAILED as inconsistent", async () => {
   const text = lines(
     "Harlequin Crest",
     "They Give", "1 X Harlequin Crest", "I Give", "1 X Um Rune", "39 分鐘前",
     "They Give", "1 X Harlequin Crest", "I Give", "1 X Mal Rune",
   );
-  const result = await readView(new FakeTab(RECENT_URL, text), "Harlequin Crest", "recent_trades");
+  const result = await readText(RECENT_URL, text, "recent_trades");
   assert.equal(result.status, "FAILED");
   assert.match(result.reason, /不一致/);
 });
@@ -58,7 +63,7 @@ test("recent view keeps every entry when page and table agree", async () => {
     "They Give", "1 X Harlequin Crest", "I Give", "1 X Um Rune", "39 分鐘前",
     "They Give", "1 X Harlequin Crest", "I Give", "1 X Mal Rune", "44 分鐘前",
   );
-  const result = await readView(new FakeTab(RECENT_URL, text, { more: true }), "Harlequin Crest", "recent_trades");
+  const result = await readText(RECENT_URL, text, "recent_trades", { more: true });
   assert.equal(result.status, "PASSED");
   assert.deepEqual(result.rows.map((r) => r.price), ["1 X Um Rune", "1 X Mal Rune"]);
   assert.equal(result.has_more, true);
@@ -77,16 +82,14 @@ test("a good trading and recent pair verifies", () => {
 const TRADING_URL = `${TRADERIE_D2R_URL}/product/harlequin-crest`;
 
 test("an empty market is PASSED with no rows only when the page itself says so", async () => {
-  const empty = await readView(
-    new FakeTab(TRADING_URL, lines("Harlequin Crest", "There are no listings")), "Harlequin Crest", "trading");
+  const empty = await readText(TRADING_URL, lines("Harlequin Crest", "There are no listings"), "trading");
   assert.deepEqual([empty.status, empty.rows.length], ["PASSED", 0]);
-  const silent = await readView(new FakeTab(TRADING_URL, "Harlequin Crest"), "Harlequin Crest", "trading");
+  const silent = await readText(TRADING_URL, "Harlequin Crest", "trading");
   assert.equal(silent.status, "FAILED");
 
-  const none = await readView(
-    new FakeTab(RECENT_URL, lines("Harlequin Crest", "There are no offers")), "Harlequin Crest", "recent_trades");
+  const none = await readText(RECENT_URL, lines("Harlequin Crest", "There are no offers"), "recent_trades");
   assert.deepEqual([none.status, none.rows.length], ["PASSED", 0]);
-  const unknown = await readView(new FakeTab(RECENT_URL, "Harlequin Crest"), "Harlequin Crest", "recent_trades");
+  const unknown = await readText(RECENT_URL, "Harlequin Crest", "recent_trades");
   assert.equal(unknown.status, "FAILED");
 });
 
@@ -121,8 +124,23 @@ class HomeTab extends FakeTab {
   }
 }
 
+/** The saved home page as a stats tab (its address is what the retained-filters check compares against). */
+const homeTab = (text, options) => new HomeTab(SENT, text, options);
+
+/** Count a tab's settled-page reads and, from `swap.at` on, hand that read the text `swap.text` instead. */
+function countingTab(tab, swap) {
+  const read = tab.readSettledPage.bind(tab);
+  const progress = { reads: 0 };
+  tab.readSettledPage = async () => {
+    progress.reads += 1;
+    if (swap && progress.reads >= swap.at) tab.page.text = swap.text;
+    return read();
+  };
+  return progress;
+}
+
 test("stats view: the saved home page gives one row per listing and says the filters stayed in the address", async () => {
-  const result = await readStatsView(new HomeTab(SENT, homeStats, { more: true }), SENT);
+  const result = await readStatsView(homeTab(homeStats, { more: true }), SENT);
   const markers = homeStats.split("\n").filter((l) => ["Trading For", "Make an Offer"].includes(l.trim())).length;
   assert.equal(result.status, "PASSED");
   assert.equal(result.rows.length, markers);
@@ -144,18 +162,18 @@ test("stats view: anywhere but the home page is the wrong view", async () => {
 
 test("stats view: nothing matching is an answer only when the site says so; placeholders alone are a list that did not load", async () => {
   const sidebar = ["Marketplace", "Stats", "Active Filters", "+X% Faster Cast Rate", "Apply FiltersClear Filters"];
-  const said = await readStatsView(new HomeTab(SENT, lines(...sidebar, "There are no listings")), SENT);
+  const said = await readStatsView(homeTab(lines(...sidebar, "There are no listings")), SENT);
   assert.deepEqual([said.status, said.reason_code, said.rows.length], ["PASSED", "empty", 0]);
-  const skeleton = await readStatsView(new HomeTab(SENT, lines(...sidebar, "\u200c", "\u200c", "\u200c")), SENT, FAST);
+  const skeleton = await readStatsView(homeTab(lines(...sidebar, "\u200c", "\u200c", "\u200c")), SENT, FAST);
   assert.deepEqual([skeleton.status, skeleton.reason_code], ["FAILED", "no_rows"]);
-  const bare = await readStatsView(new HomeTab(SENT, "Marketplace"), SENT, FAST);
+  const bare = await readStatsView(homeTab("Marketplace"), SENT, FAST);
   assert.deepEqual([bare.status, bare.reason_code], ["FAILED", "no_rows"]);
 });
 
 test("stats view: a challenge page is BLOCKED, and fewer rows than listing markers is a mismatch", async () => {
   const blocked = await readStatsView(new FakeTab(SENT, "Please complete the CAPTCHA"), SENT);
   assert.equal(blocked.status, "BLOCKED");
-  const short = await readStatsView(new HomeTab(SENT, `${homeStats}\nTrading For`), SENT, FAST);
+  const short = await readStatsView(homeTab(`${homeStats}\nTrading For`), SENT, FAST);
   assert.deepEqual([short.status, short.reason_code], ["FAILED", "row_mismatch"]);
 });
 
@@ -200,44 +218,27 @@ test("stats verification names each way it can fail", () => {
 
 
 test("stats view: cards that are drawn a moment after the text settled are read on a later try", async () => {
-  const tab = new HomeTab(SENT, "Marketplace\nApply FiltersClear Filters\n\u200c\n\u200c");
-  let reads = 0;
-  const read = tab.readSettledPage.bind(tab);
-  tab.readSettledPage = async () => {
-    reads += 1;
-    if (reads === 3) tab.page.text = homeStats;
-    return read();
-  };
+  const tab = homeTab("Marketplace\nApply FiltersClear Filters\n\u200c\n\u200c");
+  const progress = countingTab(tab, { at: 3, text: homeStats });
   const result = await readStatsView(tab, SENT, FAST);
   assert.equal(result.status, "PASSED");
-  assert.equal(reads, 3);
+  assert.equal(progress.reads, 3);
   assert.ok(result.rows.length > 0);
 });
 
 test("stats view: cards without the filter labels yet are read again until the sidebar shows them", async () => {
   const label = "+X% Faster Cast Rate";
   const withoutLabel = homeStats.replaceAll(label, "");
-  const tab = new HomeTab(SENT, withoutLabel);
-  let reads = 0;
-  const read = tab.readSettledPage.bind(tab);
-  tab.readSettledPage = async () => {
-    reads += 1;
-    tab.page.text = reads >= 3 ? homeStats : withoutLabel;
-    return read();
-  };
+  const tab = homeTab(withoutLabel);
+  const progress = countingTab(tab, { at: 3, text: homeStats });
   const result = await readStatsView(tab, SENT, { ...FAST, expectText: [label] });
-  assert.equal(reads, 3);
+  assert.equal(progress.reads, 3);
   assert.ok(result.text.includes(label));
   // a label that never comes: the last read stands (the checks then report it), after exactly `attempts` reads
-  let never = 0;
-  const stuck = new HomeTab(SENT, withoutLabel);
-  const readStuck = stuck.readSettledPage.bind(stuck);
-  stuck.readSettledPage = async () => {
-    never += 1;
-    return readStuck();
-  };
+  const stuck = homeTab(withoutLabel);
+  const stuckReads = countingTab(stuck);
   const last = await readStatsView(stuck, SENT, { ...FAST, attempts: 4, expectText: [label] });
-  assert.equal(never, 4);
+  assert.equal(stuckReads.reads, 4);
   assert.equal(last.status, "PASSED");
 });
 
@@ -247,7 +248,7 @@ test("stats view: rows read from a page with no count marker are no_anchor, not 
     .split(/\r?\n/u)
     .filter((line) => !["Trading For", "Make an Offer"].includes(line.trim()))
     .join("\n");
-  const result = await readStatsView(new HomeTab(SENT, noMarkers), SENT, { ...FAST, attempts: 1 });
+  const result = await readStatsView(homeTab(noMarkers), SENT, { ...FAST, attempts: 1 });
   assert.ok(parseTradingTxt(noMarkers, { itemName: null }).length > 0); // the page does yield rows
   assert.deepEqual([result.status, result.reason_code], ["FAILED", "no_anchor"]);
   assert.match(result.reason, /筆數標記/u);
@@ -314,7 +315,7 @@ test("a page that never settles is an unsettled FAILED read; any other read erro
   timedOut.readSettledPage = async () => {
     throw new TimeoutError("never settled");
   };
-  const result = await readView(timedOut, "Harlequin Crest", "trading");
+  const result = await readView(timedOut, HARLEQUIN, "trading");
   assert.deepEqual([result.status, result.reason_code, result.settled], ["FAILED", "unsettled", false]);
   assert.match(result.reason, /頁面一直沒有載入完成/u);
 
@@ -322,14 +323,14 @@ test("a page that never settles is an unsettled FAILED read; any other read erro
   stale.readSettledPage = async () => {
     throw new StalePage();
   };
-  const staleResult = await readView(stale, "Harlequin Crest", "trading");
+  const staleResult = await readView(stale, HARLEQUIN, "trading");
   assert.deepEqual([staleResult.status, staleResult.reason_code], ["FAILED", "unsettled"]);
 
   const broken = new FakeTab(TRADING_URL, "Harlequin Crest");
   broken.readSettledPage = async () => {
     throw new Error("cdp socket died");
   };
-  await assert.rejects(() => readView(broken, "Harlequin Crest", "trading"), /cdp socket died/u);
+  await assert.rejects(() => readView(broken, HARLEQUIN, "trading"), /cdp socket died/u);
 });
 
 test("a product page whose title is a different item is FAILED as wrong_item", async () => {
