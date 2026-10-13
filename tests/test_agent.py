@@ -745,30 +745,6 @@ def test_done_and_blocked_do_not_need_a_byte_identical_page(runner, selected):
     assert runner.state["status"] == ("done" if selected == "DONE" else "blocked")
 
 
-def test_an_off_scope_link_is_refused_before_any_input(runner):
-    runner.scope_guard = lambda url: "超出 Traderie D2R 範圍" if "/profile/" in url else None
-    link = {"id": "e9", "kind": "click", "label": "Seller", "role": "link", "node": 90,
-            "href": "https://www.traderie.com/profile/someone"}
-    runner.state["page"]["actions"].append(link)
-    runner.state["page"]["fingerprint"] = fingerprint(runner.state["page"])
-    runner.state["decision"] = decision("e9")
-    runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
-    runner.state["browser"].act.assert_not_called()
-    assert runner.state["status"] == "blocked" and runner.state["scope_blocked_reason"]
-    assert runner.state["history"] == []
-
-
-def test_javascript_and_in_scope_hrefs_are_not_refused(runner):
-    runner.scope_guard = lambda url: "off" if "off.example" in url else None
-    for href in ("javascript:void(0)", "#top", "https://www.traderie.com/diablo2resurrected"):
-        runner.state["page"]["actions"][2]["href"] = href
-        runner.state["page"]["fingerprint"] = fingerprint(runner.state["page"])
-        runner.state["decision"] = decision("e3")
-        runner.state["history"].clear()
-        runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
-        assert runner.state["history"], href
-
-
 def test_the_scope_guard_is_chosen_by_host_only_so_a_path_prefix_cannot_bypass_it():
     from jev_ultrafast.traderie.site import traderie_scope_reason
 

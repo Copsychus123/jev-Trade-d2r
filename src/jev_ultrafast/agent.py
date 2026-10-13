@@ -1,7 +1,6 @@
 """The complete agent loop. Typed choices, observable state, bounded execution."""
 
 import time
-from urllib.parse import urlparse
 
 from .browser import Browser
 from .config import MAX_STEPS
@@ -347,16 +346,6 @@ class Agent:
         state["phase_start"] = len(state["history"])  # the next phase counts its own actions from here
         self._sync_elapsed(state)
 
-    def _off_scope_href(self, action):
-        """The reason when a link would leave the allowed scope. Only real navigations are checked: a javascript:
-        link or a same-page anchor cannot take the page anywhere."""
-        href = action.get("href")
-        if not (callable(self.scope_guard) and isinstance(href, str)):
-            return None
-        if urlparse(href).scheme.lower() in ("", "javascript"):
-            return None
-        return self.scope_guard(href)
-
     def _history_entry(self, state, action, selected, decision, text, page) -> dict:
         """The record of one action, built before the browser call so a half-done action is still visible."""
         return {
@@ -415,11 +404,6 @@ class Agent:
             raise StalePage("Chosen element is no longer available. Choose again.")
         state["last_attempt"] = {"choice": selected, "fingerprint": page["fingerprint"], "label": action["label"]}
         self._require_step_budget(state)
-        blocked_by = self._off_scope_href(action)
-        if blocked_by:
-            state["scope_blocked_reason"] = blocked_by
-            self._block(state)
-            return
         text = None
         if action["kind"] == "fill":
             if not state["browser"].fresh(page, action):
