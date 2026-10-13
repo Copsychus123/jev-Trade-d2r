@@ -16,6 +16,5 @@ extension/dist/
 extension/*.zip
 extension/dist-e2e/
 
-# Kept out of version control on purpose (a local deploy switch and a local screenshot).
-/vercel.json
+# Kept out of version control on purpose (a local screenshot).
 /.agents/*.jpg
