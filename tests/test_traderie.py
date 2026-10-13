@@ -353,6 +353,19 @@ def test_browser_blocks_ad_hosts_only_in_the_dedicated_chrome(monkeypatch, mode,
     assert bool(sent) is blocks
 
 
+def test_only_ascii_digits_make_a_time_line_in_either_reader():
+    """Python's `\\d` matches every Unicode digit while JavaScript's is ASCII, so a card whose time shows full-width
+    digits parsed here and not in the JS reader -- which then dropped the whole card, turning into a failed read. Both
+    patterns now say `[0-9]`; this is exactly the case that differed before."""
+    def card(time):
+        return "\n".join([
+            "seller", " (11)", "1 X Axe", "Softcore -", "PC -", "Ladder", "Trading For", "1 X Pul Rune", time,
+        ])
+
+    assert parse_trading_txt(card("123 小時前"))[0].posted_time == "123 小時前"
+    assert parse_trading_txt(card("１２３ 小時前")) == []
+
+
 def test_a_seller_name_that_starts_with_help_does_not_end_the_listings():
     """The page's own end-of-listings line is exactly "HELP" (measured on a product page: one line, between "Load More"
     and "Getting Started"). Reading it as a prefix cut the list at a seller called "HELPfulTrader", so the rows then

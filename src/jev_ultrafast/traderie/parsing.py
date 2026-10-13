@@ -46,16 +46,19 @@ RECENT_ENV_TAGS = {
 
 # Older entries show a date instead of "N days ago". The Chinese form is what Traderie shows to a Chinese browser;
 # the others are the usual numeric and English forms.
+# `[0-9]`, not `\d`: JavaScript's `\d` is ASCII while Python's matches every Unicode digit, so a time line written
+# in full-width or Arabic-Indic digits was a time line here and not there -- and the JS reader then dropped the whole
+# card, which turns into a failed read. The twins must agree on the shape of a time line.
 ABSOLUTE_DATE = (
-    r"\d{4}年\d{1,2}月\d{1,2}日|\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}/\d{1,2}/\d{4}"
-    r"|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? \d{1,2},? \d{4}"
+    r"[0-9]{4}年[0-9]{1,2}月[0-9]{1,2}日|[0-9]{4}[-/.][0-9]{1,2}[-/.][0-9]{1,2}|[0-9]{1,2}/[0-9]{1,2}/[0-9]{4}"
+    r"|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? [0-9]{1,2},? [0-9]{4}"
 )
 
 # The tail both time patterns share: "just now", its Chinese form, then an absolute date.
 TIME_TAIL = r"just now|剛剛|" + ABSOLUTE_DATE
 
 TIME_REGEX = re.compile(
-    r"^(?:[a-z ]*(?:\d+|a|an)\s*(seconds?|minutes?|hours?|days?|weeks?|months?|years?|"
+    r"^(?:[a-z ]*(?:[0-9]+|a|an)\s*(seconds?|minutes?|hours?|days?|weeks?|months?|years?|"
     r"s|m|h|d|秒|分鐘|小时|小時|天|週|周|個月|月|年)s?\s*(?:ago|前)|"
     + TIME_TAIL
     + ")$",
@@ -65,8 +68,8 @@ TIME_REGEX = re.compile(
 # The Recent Trades view writes relative times in a slightly different shape than a card does, so it needs its own
 # pattern (kept beside TIME_REGEX and compiled once).
 TRADE_TIME_REGEX = re.compile(
-    r"^(?:\d+\s*(?:秒|分鐘|小时|小時|天|週|周|個月|月|年)前|"
-    r"(?:[a-z ]*)?(?:\d+|a|an) ?(?:second|minute|hour|day|week|month|year|s|m|h|d)s? ago|"
+    r"^(?:[0-9]+\s*(?:秒|分鐘|小时|小時|天|週|周|個月|月|年)前|"
+    r"(?:[a-z ]*)?(?:[0-9]+|a|an) ?(?:second|minute|hour|day|week|month|year|s|m|h|d)s? ago|"
     + TIME_TAIL
     + ")$",
     re.IGNORECASE,

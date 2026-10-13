@@ -63,6 +63,16 @@ test("recent trades keep platform, mode, ladder and game version from the They G
   assert.deepEqual([b.platform, b.mode, b.ladder, b.game_version], [null, null, null, null]);
 });
 
+test("only ASCII digits make a time line, here and in the Python reader", () => {
+  // Python's `\d` matches every Unicode digit while JavaScript's is ASCII, so a card whose time shows full-width digits
+  // was kept by the Python reader and dropped here. Both patterns now say `[0-9]`; this is the case that differed.
+  const card = (time) =>
+    ["seller", "1 X Axe", "PC •", "Softcore •", "Trading For", "1 X Pul Rune", time].join("\n");
+  assert.equal(parseTradingTxt(card("123 小時前"), { itemName: "Axe" })[0].posted_time, "123 小時前");
+  assert.deepEqual(parseTradingTxt(card("１２３ 小時前"), { itemName: "Axe" }), []);
+});
+
+
 test("a seller name that starts with HELP does not end the listings early", () => {
   // The page's end-of-listings line is exactly "HELP" (measured: one line, between "Load More" and "Getting Started").
   // Reading it as a prefix cut the list at a seller called "HELPfulTrader", so the rows no longer matched the markers

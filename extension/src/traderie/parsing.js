@@ -29,21 +29,23 @@ const LISTING_NOISE_LINES = new Set([
 // Older entries show a date instead of "N days ago". The Chinese form is what Traderie shows to a Chinese browser;
 // the others are the usual numeric and English forms.
 const ABSOLUTE_DATE =
-  "\\d{4}年\\d{1,2}月\\d{1,2}日|\\d{4}[-/.]\\d{1,2}[-/.]\\d{1,2}|\\d{1,2}/\\d{1,2}/\\d{4}" +
-  "|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\.? \\d{1,2},? \\d{4}";
+  // `[0-9]`, not `\d`: Python's `\d` matches every Unicode digit while JavaScript's is ASCII, so the two readers
+  // disagreed on full-width digits (and the JS one dropped the whole card). Spelled out on both sides.
+  "[0-9]{4}年[0-9]{1,2}月[0-9]{1,2}日|[0-9]{4}[-/.][0-9]{1,2}[-/.][0-9]{1,2}|[0-9]{1,2}/[0-9]{1,2}/[0-9]{4}" +
+  "|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\.? [0-9]{1,2},? [0-9]{4}";
 
 // The tail both time patterns share: "just now", its Chinese form, then an absolute date.
 const TIME_TAIL = `just now|剛剛|${ABSOLUTE_DATE}`;
 
 export const TIME_REGEX = new RegExp(
-  "^(?:[a-z ]*(?:\\d+|a|an)\\s*(seconds?|minutes?|hours?|days?|weeks?|months?|years?|s|m|h|d|秒|分鐘|小时|小時|天|週|周|個月|月|年)s?\\s*(?:ago|前)|" +
+  "^(?:[a-z ]*(?:[0-9]+|a|an)\\s*(seconds?|minutes?|hours?|days?|weeks?|months?|years?|s|m|h|d|秒|分鐘|小时|小時|天|週|周|個月|月|年)s?\\s*(?:ago|前)|" +
     `${TIME_TAIL})$`,
   "iu",
 );
 
 const TRADE_TIME_RE = new RegExp(
-  "^(?:\\d+\\s*(?:秒|分鐘|小时|小時|天|週|周|個月|月|年)前|" +
-    "(?:[a-z ]*)?(?:\\d+|a|an) ?(?:second|minute|hour|day|week|month|year|s|m|h|d)s? ago|" +
+  "^(?:[0-9]+\\s*(?:秒|分鐘|小时|小時|天|週|周|個月|月|年)前|" +
+    "(?:[a-z ]*)?(?:[0-9]+|a|an) ?(?:second|minute|hour|day|week|month|year|s|m|h|d)s? ago|" +
     `${TIME_TAIL})$`,
   "iu",
 );
