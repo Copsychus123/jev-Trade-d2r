@@ -10,7 +10,7 @@ export function formulaSafe(text) {
 }
 
 export function csvCell(value) {
-  const text = formulaSafe(value === null || value === undefined ? "" : String(value));
+  const text = formulaSafe(String(value ?? ""));
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 

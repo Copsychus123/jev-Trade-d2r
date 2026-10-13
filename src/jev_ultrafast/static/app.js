@@ -1,6 +1,14 @@
 import { csvFileName, toCsv } from "/csv.js";
 const $ = (id) => document.getElementById(id);
 
+/** A one-line `createElement`: a tag, an optional class and optional text. */
+function element(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
 // What a failed check means, in the player's words: the ids in `verification.failed_checks` are internal, and a
 // non-technical player must not be shown "same_product" or "recent_rows_ok". The panel has the same list
 // (`extension/src/labels.js` CHECK_REASONS) and `extension/test/check-reasons-parity.test.mjs` keeps the two in step.
@@ -86,12 +94,8 @@ function renderUsage(usage) {
     : [];
   box.replaceChildren(
     ...cells.map(([label, value]) => {
-      const cell = document.createElement("div");
-      const name = document.createElement("span");
-      const strong = document.createElement("strong");
-      name.textContent = label;
-      strong.textContent = value;
-      cell.append(name, strong);
+      const cell = element("div");
+      cell.append(element("span", null, label), element("strong", null, value));
       return cell;
     }),
   );
@@ -102,10 +106,8 @@ function renderPlan() {
   const labels = state.phase_labels || [];
   $("plan").replaceChildren(
     ...labels.map((label, i) => {
-      const step = document.createElement("div");
-      const mark = document.createElement("span");
-      step.className = `plan-step ${i === state.plan_index ? "current" : ""}`;
-      mark.textContent = i < state.plan_index ? "✓" : String(i + 1);
+      const step = element("div", `plan-step ${i === state.plan_index ? "current" : ""}`);
+      const mark = element("span", null, i < state.plan_index ? "✓" : String(i + 1));
       step.append(mark, document.createTextNode(label));
       return step;
     }),
@@ -124,48 +126,50 @@ function phaseLabelOf(phase) {
 
 // A rule finished a phase without asking Jev: show it between the decisions around it.
 function ruleRow(event) {
-  const el = document.createElement("div");
-  el.className = "decision-row rule-row";
-  el.textContent = event.press
-    ? `規則：${event.label}（沒有呼叫 Jev）`
-    : `規則：${event.label} 已按 ${event.count} 次，${phaseLabelOf(event.phase)}完成（沒有呼叫 Jev）`;
-  return el;
+  return element(
+    "div",
+    "decision-row rule-row",
+    event.press
+      ? `規則：${event.label}（沒有呼叫 Jev）`
+      : `規則：${event.label} 已按 ${event.count} 次，${phaseLabelOf(event.phase)}完成（沒有呼叫 Jev）`,
+  );
 }
 
 // One "第 N 次決策" line; `next` is the following decision, `executedSteps` how far the run got.
-function decisionRow(d, i, next, executedSteps) {
-  const el = document.createElement("div");
-  el.className = "decision-row";
-  const executed = next ? next.step > d.step : executedSteps > d.step;
-  const finishes = d.operation === "DONE" || d.operation === "BLOCKED";
-  const alternatives = (d.alternatives || []).slice(0, 2);
-  const phaseLabel = phaseLabelAt(d.phase);
-  const what = finishes && d.operation === "DONE" ? phaseLabel || "完成階段" : d.label || d.choice;
+function decisionRow(decision, i, next, executedSteps) {
+  const row = element("div", "decision-row");
+  const executed = next ? next.step > decision.step : executedSteps > decision.step;
+  const finishes = decision.operation === "DONE" || decision.operation === "BLOCKED";
+  const alternatives = (decision.alternatives || []).slice(0, 2);
+  const phaseLabel = phaseLabelAt(decision.phase);
+  const what =
+    finishes && decision.operation === "DONE" ? phaseLabel || "完成階段" : decision.label || decision.choice;
   const chosen =
-    d.probability == null
+    decision.probability == null
       ? null
-      : d.target_probability != null
-        ? `操作 ${percent(d.probability)} · 目標 ${percent(d.target_probability)}`
-        : percent(d.probability);
+      : decision.target_probability != null
+        ? `操作 ${percent(decision.probability)} · 目標 ${percent(decision.target_probability)}`
+        : percent(decision.probability);
   // Two answers within 15 percentage points of each other: the user may want to look closer.
-  const close = d.probability != null && alternatives.length > 0 && d.probability - alternatives[0][1] < 0.15;
+  const close =
+    decision.probability != null && alternatives.length > 0 && decision.probability - alternatives[0][1] < 0.15;
   const parts = [
     `第 ${i + 1} 次決策`,
-    `${operationName(d.operation)} → ${what}`,
+    `${operationName(decision.operation)} → ${what}`,
     chosen,
     ...alternatives.map(([name, p]) => `${operationName(name)} ${percent(p)}`),
-    `輸入 ${formatNumber(d.usage?.input_tokens)} token`,
-    `${((d.latency_ms || 0) / 1000).toFixed(1)} 秒`,
-    finishes ? null : executed ? `已執行（第 ${d.step + 1} 步）` : "未執行：頁面已變動，重新決策",
+    `輸入 ${formatNumber(decision.usage?.input_tokens)} token`,
+    `${((decision.latency_ms || 0) / 1000).toFixed(1)} 秒`,
+    finishes ? null : executed ? `已執行（第 ${decision.step + 1} 步）` : "未執行：頁面已變動，重新決策",
     close ? "（接近）" : null,
-    d.reasked
-      ? `（原本選${operationName(d.reasked.operation)}，目標只有 ${percent(d.reasked.target_probability)}，已重問）`
+    decision.reasked
+      ? `（原本選${operationName(decision.reasked.operation)}，目標只有 ${percent(decision.reasked.target_probability)}，已重問）`
       : null,
   ].filter(Boolean);
-  el.textContent = parts.join(" · ");
-  if (close) el.classList.add("close-call");
-  if (!finishes && !executed) el.classList.add("skipped");
-  return el;
+  row.textContent = parts.join(" · ");
+  if (close) row.classList.add("close-call");
+  if (!finishes && !executed) row.classList.add("skipped");
+  return row;
 }
 
 function renderDecisions(decisions, executedSteps, ruleEvents = []) {
@@ -175,10 +179,10 @@ function renderDecisions(decisions, executedSteps, ruleEvents = []) {
     return;
   }
   const pending = [...ruleEvents];
-  const rows = decisions.flatMap((d, i) => {
+  const rows = decisions.flatMap((decision, i) => {
     const before = [];
-    while (pending.length && pending[0].step <= d.step) before.push(ruleRow(pending.shift()));
-    return [...before, decisionRow(d, i, decisions[i + 1], executedSteps)];
+    while (pending.length && pending[0].step <= decision.step) before.push(ruleRow(pending.shift()));
+    return [...before, decisionRow(decision, i, decisions[i + 1], executedSteps)];
   });
   log.replaceChildren(...rows, ...pending.map(ruleRow));
 }
@@ -222,6 +226,10 @@ for (const [key, config] of Object.entries(marketViews)) {
     if (!rows.length) return;
     // The same cells as the on-screen table, so the file cannot drift from what the user sees.
     saveText(csvFileName(state.item_name, config.label), toCsv(config.head, rows.map(config.cells)), "text/csv;charset=utf-8");
+  });
+  // The raw page text is not part of the state: fetch it only when its details block is open.
+  $(`${config.prefix}-raw`).parentElement.addEventListener("toggle", (event) => {
+    if (event.target.open) loadRaw(key);
   });
 }
 
@@ -309,16 +317,20 @@ function fillMarketTable(table, view, config) {
 function fillMarketHead(table, config) {
   const headRow = table.createTHead().insertRow();
   config.head.forEach((name, i) => {
-    const th = document.createElement("th");
-    th.textContent = name;
-    if (i === config.mergeInto?.from) th.className = "col-merge";
+    const th = element("th", i === config.mergeInto?.from ? "col-merge" : null, name);
     if (i === config.mergeInto?.into) {
-      const suffix = document.createElement("span");
-      suffix.className = "inline-head";
-      suffix.textContent = ` / ${config.head[config.mergeInto.from]}`;
-      th.append(suffix);
+      th.append(element("span", "inline-head", ` / ${config.head[config.mergeInto.from]}`));
     }
     headRow.append(th);
+  });
+}
+
+/** One row's cells; every cell is written with `textContent`, so page text can never become markup. */
+function appendCells(tr, values, config) {
+  values.forEach((cell, i) => {
+    const td = tr.insertCell();
+    td.textContent = dash(cell);
+    if (i === config.mergeInto?.from) td.className = "col-merge";
   });
 }
 
@@ -327,17 +339,12 @@ function fillMarketBody(table, view, config) {
   for (const row of view.rows) {
     const tr = body.insertRow();
     const values = config.cells(row);
-    values.forEach((cell, i) => {
-      const td = tr.insertCell();
-      td.textContent = dash(cell);
-      if (i === config.mergeInto?.from) td.className = "col-merge";
-    });
+    appendCells(tr, values, config);
     if (config.mergeInto) {
       // Wide layout: the column is hidden and shown as small text under the target cell (CSS decides).
-      const extra = document.createElement("small");
-      extra.className = "inline-extra";
-      extra.textContent = dash(values[config.mergeInto.from]);
-      tr.cells[config.mergeInto.into].append(extra);
+      tr.cells[config.mergeInto.into].append(
+        element("small", "inline-extra", dash(values[config.mergeInto.from])),
+      );
     }
   }
 }
@@ -345,21 +352,21 @@ function fillMarketBody(table, view, config) {
 function renderMarket(key) {
   const config = marketViews[key];
   const view = state?.market?.[key] || { status: "NOT_RUN", rows: [], text: "" };
-  const p = config.prefix;
-  const status = $(`${p}-status`);
+  const prefix = config.prefix;
+  const status = $(`${prefix}-status`);
   status.textContent = view.status;
   status.dataset.status = view.status;
-  $(`${p}-csv`).disabled = !view.rows.length;
+  $(`${prefix}-csv`).disabled = !view.rows.length;
   const time = view.observed_at
     ? new Date(view.observed_at).toLocaleTimeString("zh-TW", { hour12: false })
     : "";
-  $(`${p}-meta`).textContent = marketMetaText(view, time);
-  const table = $(`${p}-table`);
+  $(`${prefix}-meta`).textContent = marketMetaText(view, time);
+  const table = $(`${prefix}-table`);
   const stamp = `${view.status}|${view.observed_at}`;
   if (table.dataset.stamp === stamp) return;
   table.dataset.stamp = stamp;
   fillMarketTable(table, view, config);
-  const raw = $(`${p}-raw`);
+  const raw = $(`${prefix}-raw`);
   raw.textContent = "";
   delete raw.dataset.loaded;
   if (raw.parentElement.open) loadRaw(key);
@@ -379,12 +386,6 @@ async function loadRaw(key) {
   const text = await fetchText("/api/raw?view=" + key);
   raw.textContent = text ?? "";
   if (text === null) delete raw.dataset.loaded;
-}
-
-for (const key of Object.keys(marketViews)) {
-  $(`${marketViews[key].prefix}-raw`).parentElement.addEventListener("toggle", (event) => {
-    if (event.target.open) loadRaw(key);
-  });
 }
 
 // The report text is not part of the state: fetch it once when it becomes ready.
@@ -531,37 +532,62 @@ function renderPageHeader(page) {
 }
 
 // The chosen action, its latency and the ranked operation probabilities.
-function renderActionSummary(d, elements, pageActions) {
+function renderActionSummary(decision, elements, pageActions) {
   $("action-count").textContent = `${elements.length} 個元素`;
-  const chosen = pageActions.find((a) => a.id === d?.choice);
-  $("choice-title").textContent = d ? (chosen?.label || d.choice) : "請選擇動作";
-  $("latency").textContent = d ? `${d.latency_ms} ms` : "—";
-  $("ranking-details").hidden = !d?.target;
-  $("ranking-note").textContent = d ? "由 Jev 完成排序" : "未排序";
-  const op = Object.entries(d?.operation_probabilities || {}).sort((a,b)=>b[1]-a[1]);
-  $("operation-choices").innerHTML = op.map(([name,p]) =>
-    `<span class="operation-choice ${name === d.operation ? 'best' : ''}">${escape(name)} <b>${percent(p)}</b></span>`).join('');
+  const chosen = pageActions.find((a) => a.id === decision?.choice);
+  $("choice-title").textContent = decision ? chosen?.label || decision.choice : "請選擇動作";
+  $("latency").textContent = decision ? `${decision.latency_ms} ms` : "—";
+  $("ranking-details").hidden = !decision?.target;
+  $("ranking-note").textContent = decision ? "由 Jev 完成排序" : "未排序";
+  const op = Object.entries(decision?.operation_probabilities || {}).sort((a, b) => b[1] - a[1]);
+  $("operation-choices").innerHTML = op
+    .map(
+      ([name, p]) =>
+        `<span class="operation-choice ${name === decision.operation ? "best" : ""}">${escape(name)} <b>${percent(p)}</b></span>`,
+    )
+    .join("");
 }
 
-function targetProbability(d, e) {
-  return d?.target_probabilities?.[e.index] ??
-    Math.max(-1, ...(e.options || []).map(o=>d?.target_probabilities?.[o.index] ?? -1));
+function targetProbability(decision, e) {
+  return (
+    decision?.target_probabilities?.[e.index] ??
+    Math.max(-1, ...(e.options || []).map((o) => decision?.target_probabilities?.[o.index] ?? -1))
+  );
 }
 
 // The decision's selected target index, as the string the element list and overlays compare with.
-const selectedTarget = (d) => d?.target?.split(":")[0];
+const selectedTarget = (decision) => decision?.target?.split(":")[0];
+
+/** One element of the choice list, as markup; page-derived strings always go through `escape`. */
+function choiceRow(entry, decision, selectedIndex) {
+  const p = decision ? targetProbability(decision, entry) : -1;
+  const value = entry.value ? " · " + escape(entry.value) : "";
+  const checked = entry.checked !== undefined ? " · checked " + escape(entry.checked) : "";
+  const bar = p >= 0 ? `<div class="bar" style="--probability:${p * 100}%"></div>` : "";
+  return `<div class="choice ${selectedIndex === entry.index ? "best" : ""}" data-action="${escape(entry.index)}"><span class="choice-id">[${escape(entry.index)}]</span><div class="choice-label">${escape(entry.label)}<small>${escape(entry.role)}${value}${checked}</small>${bar}</div><span class="probability">${p >= 0 ? percent(p) : "—"}</span></div>`;
+}
 
 // The element list, best target first; returns the decision's selected target index for the overlay.
-function renderChoices(elements, d) {
-  const selectedIndex = selectedTarget(d);
-  if (d && elements.length) elements.sort((a,b)=>targetProbability(d,b)-targetProbability(d,a));
+function renderChoices(elements, decision) {
+  const selectedIndex = selectedTarget(decision);
+  if (decision && elements.length) {
+    elements.sort((a, b) => targetProbability(decision, b) - targetProbability(decision, a));
+  }
   $("choices").innerHTML = elements.length
-    ? elements.map(e => {
-        const p = d ? targetProbability(d, e) : -1;
-        return `<div class="choice ${selectedIndex === e.index ? 'best' : ''}" data-action="${escape(e.index)}"><span class="choice-id">[${escape(e.index)}]</span><div class="choice-label">${escape(e.label)}<small>${escape(e.role)}${e.value ? ' · '+escape(e.value) : ''}${e.checked !== undefined ? ' · checked '+escape(e.checked) : ''}</small>${p >= 0 ? `<div class="bar" style="--probability:${p*100}%"></div>` : ''}</div><span class="probability">${p >= 0 ? percent(p) : '—'}</span></div>`;
-      }).join('')
+    ? elements.map((entry) => choiceRow(entry, decision, selectedIndex)).join("")
     : '<p class="muted">可執行的動作將顯示於此。</p>';
   return selectedIndex;
+}
+
+/** The overlay box for one clickable element, positioned as a share of the page so it scales with the screenshot. */
+function targetBox(action, index, selectedIndex, pw, ph) {
+  const { x, y, w, h } = action.rect;
+  return `<div class="target ${index === selectedIndex ? "selected" : ""}" data-action="${escape(index)}" style="left:${(100 * x) / pw}%;top:${(100 * y) / ph}%;width:${(100 * w) / pw}%;height:${(100 * h) / ph}%"><span>${escape(index)}</span></div>`;
+}
+
+/** The boxes are only readable with the labels on: keep the checkbox and the overlay in step. */
+function syncTargetsVisibility() {
+  $("targets").hidden = !$("overlays").checked;
 }
 
 // Overlay boxes for the clickable elements; each is labelled with the element index the choice list shows, and the
@@ -573,35 +599,35 @@ function renderTargets(pageActions, page, selectedIndex) {
   const pw = page.w || 1;
   const ph = page.h || 1;
   const boxes = [];
-  for (const a of pageActions) {
-    const index = indices[a.node];
-    if (!a.rect || index === undefined || seen.has(a.node)) continue;
-    seen.add(a.node);
-    boxes.push(`<div class="target ${index === selectedIndex ? 'selected' : ''}" data-action="${escape(index)}" style="left:${100*a.rect.x/pw}%;top:${100*a.rect.y/ph}%;width:${100*a.rect.w/pw}%;height:${100*a.rect.h/ph}%"><span>${escape(index)}</span></div>`);
+  for (const action of pageActions) {
+    const index = indices[action.node];
+    if (!action.rect || index === undefined || seen.has(action.node)) continue;
+    seen.add(action.node);
+    boxes.push(targetBox(action, index, selectedIndex, pw, ph));
   }
-  $("targets").innerHTML = boxes.join('');
-  $("targets").hidden = !$("overlays").checked;
+  $("targets").innerHTML = boxes.join("");
+  syncTargetsVisibility();
+}
+
+/** One executed action, as markup. */
+function traceRow(entry) {
+  return `<div class="trace-row"><span class="number">${String(entry.step).padStart(2, "0")}</span><div>${escape(entry.action)}${entry.text ? ` <b>“${escape(entry.text)}”</b>` : ""}</div><span class="time">${entry.latency_ms} ms · ${percent(entry.probability)}</span><span class="effect">${entry.page_changed ? "頁面已更新" : "頁面無變化"}</span></div>`;
 }
 
 // Returns how many actions ran, which the decision log needs.
 function renderHistory() {
   const history = Array.isArray(state.history) ? state.history : [];
   $("history").innerHTML = history.length
-    ? history
-        .map(
-          (h) =>
-            `<div class="trace-row"><span class="number">${String(h.step).padStart(2, "0")}</span><div>${escape(h.action)}${h.text ? ` <b>“${escape(h.text)}”</b>` : ""}</div><span class="time">${h.latency_ms} ms · ${percent(h.probability)}</span><span class="effect">${h.page_changed ? "頁面已更新" : "頁面無變化"}</span></div>`,
-        )
-        .join("")
+    ? history.map(traceRow).join("")
     : '<p class="muted">每次執行的動作都會留下觀察結果。</p>';
   const elapsedSec = typeof state.elapsed_ms === "number" ? (state.elapsed_ms / 1000).toFixed(2) : "0.00";
   $("step-count").textContent = `${history.length} 次動作 · ${elapsedSec} 秒`;
   return history.length;
 }
 
-function renderModelRequest(d, page, pageActions) {
+function renderModelRequest(decision, page, pageActions) {
   $("model-state").textContent = JSON.stringify(
-    d?.request || {
+    decision?.request || {
       goal: state.goal,
       url: page.url,
       text: page.text,
@@ -616,8 +642,8 @@ function render() {
   if (!state) return;
   renderPlan();
   renderUsage(state.usage);
-  const page = state.page,
-    d = state.decision || (state.status === "done" ? state.decisions?.at(-1) : null);
+  const page = state.page;
+  const decision = state.decision || (state.status === "done" ? state.decisions?.at(-1) : null);
   renderStatus();
   renderMarket("trading");
   renderMarket("recent_trades");
@@ -632,12 +658,12 @@ function render() {
   renderPageHeader(page);
   const elements = Array.isArray(state.elements) ? [...state.elements] : [];
   const pageActions = Array.isArray(page.actions) ? page.actions : [];
-  renderActionSummary(d, elements, pageActions);
-  const selectedIndex = renderChoices(elements, d);
+  renderActionSummary(decision, elements, pageActions);
+  const selectedIndex = renderChoices(elements, decision);
   renderTargets(pageActions, page, selectedIndex);
   const stepCount = renderHistory();
   renderDecisions(Array.isArray(state.decisions) ? state.decisions : [], stepCount, state.rule_events || []);
-  renderModelRequest(d, page, pageActions);
+  renderModelRequest(decision, page, pageActions);
   controls();
 }
 $("task-form").addEventListener("submit", (event) => {
@@ -663,9 +689,7 @@ $("stop").addEventListener("click", () => {
   controls();
 });
 
-$("overlays").addEventListener("change", () => {
-  $("targets").hidden = !$("overlays").checked;
-});
+$("overlays").addEventListener("change", syncTargetsVisibility);
 
 // Mark the hovered choice (if any) and the target the decision picked.
 function highlightTargets(hovered) {
@@ -721,10 +745,7 @@ async function downloadReportFile() {
   }
 }
 
-const downloadReportBtn = $("download-report");
-if (downloadReportBtn) {
-  downloadReportBtn.addEventListener("click", downloadReportFile);
-}
+$("download-report").addEventListener("click", downloadReportFile);
 
 // Rough estimate shown next to the selector. Measured with real runs: each view loads 50 listings / 20 trades per page,
 // a full query takes about 19 s + 7.7 s per press, about 18.6k + 11.9k tokens per press (US$0.042 per million input).
