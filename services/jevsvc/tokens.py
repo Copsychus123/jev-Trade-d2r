@@ -38,4 +38,6 @@ def verify(secret: str, token, now_ts) -> dict:
             raise ValueError("expired")
         return payload
     except (ValueError, KeyError, TypeError, AttributeError) as exc:
+        # A token that is not a string has no `.split`, a signed body that is not what we wrote has no `exp` or no
+        # dict shape: every malformed token is simply invalid, never a crash.
         raise InviteError(401, INVALID, "token_invalid") from exc

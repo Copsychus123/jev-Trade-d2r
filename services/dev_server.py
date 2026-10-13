@@ -32,7 +32,7 @@ def make_server(store, routes=None) -> ThreadingHTTPServer:
 
         do_GET = do_POST = do_PUT = do_PATCH = do_DELETE = do_OPTIONS = _serve
 
-        def log_message(self, format, *args):
+        def log_message(self, _format, *args):
             pass
 
     return ThreadingHTTPServer((HOST, PORT), Handler)

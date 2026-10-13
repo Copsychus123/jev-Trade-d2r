@@ -23,15 +23,19 @@ def is_goal_safe(text) -> bool:
     )
 
 
-def load(path: Path | None = None) -> tuple[str, ...]:
-    path = path or (BUNDLED if BUNDLED.exists() else SOURCE)
-    names = json.loads(path.read_text(encoding="utf-8"))["bases"]
-    valid = (
+def _is_base_list(names) -> bool:
+    """A usable list: non-empty, unique, and every name is goal-safe, already trimmed and within MAX_BASE_NAME."""
+    return (
         isinstance(names, list)
-        and names
+        and bool(names)
         and all(is_goal_safe(n) and n == n.strip() and 0 < len(n) <= MAX_BASE_NAME for n in names)
         and len(set(names)) == len(names)
     )
-    if not valid:
+
+
+def load(path: Path | None = None) -> tuple[str, ...]:
+    path = path or (BUNDLED if BUNDLED.exists() else SOURCE)
+    names = json.loads(path.read_text(encoding="utf-8"))["bases"]
+    if not _is_base_list(names):
         raise ValueError(f"{path.name}: 'bases' must be a non-empty list of unique item names")
     return tuple(names)

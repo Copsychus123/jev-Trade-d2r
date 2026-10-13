@@ -20,14 +20,18 @@ def build(target: Path = BUILD) -> None:
         for child in target.iterdir():
             if child.name == KEEP:
                 continue
-            shutil.rmtree(child) if child.is_dir() else child.unlink()
+            if child.is_dir():
+                shutil.rmtree(child)
+            else:
+                child.unlink()
     target.mkdir(parents=True, exist_ok=True)
     shutil.copytree(ROOT / "jevsvc", target / "jevsvc", ignore=shutil.ignore_patterns("__pycache__", "bases.json"))
     for name in ("app.py", "requirements.txt", "vercel.json", ".python-version"):
         shutil.copy2(ROOT / name, target / name)
     # The server's own list of item types Jev may pick from (the extension's item table has much more than that).
-    names = bases.load(bases.SOURCE)
-    (target / "jevsvc" / "bases.json").write_text(json.dumps({"bases": names}, ensure_ascii=False), encoding="utf-8")
+    base_names = bases.load(bases.SOURCE)
+    staged_bases = target / "jevsvc" / "bases.json"
+    staged_bases.write_text(json.dumps({"bases": base_names}, ensure_ascii=False), encoding="utf-8")
     package = target / "jev_ultrafast"
     (package / "traderie").mkdir(parents=True)
     for name in ("config.py", "model.py", "questions.py"):

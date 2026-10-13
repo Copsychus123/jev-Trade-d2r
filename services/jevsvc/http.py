@@ -60,9 +60,10 @@ def client_key(request: Request) -> str:
     return hashlib.sha256(address.encode("utf-8")).hexdigest()[:16]
 
 
-def process(raw_length, read_body, ip, route, store=None):
+def process(raw_length, read_body, caller, route, store=None):
     """The request logic shared by every transport: returns (status, payload).
-    `raw_length` is the Content-Length header as sent (or None): it is client input and may be junk."""
+    `raw_length` is the Content-Length header as sent (or None): it is client input and may be junk; `caller` is the
+    hashed client key from `client_key`, passed on to the route as the throttle key."""
     try:
         try:
             length = int(raw_length or 0)
@@ -90,7 +91,7 @@ def process(raw_length, read_body, ip, route, store=None):
             store = shared_store(url, token)
         if store.run("GET", invites.PAUSE_KEY):  # the kill switch: `invite.py pause`
             return 503, {"error": "服務暫時停用，請稍後再試", "code": "paused"}
-        return route(body, ip, store, secret, datetime.now(timezone.utc))
+        return route(body, caller, store, secret, datetime.now(timezone.utc))
     except InviteError as exc:
         return exc.status, {"error": exc.message, **({"code": exc.code} if exc.code else {})}
     except StoreError as exc:

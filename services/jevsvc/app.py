@@ -46,6 +46,9 @@ REQUEST_BUDGET = 45.0
 
 BASES = bases.load()
 
+# The failures a Jev step can raise: an unavailable model (502), never the client's own mistake (400).
+MODEL_ERRORS = (RuntimeError, ValueError, TimeoutError, httpx.HTTPError)
+
 
 def _error(status, error, code):
     return status, {"error": error, "code": code}
@@ -89,19 +92,19 @@ def _start_reply(secret, payload, used, limit):
 
 def _remembered_start(store, saved_key, secret):
     """The answer a repeated start already got (same request_id), or None when there is none to replay."""
-    saved = store.run("GET", saved_key) if saved_key else None
-    if not saved:
+    remembered = store.run("GET", saved_key) if saved_key else None
+    if not remembered:
         return None
     try:
-        payload, used, limit = json.loads(saved)
+        payload, used, limit = json.loads(remembered)
         return 200, _start_reply(secret, payload, used, limit)
     except (ValueError, TypeError, KeyError):
         return None  # unreadable: start again
 
 
-def run_start(body, ip, store, secret, now):
-    if err := _request_prelude(body):
-        return err
+def run_start(body, caller, store, secret, now):
+    if refusal := _refuse_non_object(body):
+        return refusal
     try:
         item = _clean_item(body.get("item_name"))
     except ValueError as exc:
@@ -119,21 +122,22 @@ def run_start(body, ip, store, secret, now):
     saved_key = None if request_id is None else f"start:{invites.code_hash(invite)}:{request_id}"
     if reply := _remembered_start(store, saved_key, secret):
         return reply
-    found = invites.check_and_count(store, invite, ip, now)
+    invite_record = invites.check_and_count(store, invite, caller, now)
     payload = {
         "rid": uuid.uuid4().hex,
-        "inv": found["hash"],
+        "inv": invite_record["hash"],
         "item": item,
         "lm": load_more,
         "exp": int(now.timestamp()) + tokens.RUN_SECONDS,
     }
     if saved_key:
+        remembered = json.dumps([payload, invite_record["used"], invite_record["limit"]])
         try:
-            store.run("SET", saved_key, json.dumps([payload, found["used"], found["limit"]]), "EX", tokens.RUN_SECONDS)
+            store.run("SET", saved_key, remembered, "EX", tokens.RUN_SECONDS)
         except StoreError as exc:  # the use is already counted: answer anyway
             print(f"start not remembered: {exc}", flush=True)
-    print(f"start inv={found['hash'][:12]} used={found['used']}", flush=True)
-    return 200, _start_reply(secret, payload, found["used"], found["limit"])
+    print(f"start inv={invite_record['hash'][:12]} used={invite_record['used']}", flush=True)
+    return 200, _start_reply(secret, payload, invite_record["used"], invite_record["limit"])
 
 
 def _text(value, limit, *, cut=True):
@@ -159,7 +163,8 @@ def _clean_action(action):
     sent (rect, delta, ...) is dropped."""
     if not isinstance(action, dict):
         return None
-    kind, ident = _text(action.get("kind"), MAX_FIELD, cut=False), _text(action.get("id"), MAX_FIELD, cut=False)
+    kind = _text(action.get("kind"), MAX_FIELD, cut=False)
+    ident = _text(action.get("id"), MAX_FIELD, cut=False)
     label = _text(action.get("label"), MAX_LABEL)
     if not kind or not ident or label is None:
         return None
@@ -184,8 +189,10 @@ def _clean_action(action):
 def _clean_page(page):
     if not isinstance(page, dict):
         return None
-    url, title = _text(page.get("url"), MAX_URL, cut=False), _text(page.get("title"), MAX_TITLE, cut=False)
-    text, actions = _text(page.get("text"), MAX_TEXT, cut=False), page.get("actions")
+    url = _text(page.get("url"), MAX_URL, cut=False)
+    title = _text(page.get("title"), MAX_TITLE, cut=False)
+    text = _text(page.get("text"), MAX_TEXT, cut=False)
+    actions = page.get("actions")
     if url is None or title is None or text is None or not isinstance(actions, list) or len(actions) > MAX_ACTIONS:
         return None
     clean = [_clean_action(a) for a in actions]
@@ -206,11 +213,12 @@ def _clean_history(history):
         cleaned = {}
         for key, limit in limits.items():
             value = entry.get(key)
-            if value is None:
+            if value is None:  # an absent field, or an explicit None, is simply left out
                 continue
-            if not isinstance(value, str):
+            text = _text(value, limit)
+            if text is None:
                 return None
-            cleaned[key] = value[:limit]
+            cleaned[key] = text
         changed = entry.get("page_changed")
         if changed is not None:
             if not isinstance(changed, bool):
@@ -224,10 +232,9 @@ def _claims(payload):
     """A correctly signed token that does not carry what this version needs (an older token) is just invalid."""
     try:
         validate_load_more(payload.get("lm"))
-        ok = all(isinstance(payload.get(k), str) and payload[k] for k in ("rid", "inv", "item"))
     except ValueError:
-        ok = False
-    if not ok:
+        raise invites.InviteError(401, tokens.INVALID, "token_invalid") from None
+    if not all(isinstance(payload.get(key), str) and payload[key] for key in ("rid", "inv", "item")):
         raise invites.InviteError(401, tokens.INVALID, "token_invalid")
     return payload
 
@@ -270,26 +277,39 @@ def _after_failure(store, claims, run_key, *, spare=1):
     commands.append(("SET", f"refund:{rid}", "1", "NX", "EX", tokens.RUN_SECONDS))
     try:
         results = store.pipeline(commands)
-        answered, first = results[0], results[-1]  # the GET is first, the SET that claims the refund is always last
+        # The GET is first, the SET that claims the refund is always last.
+        was_answered, claimed = results[0], results[-1]
         record = invites.record_key(claims["inv"])
-        if answered is None and first == "OK" and len(claims["inv"]) == 64 and store.run("HEXISTS", record, "limit"):
+        if (
+            was_answered is None
+            and claimed == "OK"
+            and len(claims["inv"]) == 64
+            and store.run("HEXISTS", record, "limit")
+        ):
             store.run("HINCRBY", record, "used", -1)
     except StoreError as exc:
         print(f"failed step not settled: {exc}", flush=True)
 
 
-def _request_prelude(body):
+def _model_unavailable(store, claims, run_key, exc, *, stage, message, spare=1):
+    """The refusal for a Jev step the model could not answer: log it, settle the attempt's cost, then 502."""
+    print(f"{stage} failed {_who(claims)} {_brief(exc)}", flush=True)
+    _after_failure(store, claims, run_key, spare=spare)
+    return _error(502, message, "model_unavailable")
+
+
+def _refuse_non_object(body):
+    """The refusal for a request body that is not an object, or None when it is one."""
     if not isinstance(body, dict):
         return _error(400, **BAD_REQUEST)
     return None
 
 
-MODEL_ERRORS = (RuntimeError, ValueError, TimeoutError, httpx.HTTPError)
-
-
 def _step_claims(body, secret, now):
     """The request deadline and the verified run token every Jev step starts from."""
-    return time.monotonic() + REQUEST_BUDGET, _claims(tokens.verify(secret, body.get("run_token"), now.timestamp()))
+    deadline = time.monotonic() + REQUEST_BUDGET
+    claims = _claims(tokens.verify(secret, body.get("run_token"), now.timestamp()))
+    return deadline, claims
 
 
 def _who(claims) -> str:
@@ -311,17 +331,19 @@ def _reserve_call_budget(store, claims, count, override=None):
         print("missing env: TYPESAFE_API_KEY", flush=True)
         return None, _error(500, **NOT_CONFIGURED)
     run_key = f"run:{claims['rid']}"
-    if not _reserve(store, run_key, count):
-        msg = f"這次查詢的 Jev 呼叫次數已達上限（{MAX_MODEL_CALLS} 次），請重新開始"
-        return run_key, _error(429, msg, "call_limit")
-    return run_key, None
+    if _reserve(store, run_key, count):
+        return run_key, None
+    msg = f"這次查詢的 Jev 呼叫次數已達上限（{MAX_MODEL_CALLS} 次），請重新開始"
+    return run_key, _error(429, msg, "call_limit")
 
 
 def choose_step(body, store, secret, now, chooser=None):
-    if err := _request_prelude(body):
-        return err
+    if refusal := _refuse_non_object(body):
+        return refusal
     deadline, claims = _step_claims(body, secret, now)
-    phase, page, history = body.get("phase"), _clean_page(body.get("page")), _clean_history(body.get("history", []))
+    phase = body.get("phase")
+    page = _clean_page(body.get("page"))
+    history = _clean_history(body.get("history", []))
     if phase not in VIEW_NAMES or page is None or history is None:
         return _error(400, BAD_PAGE, "bad_page")
     reason = traderie_scope_reason(page["url"])
@@ -334,9 +356,9 @@ def choose_step(body, store, secret, now, chooser=None):
         return _error(400, BAD_PAGE, "bad_page")
     # run:{rid} counts model calls. A request may cost two (re-ask), so both are reserved up front and one is handed
     # back when it was not needed: a run never makes more than MAX_MODEL_CALLS calls.
-    run_key, err = _reserve_call_budget(store, claims, 2, chooser)
-    if err:
-        return err
+    run_key, refusal = _reserve_call_budget(store, claims, 2, chooser)
+    if refusal:
+        return refusal
     try:
         goal = phase_plan(build_goal(claims["item"], claims["lm"]))[0][VIEW_NAMES.index(phase)]
         # A client that saw a results page it is sure about asks again without the BLOCKED option.
@@ -345,9 +367,9 @@ def choose_step(body, store, secret, now, chooser=None):
             page, goal, history, claims["item"], timeout=CALL_TIMEOUT, deadline=deadline, **extra
         )
     except MODEL_ERRORS as exc:
-        print(f"choose failed {_who(claims)} {_brief(exc)}", flush=True)
-        _after_failure(store, claims, run_key)
-        return _error(502, "Jev 暫時無法回應，這一步沒有執行，請重新開始查詢", "model_unavailable")
+        return _model_unavailable(
+            store, claims, run_key, exc, stage="choose", message="Jev 暫時無法回應，這一步沒有執行，請重新開始查詢"
+        )
     calls = min(2, max(1, int(decision.get("model_calls") or 1)))
     usage = decision.get("usage") or {}
     _after_success(store, claims, run_key, spare=2 - calls, calls=calls, usage=usage)
@@ -355,7 +377,7 @@ def choose_step(body, store, secret, now, chooser=None):
     return 200, {k: v for k, v in decision.items() if k not in ("request", "raw_answers")}
 
 
-def choose_route(body, ip, store, secret, now):
+def choose_route(body, caller, store, secret, now):
     """Route signature shared with run_start; the IP does not matter once a run token exists."""
     return choose_step(body, store, secret, now)
 
@@ -377,23 +399,24 @@ def pick_base_step(body, store, secret, now, picker=None):
     run token for the base name, same run id and expiry, so later choose calls get a goal for the base and share the
     call limit. When the client already matched the base itself it sends `base`: no model call, same new token, only if
     it is on the list."""
-    if err := _request_prelude(body):
-        return err
+    if refusal := _refuse_non_object(body):
+        return refusal
     deadline, claims = _step_claims(body, secret, now)
     given = body.get("base")
     if given is not None:
         if not isinstance(given, str) or given not in BASES:
             return _error(400, "底材不在清單裡", "bad_base")
         return 200, _base_reply(secret, claims, given, None, {})
-    run_key, err = _reserve_call_budget(store, claims, 1, picker)
-    if err:
-        return err
+    run_key, refusal = _reserve_call_budget(store, claims, 1, picker)
+    if refusal:
+        return refusal
     try:
         picked = (picker or model.pick_base)(claims["item"], list(BASES), timeout=CALL_TIMEOUT, deadline=deadline)
     except MODEL_ERRORS as exc:
-        print(f"base failed {_who(claims)} {_brief(exc)}", flush=True)
-        _after_failure(store, claims, run_key, spare=0)  # the one reserved call is this attempt's cost
-        return _error(502, "Jev 暫時無法回應，請重新開始查詢", "model_unavailable")
+        return _model_unavailable(
+            # the one reserved call is this attempt's cost
+            store, claims, run_key, exc, stage="base", message="Jev 暫時無法回應，請重新開始查詢", spare=0
+        )
     base = picked.get("base")
     if base not in BASES:
         base = None
@@ -403,7 +426,7 @@ def pick_base_step(body, store, secret, now, picker=None):
     return 200, _base_reply(secret, claims, base, picked.get("probability"), usage)
 
 
-def pick_base_route(body, ip, store, secret, now):
+def pick_base_route(body, caller, store, secret, now):
     return pick_base_step(body, store, secret, now)
 
 

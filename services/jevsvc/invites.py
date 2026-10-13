@@ -148,7 +148,7 @@ def reissue(store, name) -> str:
     record = _require(store, name)
     code = new_code()
     digest = code_hash(code)
-    fields = [item for field, value in record.items() if field != "key" for item in (field, value)]
+    fields = [part for field, value in record.items() if field != "key" for part in (field, value)]
     store.run("HSET", record_key(digest), *fields)  # the new record first: a failure leaves the old code valid
     store.run("HSET", NAME_INDEX, record["name"], digest)
     store.run("DEL", record["key"])
@@ -194,8 +194,9 @@ def usage_commands(digest: str, calls: int, input_tokens: int) -> list[tuple]:
     return [("HINCRBY", key, "calls", calls), ("HINCRBY", key, "input_tokens", input_tokens)]
 
 
-def check_and_count(store, code, ip, now) -> dict:
-    fail_key = f"fail:{ip}"
+def check_and_count(store, code, caller, now) -> dict:
+    """Count one use of `code` for `caller` (the hashed throttle key from `client_key`), or refuse it."""
+    fail_key = f"fail:{caller}"
     digest = code_hash(code)
     key = record_key(digest)
     fails, flat = store.pipeline([("GET", fail_key), ("HGETALL", key)])

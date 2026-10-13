@@ -15,6 +15,11 @@ class StoreError(RuntimeError):
     pass
 
 
+def _unsupported(name: str) -> StoreError:
+    """The router's tuple and the family method that serves it must agree; a drift is loud, never a silent None."""
+    return StoreError(f"unsupported command {name}")
+
+
 class Store:
     def __init__(self, url: str, token: str):
         self.url = url.rstrip("/")
@@ -111,7 +116,7 @@ class MemoryStore:
             return self._hash(name, args)
         if name in ("DEL", "EXPIRE", "SCAN"):
             return self._keyspace(name, args)
-        raise StoreError(f"unsupported command {name}")
+        raise _unsupported(name)
 
     def _string(self, name, args) -> Any:
         """GET, SET and the INCR/DECR family: one value per key (counters kept as strings, as Redis does)."""
@@ -133,7 +138,7 @@ class MemoryStore:
             value = int(data.get(args[0], 0)) + (step if name.startswith("INCR") else -step)
             data[args[0]] = str(value)
             return value
-        raise StoreError(f"unsupported command {name}")  # the router's tuple and this method must agree
+        raise _unsupported(name)
 
     def _hash(self, name, args) -> Any:
         data = self.data
@@ -165,7 +170,7 @@ class MemoryStore:
             return removed
         if name == "HGETALL":
             return [item for pair in data.get(args[0], {}).items() for item in pair]
-        raise StoreError(f"unsupported command {name}")
+        raise _unsupported(name)
 
     def _keyspace(self, name, args) -> Any:
         data = self.data
@@ -191,7 +196,7 @@ class MemoryStore:
         if name == "SCAN":
             pattern = args[args.index("MATCH") + 1] if "MATCH" in args else "*"
             return ["0", [k for k in data if fnmatch.fnmatchcase(k, pattern)]]
-        raise StoreError(f"unsupported command {name}")
+        raise _unsupported(name)
 
 
 def hgetall(store, key) -> dict[str, str]:

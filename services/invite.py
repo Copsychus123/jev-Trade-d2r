@@ -59,14 +59,19 @@ def run(args, store) -> None:
         invites.set_paused(store, args.command == "pause")
         print("已暫停全部服務，用 resume 恢復" if args.command == "pause" else "已恢復服務")
     else:
-        print(f"{'名字':<16}{'總次數上限':>8}  {'到期日':<12}{'狀態':<6}{'已用':>8}{'Jev呼叫':>9}{'輸入token':>12}")
-        for row in invites.list_invites(store):
-            state = "已停用" if row["disabled"] else "使用中"
-            expires = row["expires"] or "-"
-            print(
-                f"{row['name']:<16}{row['limit']:>8}  {expires:<12}{state:<6}{row['used']:>8}"
-                f"{row['calls']:>9}{row['input_tokens']:>12}"
-            )
+        _print_listing(store)
+
+
+def _print_listing(store) -> None:
+    """The `list` table: name, limit, expiry, state and the person's Jev usage - never the code or its hash."""
+    print(f"{'名字':<16}{'總次數上限':>8}  {'到期日':<12}{'狀態':<6}{'已用':>8}{'Jev呼叫':>9}{'輸入token':>12}")
+    for row in invites.list_invites(store):
+        state = "已停用" if row["disabled"] else "使用中"
+        expires = row["expires"] or "-"
+        print(
+            f"{row['name']:<16}{row['limit']:>8}  {expires:<12}{state:<6}{row['used']:>8}"
+            f"{row['calls']:>9}{row['input_tokens']:>12}"
+        )
 
 
 def main(argv=None) -> int:
