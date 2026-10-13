@@ -158,9 +158,8 @@ def judge(case: dict, result: dict, last_used: int | None) -> tuple[str, str]:
         problems.append(f"查詢方式不是 {label}：{result['lookup']!r}")
     if case["load_more"] and not result["rows"][0] > 50:
         problems.append(f"載入更多 {case['load_more']} 次，掛單只有 {result['rows'][0]} 筆")
-    if case.get("double_click") and last_used is not None:
-        if quota_used(result["quota"]) != last_used + 1:
-            problems.append(f"連按兩次開始，額度應只加 1：之前 {last_used}，現在 {result['quota']!r}")
+    if case.get("double_click") and last_used is not None and quota_used(result["quota"]) != last_used + 1:
+        problems.append(f"連按兩次開始，額度應只加 1：之前 {last_used}，現在 {result['quota']!r}")
     return ("FAIL", "；".join(problems)) if problems else ("PASS", "")
 
 

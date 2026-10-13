@@ -74,6 +74,16 @@ def recent_tab(actions) -> dict | None:
     return next((action for action in clicks if RECENT_TAB in _label(action).casefold()), None)
 
 
+def _recent_trades_answer(page: dict, actions) -> tuple[dict, str]:
+    """Phase B: click the page's own Recent Trades tab once, then answer DONE on the view it opens."""
+    if product_section(page.get("url") or "") == "recent":
+        return stub_decision("DONE", "DONE", {"DONE": 1.0}), "Recent Trades view is open"
+    tab = recent_tab(actions)
+    if tab is not None:
+        return stub_decision("CLICK", tab["id"], {tab["id"]: 1.0}), f"clicked the {_label(tab)!r} tab"
+    return stub_decision("DONE", "DONE", {"DONE": 1.0}), "no Recent Trades tab on the page: DONE as it is"
+
+
 def stub_decision(operation: str, choice: str, probabilities: dict) -> dict:
     """One chooser answer in the shape model.choose returns (tests/test_services.py stubs the same keys)."""
     return {
@@ -131,12 +141,7 @@ class StubChooser:
 
     def _answer(self, phase: str, page: dict, actions, goal: str, history) -> tuple[dict, str]:
         if phase == "recent_trades":
-            if product_section(page.get("url") or "") == "recent":
-                return stub_decision("DONE", "DONE", {"DONE": 1.0}), "Recent Trades view is open"
-            tab = recent_tab(actions)
-            if tab is not None:
-                return stub_decision("CLICK", tab["id"], {tab["id"]: 1.0}), f"clicked the {_label(tab)!r} tab"
-            return stub_decision("DONE", "DONE", {"DONE": 1.0}), "no Recent Trades tab on the page: DONE as it is"
+            return _recent_trades_answer(page, actions)
         batches = goal_batches(goal)
         scrolling = any(action.get("id") == "scroll_bottom" for action in actions)
         if batches and not history and scrolling:

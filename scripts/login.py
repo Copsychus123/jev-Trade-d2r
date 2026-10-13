@@ -84,14 +84,15 @@ def needs_login():
 
 def wait_seconds():
     """How long to keep the login window open (`JEV_LOGIN_WAIT_SECONDS` overrides the default)."""
+    default = float(DEFAULT_WAIT_SECONDS)
     raw = (os.environ.get("JEV_LOGIN_WAIT_SECONDS") or "").strip()
     if not raw:
-        return float(DEFAULT_WAIT_SECONDS)
+        return default
     try:
         return max(float(raw), 0.0)
     except ValueError:
         print(f"JEV_LOGIN_WAIT_SECONDS={raw} 不是數字，改用預設 {DEFAULT_WAIT_SECONDS} 秒。", flush=True)
-        return float(DEFAULT_WAIT_SECONDS)
+        return default
 
 
 def _read_enter(entered):

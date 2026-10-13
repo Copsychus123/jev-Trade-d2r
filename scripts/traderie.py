@@ -33,6 +33,21 @@ def _finish(agent, market, folder: Path, item_name: str, error: str, keep_open: 
     return state
 
 
+def _print_summary(state: dict, market: dict) -> None:
+    """The stop reason (if any), the verification result and the Jev usage, in the order the user reads them."""
+    blocked = state.get("scope_blocked_reason") or ""
+    if blocked:
+        print(blocked)  # any stopped run owes the user its reason, not only the login one
+    verification = market["verification"]
+    print(json.dumps({k: v for k, v in verification.items() if k != "final_page"}, indent=2, ensure_ascii=False))
+    usage = state["usage"]
+    print(
+        f"Jev 用量：{usage['calls']} 次呼叫、{usage['steps']} 步、"
+        f"輸入 {usage['input_tokens']:,} / 輸出 {usage['output_tokens']:,} token、"
+        f"預估 {format_usd(usage['cost_usd'])}"
+    )
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("item_name", help="Traderie D2R item name to look up.")
@@ -60,18 +75,8 @@ def main():
         raise
     finally:
         state = _finish(agent, market, folder, args.item_name, error, args.keep_open)
-    blocked = state.get("scope_blocked_reason") or ""
-    if blocked:
-        print(blocked)  # any stopped run owes the user its reason, not only the login one
-    verification = market["verification"]
-    print(json.dumps({k: v for k, v in verification.items() if k != "final_page"}, indent=2, ensure_ascii=False))
-    usage = state["usage"]
-    print(
-        f"Jev 用量：{usage['calls']} 次呼叫、{usage['steps']} 步、"
-        f"輸入 {usage['input_tokens']:,} / 輸出 {usage['output_tokens']:,} token、"
-        f"預估 {format_usd(usage['cost_usd'])}"
-    )
-    if not verification["passed"]:
+    _print_summary(state, market)
+    if not market["verification"]["passed"]:
         raise SystemExit("Final page did not satisfy the Traderie item checks")
 
 

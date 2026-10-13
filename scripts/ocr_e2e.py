@@ -292,8 +292,6 @@ async def accuracy_speed_group(
 ) -> None:
     rows = []
     say(f"  {label}：{len(files)} 張圖逐張辨識…")
-    await panel.reload()
-    await panel.evaluate("document.getElementById('choose-name').click()")
     for item in files:
         await panel.reload()
         await panel.evaluate("document.getElementById('choose-name').click()")
