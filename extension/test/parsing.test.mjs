@@ -63,6 +63,18 @@ test("recent trades keep platform, mode, ladder and game version from the They G
   assert.deepEqual([b.platform, b.mode, b.ladder, b.game_version], [null, null, null, null]);
 });
 
+test("an empty item name means no known name, as in the Python reader", () => {
+  // `itemName ? ... : null` already reads an empty name as "no known name" here; the Python twin used to treat it as a
+  // name, which made `"" in line` pick the seller as the item. Pinned on both sides so they cannot drift again.
+  const card = (seller) =>
+    [seller, " (11)", "1 X Shako", "Softcore •", "PC •", "Ladder", "Trading For", "1 X Pul Rune", "1 分鐘前"].join("\n");
+  for (const empty of ["", null]) {
+    const rows = parseTradingTxt(card("seller"), { itemName: empty });
+    assert.deepEqual(rows.map((r) => r.item_name), ["Shako"], String(empty));
+  }
+});
+
+
 test("only ASCII digits make a time line, here and in the Python reader", () => {
   // Python's `\d` matches every Unicode digit while JavaScript's is ASCII, so a card whose time shows full-width digits
   // was kept by the Python reader and dropped here. Both patterns now say `[0-9]`; this is the case that differed.

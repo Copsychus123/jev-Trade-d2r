@@ -333,10 +333,14 @@ def _split_cards(listing_lines: list[str]) -> list[list[str]]:
     return cards_raw
 
 
-def parse_trading_txt(text_content: str, *, item_name: str = "Harlequin Crest") -> list[ListingCard]:
+def parse_trading_txt(text_content: str, *, item_name: str | None = "Harlequin Crest") -> list[ListingCard]:
     """Parse listing cards from Traderie trading page innerText."""
     if not text_content:
         return []
+
+    # An empty name means "no known name", the way the JS reader reads it (`itemName ? ... : null`). Without this,
+    # `"" in line` is true for every line, so the card's first line -- the seller -- became the item name.
+    item_name = item_name or None
 
     lines = [line.replace("\xa0", " ") for line in _text_lines(text_content)]
 

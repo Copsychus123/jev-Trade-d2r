@@ -353,6 +353,21 @@ def test_browser_blocks_ad_hosts_only_in_the_dedicated_chrome(monkeypatch, mode,
     assert bool(sent) is blocks
 
 
+def test_an_empty_item_name_means_no_known_name_like_the_js_reader():
+    """The JS reader treats an empty name as "no known name" (`itemName ? ... : null`); the Python one tested
+    `item_name is not None`, so `"" in line` -- true for every line -- made the card's first line, the seller, the item
+    name. No caller passes an empty name today, but the twins must agree on what one means."""
+    def card(seller, item):
+        return "\n".join([
+            seller, " (11)", f"1 X {item}", "Softcore -", "PC -", "Ladder", "Trading For", "1 X Pul Rune", "1 分鐘前",
+        ])
+
+    text = card("seller", "Shako")
+    for empty in ("", None):
+        rows = parse_trading_txt(text, item_name=empty)
+        assert [row.item_name for row in rows] == ["Shako"], empty  # the home-page "N X Name" scan, not the seller
+
+
 def test_only_ascii_digits_make_a_time_line_in_either_reader():
     """Python's `\\d` matches every Unicode digit while JavaScript's is ASCII, so a card whose time shows full-width
     digits parsed here and not in the JS reader -- which then dropped the whole card, turning into a failed read. Both
