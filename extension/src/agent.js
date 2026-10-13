@@ -448,13 +448,24 @@ export class Agent {
   /** Run the action and read the page it produced, keeping its history entry truthful at every step. */
   async _runAction(action, page, decision, selected, text) {
     const state = this.state;
-    await this._readThroughStale(() => this.tab.act(action, page, text));
+    // Recorded *before* the mutation, as the Python twin does: a click that dies half-way must still be visible
+    // (AGENTS.md: log execution before observing its result, and never retry a browser mutation).
+    const entry = this._recordExecution(state, action, page, decision, selected, text);
+    try {
+      await this._readThroughStale(() => this.tab.act(action, page, text));
+    } catch (error) {
+      if (error instanceof StalePage) {
+        state.history.pop(); // refused before any input: nothing ran, so nothing is recorded
+        throw error;
+      }
+      Object.assign(entry, { outcome: "unconfirmed", elapsed_ms: this._elapsedMs() });
+      throw error;
+    }
     // It ran: only a refused attempt may extend the stale streak, so a stale read of the page it produced is not
     // charged to it (`_noteStaleFailure`).
     state.last_attempt = null;
     state.elapsed_ms = this._elapsedMs();
-    // Record execution before observing. A stale post-action observation must not erase the action.
-    const entry = this._recordExecution(state, action, page, decision, selected, text);
+    Object.assign(entry, { outcome: "executed", executed_ms: state.elapsed_ms, elapsed_ms: state.elapsed_ms });
     try {
       state.page = await this.tab.observe();
     } catch (error) {
@@ -485,6 +496,7 @@ export class Agent {
       text,
       operation: decision.operation,
       target: decision.target,
+      outcome: "started", // "executed" or "unconfirmed" once the browser call answers (the Python twin's shape)
       page_changed: null,
       url: page.url,
       usage: decision.usage,

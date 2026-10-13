@@ -357,6 +357,23 @@ test("a stale page read before the choice is not charged to the previous action"
   assert.equal(agent.state.stale_streak, null);
 });
 
+test("a mutation that dies half-way stays in history as unconfirmed and is never replayed", async () => {
+  // AGENTS.md: log execution before observing its result, and never retry a browser mutation. The Python twin has the
+  // same test; this side used to record only after `tab.act` resolved, so a half-done click left no trace at all.
+  const tab = new FakeTab([page("p1", [click("a1", "Load More")])]);
+  tab.act = async () => {
+    throw new Error("connection lost mid-click");
+  };
+  const agent = await Agent.create({ tab, choose: makeChoose(decide("a1", "CLICK")) });
+
+  await assert.rejects(() => agent.command("tick"), /connection lost mid-click/);
+
+  assert.equal(agent.state.history.length, 1, "a half-done mutation must be recorded");
+  assert.equal(agent.state.history[0].outcome, "unconfirmed");
+  assert.equal(agent.state.history[0].action, "Load More");
+});
+
+
 test("a refused press is counted as an attempt even though it never reaches history", async () => {
   // Two always-stale targets taken alternately, so the stale-streak rule can never trip (its key changes with the
   // target) and every press is refused (so `history` stays empty). What stops this run is the Jev call budget: a
