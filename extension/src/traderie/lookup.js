@@ -59,21 +59,21 @@ function indexProducts(products) {
  * The Chinese side of the table: the comparison key -> English name, the table's own names (for the suggestion list)
  * and English name -> Chinese name, for the "English（中文）" label of the screenshot reader.
  */
-function indexChinese(zh) {
-  const byKey = new Map();
-  const names = [];
-  const byEnglishKey = new Map();
-  for (const [chinese, english] of Object.entries(zh)) {
+function indexChinese(source) {
+  const zh = new Map();
+  const zhNames = [];
+  const zhByKey = new Map();
+  for (const [chinese, english] of Object.entries(source)) {
     const key = chineseKey(cleanName(chinese));
-    byKey.set(key, english);
-    names.push({ name: chinese, key, english });
+    zh.set(key, english);
+    zhNames.push({ name: chinese, key, english });
     // Several Chinese names can map to one English name; the smallest one wins so the label does not depend on the
     // order of the JSON keys.
     const englishKey = normalizeName(english);
-    const previous = byEnglishKey.get(englishKey);
-    if (previous === undefined || chinese < previous) byEnglishKey.set(englishKey, chinese);
+    const previous = zhByKey.get(englishKey);
+    if (previous === undefined || chinese < previous) zhByKey.set(englishKey, chinese);
   }
-  return { zh: byKey, zhNames: names, zhByKey: byEnglishKey };
+  return { zh, zhNames, zhByKey };
 }
 
 /** Everything a lookup needs from the shipped item tables: the two indexes above plus the base and game-only sets. */

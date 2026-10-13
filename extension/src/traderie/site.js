@@ -4,6 +4,8 @@ export const TRADERIE_D2R_URL = "https://www.traderie.com/diablo2resurrected";
 // One of these ends the "what they want" part of a listing. The card split in parsing.js and the controller's
 // line-counting cross-check both use this list, so it lives with the site vocabulary (as it does in site.py).
 export const TRADING_MARKERS = ["Trading For", "Make an Offer"];
+// The challenge guard compares these markers against already lower-cased page text; lower them once instead.
+const TRADING_MARKERS_LOWER = TRADING_MARKERS.map((marker) => marker.toLowerCase());
 const TRADERIE_HOSTS = new Set(["traderie.com", "www.traderie.com"]);
 export const MAX_LOAD_MORE = 5;
 const LOAD_MORE_LABEL = "Load More";
@@ -18,8 +20,10 @@ const ROOT_PATH = "/diablo2resurrected";
 const LOGIN_REASON = "需要登入：請先在這個 Chrome 登入 Traderie 再重新開始";
 
 // Same netloc/path split as Python's urllib.parse.urlparse.
+const URL_PARTS = /^(?:[a-zA-Z][a-zA-Z0-9+.-]*:)?(?:\/\/([^/?#]*))?([^?#]*)/u;
+
 function urlparse(url) {
-  const m = /^(?:[a-zA-Z][a-zA-Z0-9+.-]*:)?(?:\/\/([^/?#]*))?([^?#]*)/u.exec(url || "");
+  const m = URL_PARTS.exec(url || "");
   return { netloc: m[1] ?? "", path: m[2] };
 }
 
@@ -72,7 +76,7 @@ export function traderieScopeReason(url) {
 // rather than a content page: text under the limit and none of the listing markers.
 const CHALLENGE_TEXT_MAX = 3000;
 
-const hasListingMarkers = (low) => TRADING_MARKERS.some((marker) => low.includes(marker.toLowerCase()));
+const hasListingMarkers = (low) => TRADING_MARKERS_LOWER.some((marker) => low.includes(marker));
 
 export async function detectGuard(page, tab) {
   const reason = traderieScopeReason(page.url);

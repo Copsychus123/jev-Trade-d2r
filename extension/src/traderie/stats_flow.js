@@ -27,6 +27,9 @@ import {
 
 const HOME_READS = 4;
 
+/** What Tab.open measured (navigate, settle, visibility), for the timeline entry of an open. */
+const openDetails = (tab) => tab?.openTiming ?? {};
+
 /**
  * Step 1's real read: open the D2R home page and read its Item Type list. Returns `{ itemTypes }`, or `{ guard: true }`
  * when the site challenged the request. `loadItemTypes` runs this only on a cache miss; a fresh stored copy skips the
@@ -34,7 +37,7 @@ const HOME_READS = 4;
  */
 async function readHomeItemTypes({ openTab, session, onStatus }) {
   onStatus("開啟 Traderie 首頁…");
-  session.tab = await timed(session, "open_tab", () => openTab(TRADERIE_D2R_URL), (tab) => tab?.openTiming ?? {});
+  session.tab = await timed(session, "open_tab", () => openTab(TRADERIE_D2R_URL), openDetails);
   // The sidebar's Item Type list is drawn a moment after the rest of the page; a base needs it, so read again a few
   // times (reading changes nothing) before treating the base as "not a site type".
   let itemTypes = [];
@@ -122,19 +125,24 @@ async function planStatsSearch({ conditions, base, quality, itemTypes, scripts, 
  * Step 3: open the filtered address, read its list, keep only the rows whose name is the base, and check the read
  * independently. Every sentence the player needs about what was read ends up in `lookup.notes`.
  */
-async function readFilteredRows({ url, mapped, base, market, session, lookup, onStatus, openedHere = false }) {
+async function readFilteredRows({
+  url, mapped, base, market, session, lookup, onStatus, openedHere = false, readOptions = {},
+}) {
   onStatus("套用條件…");
   // `openTab` already navigated and settled the tab on this address; navigating again would reload the page for nothing.
   if (!openedHere) await timed(session, "navigate", () => session.tab.navigate(url), (r) => r ?? {});
   await timed(session, "settle", () => session.tab.settle(), (r) => r ?? {});
   onStatus("讀取符合條件的掛單…");
-  const shown = numberConditionLabels(mapped);
-  market.trading = await readStatsView(session.tab, url, { expectText: shown, session });
+  const expectedLabels = numberConditionLabels(mapped);
+  // `readOptions` carries the read's retry policy (attempts/waitMs); the panel leaves it empty, so the controller's
+  // own defaults apply, and a test can drive the same flow without real waits between attempts.
+  market.trading = await readStatsView(session.tab, url, { expectText: expectedLabels, session, ...readOptions });
 
   if (base && market.trading.status === "PASSED") {
     const all = market.trading.rows;
+    const wantedBase = base.toLowerCase();
     market.trading.rows_before_base = all.length;
-    market.trading.rows = all.filter((row) => row.item_name.toLowerCase() === base.toLowerCase());
+    market.trading.rows = all.filter((row) => row.item_name.toLowerCase() === wantedBase);
     if (all.length && !market.trading.rows.length) {
       lookup.notes.push(`網站回傳的 ${all.length} 筆裡沒有名稱是「${base}」的掛單`);
     }
@@ -158,6 +166,7 @@ export async function findAndReadStats({
   session,
   shouldStop = () => false,
   onStatus = () => {},
+  readOptions = {},
 }) {
   const lookup = { mode: "stats", stage: "properties", notes: [], base, quality };
   Object.assign(market, { mode: "stats", lookup });
@@ -189,8 +198,10 @@ export async function findAndReadStats({
   // filtered address (one home load saved) instead of opening the home page and navigating again.
   const openedHere = !session.tab;
   if (openedHere) {
-    session.tab = await timed(session, "open_tab", () => openTab(filters.url), (tab) => tab?.openTiming ?? {});
+    session.tab = await timed(session, "open_tab", () => openTab(filters.url), openDetails);
   }
-  await readFilteredRows({ url: filters.url, mapped: filters.mapped, base, market, session, lookup, onStatus, openedHere });
+  await readFilteredRows({
+    url: filters.url, mapped: filters.mapped, base, market, session, lookup, onStatus, openedHere, readOptions,
+  });
   return "ran";
 }

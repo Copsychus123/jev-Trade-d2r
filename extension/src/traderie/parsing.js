@@ -8,6 +8,13 @@ const SIGN_IN_PROMPT = "Please sign in to view offers";
 // one place (mirrors parsing.py).
 export const TRADE_START = "They Give";
 const TRADE_DONE_MARKERS = ["Sold For", "Traded For", "Closed For"];
+// Both trade parsers compare these markers against a line case-insensitively; lower them once instead.
+const TRADE_START_LOWER = TRADE_START.toLowerCase();
+
+/** Whether a page line opens a finished trade's "They Give" block (the marker is matched case-insensitively).
+ *  The parser and the controller's marker count share it, so the two cannot disagree on where a trade begins. */
+export const isTradeStart = (line) => line.toLowerCase() === TRADE_START_LOWER;
+const TRADE_DONE_MARKERS_LOWER = TRADE_DONE_MARKERS.map((marker) => marker.toLowerCase());
 
 const LISTING_NOISE_LINES = new Set([
   "join akrew pro for an ad free experience!",
@@ -183,6 +190,14 @@ function tagText(line) {
   return pyStrip(line.replace(/•+$/u, ""));
 }
 
+/** A tag line cleaned and returned, or null for an empty line or an environment word listed in `envTags`. */
+function tagToken(line, envTags) {
+  const content = tagText(line);
+  const low = content.toLowerCase();
+  if (!low || envTags.has(low)) return null;
+  return content;
+}
+
 /**
  * affixes: midLines excluding env/tag/quality words
  * @returns {string[]}
@@ -190,11 +205,8 @@ function tagText(line) {
 function cardAffixes(midLines) {
   const affixes = [];
   for (const entry of midLines) {
-    const cleaned = tagText(entry);
-    const low = cleaned.toLowerCase();
-    if (low && !CARD_ENV_TAGS.has(low)) {
-      affixes.push(cleaned);
-    }
+    const cleaned = tagToken(entry, CARD_ENV_TAGS);
+    if (cleaned) affixes.push(cleaned);
   }
   return affixes;
 }
@@ -302,9 +314,9 @@ function listingBounds(lines) {
 
   let end = lines.length;
   for (let i = start; i < lines.length; i += 1) {
-    // The footer's own line is exactly "HELP" (measured on a product page: one line, between "Load More" and
-    // "Getting Started"). An exact match, because a seller name may start with those four letters, and cutting the list
-    // there made the rows disagree with the page's markers.
+    // The footer's own line is exactly "HELP" (measured on a product page: one line, between "Load More" and "Getting
+    // Started"). An exact match, because a seller name may start with those four letters, and cutting the list there
+    // made the rows disagree with the page's markers.
     if (lines[i].includes("Log in to Load More") || lines[i] === "HELP") {
       end = i;
       break;
@@ -346,9 +358,8 @@ export function parseTradingTxt(text, { itemName = "Harlequin Crest" } = {}) {
 
 /** One wanted-tag line, cleaned; null for the environment words and the "Additional Item(s)" filler. */
 function answerToken(line) {
-  const content = tagText(line);
-  if (!content || RECENT_ENV_TAGS.has(content.toLowerCase()) || content === "Additional Item(s)") return null;
-  return content;
+  const content = tagToken(line, RECENT_ENV_TAGS);
+  return content && content !== "Additional Item(s)" ? content : null;
 }
 
 /** One trade row. `buyer_or_seller` is the "They Give" item line; the marker fallback puts the line above its marker
@@ -410,7 +421,7 @@ function tradeBlock(lines, start) {
   const rawEnvLines = [];
   let tradeTime = "";
   let j = start + 1;
-  while (j < lines.length && lines[j].toLowerCase() !== TRADE_START.toLowerCase()) {
+  while (j < lines.length && !isTradeStart(lines[j])) {
     const line = lines[j];
     const low = line.toLowerCase();
     if (low === "i give") {
@@ -445,10 +456,9 @@ function tradeBlock(lines, start) {
 
 /** Fallback for a view without "They Give" blocks: one record per "Sold For"/"Traded For"/"Closed For" line. */
 function markerTrades(lines) {
-  const markers = TRADE_DONE_MARKERS.map((marker) => marker.toLowerCase());
   const trades = [];
   lines.forEach((line, idx) => {
-    if (markers.includes(line.toLowerCase())) {
+    if (TRADE_DONE_MARKERS_LOWER.includes(line.toLowerCase())) {
       // The line above the marker, whatever the page puts there: unnamed on purpose (see `trade`).
       trades.push(
         trade(
@@ -467,7 +477,7 @@ function collectTrades(lines) {
   const trades = [];
   let i = 0;
   while (i < lines.length) {
-    if (lines[i].toLowerCase() === TRADE_START.toLowerCase()) {
+    if (isTradeStart(lines[i])) {
       const { record, next } = tradeBlock(lines, i);
       if (record) trades.push(record);
       i = next;

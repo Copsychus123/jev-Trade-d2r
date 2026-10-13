@@ -5,6 +5,11 @@
 import { AFFIXES } from "../ocr/affix_dictionary.js";
 import { TRADERIE_D2R_URL } from "./site.js";
 
+// The home page address, parsed once. `bareHost` lower-cases the host itself: only special schemes (http/https) are
+// lower-cased by the URL parser, so an opaque-scheme host would otherwise compare case-sensitively.
+const HOME = new URL(TRADERIE_D2R_URL);
+const bareHost = (url) => url.host.toLowerCase().replace(/^www\./u, "");
+
 // How many conditions may be on together: Traderie combines them with "and" (measured: a condition nobody can meet
 // together with a common one lists nothing), so more conditions only narrow the list.
 export const MAX_CONDITIONS = 8;
@@ -112,16 +117,19 @@ const number = (value) => {
  * Type entry from typeForBase. Throws when there is nothing to filter on.
  */
 export function buildStatsUrl({ mapped, quality = null, type = null }) {
+  const propParam = (name, value) => `prop_${name}=${value}`;
   const parts = [];
   for (const m of mapped) {
     if (m.type === "bool") {
-      parts.push(`prop_${encodeURIComponent(m.name)}=true`);
+      parts.push(propParam(encodeURIComponent(m.name), "true"));
       continue;
     }
-    if (m.min !== null) parts.push(`prop_${m.id}Min=${number(m.min)}`);
-    if (m.max !== null) parts.push(`prop_${m.id}Max=${number(m.max)}`);
+    if (m.min !== null) parts.push(propParam(`${m.id}Min`, number(m.min)));
+    if (m.max !== null) parts.push(propParam(`${m.id}Max`, number(m.max)));
   }
-  if (quality) parts.push(`prop_${encodeURIComponent(quality.name)}=${encodeURIComponent(quality.value).replace(/%2C/gu, ",")}`);
+  if (quality) {
+    parts.push(propParam(encodeURIComponent(quality.name), encodeURIComponent(quality.value).replace(/%2C/gu, ",")));
+  }
   if (type) parts.push(`${TYPE_PARAM}=${encodeURIComponent(type)}`);
   if (!parts.length) throw new Error("至少要有一個條件");
   return `${TRADERIE_D2R_URL}?${parts.join("&")}`;
@@ -176,10 +184,8 @@ export function rowsMissingConditions(rows, conditions) {
 /** True for the D2R home page (any query string). */
 export function isHomeUrl(url) {
   try {
-    const home = new URL(TRADERIE_D2R_URL);
     const page = new URL(url);
-    return page.host.toLowerCase().replace(/^www\./u, "") === home.host.replace(/^www\./u, "") &&
-      page.pathname.replace(/\/+$/u, "") === home.pathname;
+    return bareHost(page) === bareHost(HOME) && page.pathname.replace(/\/+$/u, "") === HOME.pathname;
   } catch {
     return false;
   }

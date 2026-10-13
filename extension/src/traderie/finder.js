@@ -42,9 +42,10 @@ async function checkLanding(tab, product) {
   return { ok: true };
 }
 
-async function backToSearch(tab, session) {
-  await timed(session, "navigate", () => tab.navigate(TRADERIE_D2R_URL), (r) => r ?? {});
-  await timed(session, "settle", () => tab.settle(), (r) => r ?? {});
+/** Leaves whatever page the tab is on and returns to the search home page, timing both steps. */
+async function backToSearch(session) {
+  await timed(session, "navigate", () => session.tab.navigate(TRADERIE_D2R_URL), (r) => r ?? {});
+  await timed(session, "settle", () => session.tab.settle(), (r) => r ?? {});
 }
 
 /**
@@ -66,7 +67,7 @@ async function tableJump({ product, tables, openTab, session, lookup, tableStats
   lookup.notes.push(
     `查表開啟的頁面不對（${landing.reason}），改用搜尋（查表落空 ${missed} 次；${tableAge(tables.generatedAt).text}）`,
   );
-  await backToSearch(session.tab, session);
+  await backToSearch(session);
   return null;
 }
 
@@ -92,7 +93,7 @@ async function baseFallback({ resolved, tables, session, lookup, run, foundNothi
   session.itemName = picked.base;
   Object.assign(lookup, { layer: "base", used: picked.base });
   lookup.notes.push(`你查的是 ${resolved.query}，顯示的是底材 ${picked.base}，沒有依品質篩選`);
-  await backToSearch(session.tab, session);
+  await backToSearch(session);
   await run();
   return !shouldStop() && foundNothing() ? notFound() : "ran";
 }

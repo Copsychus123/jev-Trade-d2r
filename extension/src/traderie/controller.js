@@ -2,7 +2,7 @@
 // for the same page; see the module docstring there for the codes.
 import { AbortedError, StalePage, TimeoutError } from "../errors.js";
 import { timed } from "../timeline.js";
-import { TRADE_START, parseRecentTrades, parseTradingTxt, splitLines } from "./parsing.js";
+import { isTradeStart, parseRecentTrades, parseTradingTxt, splitLines } from "./parsing.js";
 import { normalizeName } from "./lookup.js";
 import { numberConditionLabels } from "./properties.js";
 import { detectGuard, productRootUrl, productSection, TRADING_MARKERS } from "./site.js";
@@ -132,7 +132,7 @@ const VIEW_READERS = {
       const parsed = parseRecentTrades(text);
       return { rows: parsed.trades, parsed };
     },
-    markers: (lines) => lines.filter((line) => line.toLowerCase() === TRADE_START.toLowerCase()).length,
+    markers: (lines) => lines.filter(isTradeStart).length,
     emptyText: EMPTY_RECENT,
     emptyReason: "目前沒有成交紀錄",
     noRows: (parsed) => parsed.reason,
