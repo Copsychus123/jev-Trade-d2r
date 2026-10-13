@@ -236,19 +236,21 @@ class Agent:
 
     def _finish_phase_by_rule(self, state):
         """Bookkeeping, not a browser action: the phase is over once the configured action ran the set number of
-        times in it. Jev is not asked; the phase ends exactly as it does when Jev chooses DONE."""
+        times in it. Jev is not asked; the phase ends exactly as it does when Jev chooses DONE. True when this call
+        ended the phase, so a caller can stop instead of asking for a step that is no longer due."""
         rule = self.finish_phase_after
         if not rule:
-            return
+            return False
         label, limit = rule
         done = sum(1 for h in state["history"][state["phase_start"] :] if h["action"].casefold() == label.casefold())
         if done < limit:
-            return
+            return False
         state["rule_events"].append(
             {"step": len(state["history"]), "phase": state["phase"], "label": label, "count": limit}
         )
         if not self._advance_phase(state):
             self._finish_run(state)
+        return True
 
     def snapshot(self):
         return {
@@ -321,9 +323,13 @@ class Agent:
         # Cleared before the page read: a stale read is a navigation, not a target that keeps failing, and it must not
         # be charged to the step before (whose action may have succeeded).
         state["last_attempt"] = None
+        state["decision"] = None
+        if self._finish_phase_by_rule(state):
+            # The count was already reached when the last press's page read went stale -- that path returns before
+            # `_act`'s own check -- so the phase is over: do not pay for a page read and a Jev call to learn it again.
+            return
         if not state["browser"].fresh(state["page"]):
             state["page"] = state["browser"].observe(screenshot=self.screenshots)
-        state["decision"] = None
         if self._stop_if_off_scope(state):
             return
         phase_history = state["history"][state["phase_start"] :]

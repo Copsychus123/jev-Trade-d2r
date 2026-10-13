@@ -238,16 +238,18 @@ export class Agent {
     };
   }
 
+  /** Bookkeeping, not a browser action; true when this call ended the phase. See the Python twin. */
   _finishPhaseByRule(state) {
     const rule = this.finishPhaseAfter;
-    if (!rule) return;
+    if (!rule) return false;
     const [label, limit] = rule;
     const done = state.history
       .slice(state.phase_start)
       .filter((h) => h.action.toLowerCase() === label.toLowerCase()).length;
-    if (done < limit) return;
+    if (done < limit) return false;
     state.rule_events.push({ step: state.history.length, phase: state.phase, label, count: limit });
     if (!this._advancePhase(state)) this._finishRun(state);
+    return true;
   }
 
   snapshot() {
@@ -321,8 +323,11 @@ export class Agent {
     // Cleared before the page read: a stale read is a navigation, not a target that keeps failing, and it must not be
     // charged to the step before (whose action may have succeeded).
     state.last_attempt = null;
-    await this._syncPage(state);
     state.decision = null;
+    // The count was already reached when the last press's page read went stale (that path returns before `_act`'s own
+    // check), so the phase is over: stop here instead of paying for a read and a Jev call.
+    if (this._finishPhaseByRule(state)) return this._settle(state);
+    await this._syncPage(state);
     if (this._applyScopeGuard(state)) return this._settle(state);
     if (state.status === "done" || state.status === "blocked") {
       throw new Error("This run has stopped. Start a fresh run.");

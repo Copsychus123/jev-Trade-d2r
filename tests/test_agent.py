@@ -543,6 +543,29 @@ def _press(runner, times):
         act(runner)
 
 
+def test_a_press_whose_page_read_goes_stale_still_ends_the_phase_by_rule(runner, monkeypatch):
+    """The rule is bookkeeping over history, and the press *did* run: a stale read of the page it produced returns
+    before `_act`'s own check, so the next step used to ask Jev about a phase that was already over (and, when the page
+    still showed a scroll button, the rule started a scroll first)."""
+    asked = []
+    monkeypatch.setattr(loop, "choose", lambda *_a, **_k: asked.append(1) or _jev_answer("e3", "CLICK", {"CLICK": 1.0}))
+    runner.finish_phase_after = ("Go", 1)
+    runner.phase_names = ["phase_1", "phase_2"]
+    runner.state["plan"] = ["first", "second"]
+    runner.state["browser"].observe.side_effect = [StalePage("navigation"), page()]
+    runner.state["status"] = "ready"
+    runner.state["decision"] = None
+
+    runner.command("tick")  # the press runs; reading the page it produced goes stale once
+
+    assert asked == [1] and runner.state["history"][0]["outcome"] == "executed"
+    runner.command("predict")  # the phase is over: this must not reach Jev
+
+    assert asked == [1], "the rule already ended the phase, so Jev must not be asked again"
+    assert runner.state["status"] == "handoff" and runner.state["awaiting_handoff"] is True
+    assert runner.state["rule_events"] == [{"step": 1, "phase": "phase_1", "label": "Go", "count": 1}]
+
+
 def test_a_phase_ends_by_rule_after_the_set_number_of_presses_without_asking_jev(runner, monkeypatch):
     monkeypatch.setattr(loop, "choose", lambda *_a, **_k: pytest.fail("Jev must not be asked"))
     runner.finish_phase_after = ("go", 2)  # the label on the page is "Go": the comparison ignores case

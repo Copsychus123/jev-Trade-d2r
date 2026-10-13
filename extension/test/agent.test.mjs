@@ -106,6 +106,30 @@ test("rule presses Load More without calling choose", async () => {
   assert.equal(agent.state.rule_events.some((e) => e.press && e.label === "Load More"), true);
 });
 
+test("a press whose page read goes stale still ends the phase by rule", async () => {
+  // Same case as the Python twin's: the press ran, its page read went stale, and the rule's count is reached, so the
+  // next step must not ask Jev (nor start a scroll) for a phase that is already over.
+  const more = click("a2", "Load More");
+  const tab = new FlakyObservationTab([page("p1", [SCROLL, more])]);
+  const calls = [];
+  const choose = async () => {
+    calls.push(1);
+    return decide("a2");
+  };
+  const agent = await Agent.create({ tab, finishPhaseAfter: ["Load More", 1], choose });
+
+  tab.staleOnce(); // the read of the page the press produced
+  await agent.command("tick");
+
+  assert.equal(agent.state.history[0].outcome, "executed");
+  await agent.command("predict"); // the phase is over: this must not reach Jev
+
+  assert.equal(calls.length, 1, "the rule already ended the phase, so Jev must not be asked again");
+  assert.equal(agent.state.awaiting_handoff, true);
+  assert.deepEqual(agent.state.rule_events, [{ step: 1, phase: "trading", label: "Load More", count: 1 }]);
+});
+
+
 test("limit reached hands off, then finishes on the last phase", async () => {
   const more = click("a2", "Load More");
   const pages = ["p1", "p2", "p3", "p4"].map((f) => page(f, [SCROLL, more]));
