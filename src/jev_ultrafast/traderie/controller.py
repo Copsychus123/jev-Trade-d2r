@@ -109,6 +109,11 @@ def _cross_check_rows(parsed_view: dict[str, Any], result: dict[str, Any], brows
         return _fail(result, "no_rows", parsed_view["fallback_reason"])
     if markers == 0:
         return _fail(result, "no_anchor", f"讀到 {len(rows)} 筆，但頁面上找不到可以核對的筆數標記")
+    # The trading side only fails when there are *fewer* rows than markers, and that is deliberate: a line inside a
+    # card that itself looks like a time line splits the card, so the rows can exceed the page's markers (measured:
+    # one such line injected into a card -> 4 rows against 3 markers). Failing on that would fail a page that was read
+    # in full. The recent-trades side compares with `!=` because its blocks are joined by the reader, so an extra row
+    # there is a real disagreement; the asymmetry is intentional, not an oversight.
     if trading and len(rows) < markers:
         return _fail(result, "row_mismatch", f"表格 {len(rows)} 筆，少於網頁上的 {markers} 筆")
     if not trading and len(rows) != markers:
