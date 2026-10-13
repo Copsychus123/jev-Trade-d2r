@@ -24,6 +24,21 @@ from jev_ultrafast.traderie.site import LOAD_MORE_LIMIT, phase_finish_rule, trad
 LOGIN_REASON = "需要登入：請先執行 uv run python scripts/login.py 登入一次"
 
 
+class _GuardBrowser:
+    """`detect_guard` only asks the browser one question: is a challenge frame on the page?"""
+
+    def __init__(self, challenge_present=False):
+        self.challenge_present = challenge_present
+
+    def evaluate(self, _expr):
+        return self.challenge_present
+
+
+def _page(url, *, title="", text=""):
+    """The page model `detect_guard` reads: it decides on the url, the title and the visible text."""
+    return {"url": url, "title": title, "text": text}
+
+
 def test_build_goal_requires_item_name():
     assert "Stormshield" in build_goal("Stormshield")
 
@@ -64,74 +79,33 @@ def test_product_root_url_normalizes_supported_traderie_routes(url, expected):
 @pytest.mark.parametrize(
     ("page", "expected_reason"),
     [
+        (_page(f"{TRADERIE_D2R_URL}/product/shako", title="CLOUDFLARE | JUST A MOMENT..."), "防護頁/驗證碼"),
         (
-            {
-                "url": f"{TRADERIE_D2R_URL}/product/shako",
-                "title": "CLOUDFLARE | JUST A MOMENT...",
-                "text": "",
-            },
+            _page(f"{TRADERIE_D2R_URL}/product/shako", text="Please complete CAPTCHA before continuing"),
             "防護頁/驗證碼",
         ),
-        (
-            {
-                "url": f"{TRADERIE_D2R_URL}/product/shako",
-                "title": "Harlequin Crest",
-                "text": "Please complete CAPTCHA before continuing",
-            },
-            "防護頁/驗證碼",
-        ),
-        (
-            {
-                "url": f"{TRADERIE_D2R_URL}/signup?next=/diablo2resurrected/product/shako",
-                "title": "Sign up",
-                "text": "",
-            },
-            LOGIN_REASON,
-        ),
-        (
-            {
-                "url": "https://accounts.traderie.com/login",
-                "title": "Redirecting",
-                "text": "",
-            },
-            "離開 Traderie：accounts.traderie.com",
-        ),
+        (_page(f"{TRADERIE_D2R_URL}/signup?next=/diablo2resurrected/product/shako", title="Sign up"), LOGIN_REASON),
+        (_page("https://accounts.traderie.com/login", title="Redirecting"), "離開 Traderie：accounts.traderie.com"),
     ],
 )
 def test_detect_guard_branches_cover_challenge_login_variants_and_offhost_redirect(page, expected_reason):
-    class MockBrowser:
-        def evaluate(self, _expr):
-            return False
-
-    assert detect_guard(page, MockBrowser()) == expected_reason
+    assert detect_guard(page, _GuardBrowser()) == expected_reason
 
 def test_detect_guard_checks_host_and_challenges():
-    class MockBrowser:
-        def __init__(self, challenge_present=False):
-            self.challenge_present = challenge_present
-        def evaluate(self, expr):
-            return self.challenge_present
-
-    assert "離開 Traderie" in detect_guard({"url": "https://google.com"}, MockBrowser())
+    assert "離開 Traderie" in detect_guard(_page("https://google.com"), _GuardBrowser())
     d2r_url = "https://traderie.com/diablo2resurrected"
-    assert detect_guard({"url": d2r_url, "title": "Just a moment..."}, MockBrowser()) == "防護頁/驗證碼"
-    assert detect_guard({"url": d2r_url, "title": "", "text": "verify you are human"}, MockBrowser()) == "防護頁/驗證碼"
-    assert detect_guard(
-        {"url": d2r_url, "title": "", "text": ""}, MockBrowser(challenge_present=True)
-    ) == "防護頁/驗證碼"
-    assert detect_guard({"url": "https://traderie.com/login"}, MockBrowser()) == LOGIN_REASON
-    ok_page = {"url": f"{d2r_url}/product/shako", "title": "Harlequin Crest", "text": "Trading"}
-    assert detect_guard(ok_page, MockBrowser()) is None
+    assert detect_guard(_page(d2r_url, title="Just a moment..."), _GuardBrowser()) == "防護頁/驗證碼"
+    assert detect_guard(_page(d2r_url, text="verify you are human"), _GuardBrowser()) == "防護頁/驗證碼"
+    assert detect_guard(_page(d2r_url), _GuardBrowser(challenge_present=True)) == "防護頁/驗證碼"
+    assert detect_guard(_page("https://traderie.com/login"), _GuardBrowser()) == LOGIN_REASON
+    ok_page = _page(f"{d2r_url}/product/shako", title="Harlequin Crest", text="Trading")
+    assert detect_guard(ok_page, _GuardBrowser()) is None
 
 
 def test_detect_guard_ignores_the_word_captcha_on_a_long_normal_page():
-    class MockBrowser:
-        def evaluate(self, _expr):
-            return False
-
     changelog = "Fixed captcha bugs when going between games"
-    page = {"url": f"{TRADERIE_D2R_URL}/product/shako", "title": "Shako", "text": "Trading For\n" * 600 + changelog}
-    assert detect_guard(page, MockBrowser()) is None
+    page = _page(f"{TRADERIE_D2R_URL}/product/shako", title="Shako", text="Trading For\n" * 600 + changelog)
+    assert detect_guard(page, _GuardBrowser()) is None
 
 
 def test_login_wall_reason_tells_user_how_to_log_in():
@@ -142,16 +116,8 @@ def test_login_wall_reason_tells_user_how_to_log_in():
 
 
 def test_detect_guard_blocks_same_host_off_scope_path():
-    class MockBrowser:
-        def evaluate(self, _expr):
-            return False
-
-    page = {
-        "url": "https://www.traderie.com/messages",
-        "title": "Messages",
-        "text": "Inbox",
-    }
-    assert detect_guard(page, MockBrowser()) == "超出 Traderie D2R 範圍：/messages"
+    page = _page("https://www.traderie.com/messages", title="Messages", text="Inbox")
+    assert detect_guard(page, _GuardBrowser()) == "超出 Traderie D2R 範圍：/messages"
 
 def test_browser_navigate_waits_until_document_complete(monkeypatch):
     browser = browser_module.Browser.__new__(browser_module.Browser)
@@ -185,6 +151,13 @@ def _fake_browser_cdp(calls):
     return fake_cdp
 
 
+def _stub_chrome(monkeypatch, cdp):
+    """Give `Browser.__init__` a fake CDP client: no Chrome is started and no daemon is asked for."""
+    monkeypatch.setattr(browser_module, "ensure_chrome", lambda: None)
+    monkeypatch.setattr(browser_module, "ensure_daemon", lambda: None)
+    monkeypatch.setattr(browser_module, "cdp", cdp)
+
+
 @pytest.mark.parametrize(
     ("env", "expected"),
     [
@@ -205,9 +178,7 @@ def test_browser_injects_traderie_auth_only_when_env_present(monkeypatch, env, e
         monkeypatch.setenv(key, value)
 
     calls = []
-    monkeypatch.setattr(browser_module, "ensure_chrome", lambda: None)
-    monkeypatch.setattr(browser_module, "ensure_daemon", lambda: None)
-    monkeypatch.setattr(browser_module, "cdp", _fake_browser_cdp(calls))
+    _stub_chrome(monkeypatch, _fake_browser_cdp(calls))
 
     browser = browser_module.Browser("https://traderie.com/diablo2resurrected")
     assert browser.target == "target-1"
@@ -364,9 +335,7 @@ def test_browser_replaces_headless_label_in_user_agent(monkeypatch):
             return {"result": {"value": "Mozilla/5.0 HeadlessChrome/130.0"}}
         return base(method, session_id, **params)
 
-    monkeypatch.setattr(browser_module, "ensure_chrome", lambda: None)
-    monkeypatch.setattr(browser_module, "ensure_daemon", lambda: None)
-    monkeypatch.setattr(browser_module, "cdp", fake_cdp)
+    _stub_chrome(monkeypatch, fake_cdp)
     browser_module.Browser("https://traderie.com/diablo2resurrected")
     methods = [m for m, _s, _p in calls]
     override = next(p for m, _s, p in calls if m == "Emulation.setUserAgentOverride")
@@ -377,9 +346,7 @@ def test_browser_replaces_headless_label_in_user_agent(monkeypatch):
 def test_browser_blocks_ad_hosts_only_in_the_dedicated_chrome(monkeypatch, mode, blocks):
     calls = []
     monkeypatch.setenv("JEV_CHROME", mode)
-    monkeypatch.setattr(browser_module, "ensure_chrome", lambda: None)
-    monkeypatch.setattr(browser_module, "ensure_daemon", lambda: None)
-    monkeypatch.setattr(browser_module, "cdp", _fake_browser_cdp(calls))
+    _stub_chrome(monkeypatch, _fake_browser_cdp(calls))
     browser_module.Browser("https://traderie.com/diablo2resurrected")
     sent = [p["urls"] for m, _s, p in calls if m == "Network.setBlockedURLs"]
     assert (sent == [browser_module.blocked_url_patterns()]) is blocks
@@ -437,27 +404,24 @@ class _PageBrowser:
 RECENT_URL = f"{TRADERIE_D2R_URL}/product/harlequin-crest/recent"
 
 
+def _recent_page_text(*offers):
+    """A Recent Trades page as the tab shows it: the item heading, then one They Give/I Give block per offer; an
+    offer is its `I Give` line and the timestamp that line normally ends with (some cards ship without one)."""
+    lines = ["Harlequin Crest"]
+    for offer in offers:
+        lines += ["They Give", "1 X Harlequin Crest", "I Give", *offer]
+    return "\n".join(lines)
+
+
 def test_read_view_recent_rejects_table_that_misses_page_entries():
-    text = "\n".join(
-        [
-            "Harlequin Crest",
-            "They Give", "1 X Harlequin Crest", "I Give", "1 X Um Rune", "39 分鐘前",
-            "They Give", "1 X Harlequin Crest", "I Give", "1 X Mal Rune",
-        ]
-    )
+    text = _recent_page_text(("1 X Um Rune", "39 分鐘前"), ("1 X Mal Rune",))
     result = read_view(_PageBrowser(RECENT_URL, text), "Harlequin Crest", "recent_trades")
     assert result["status"] == "FAILED"
     assert "不一致" in result["reason"]
 
 
 def test_read_view_recent_keeps_every_entry_when_page_and_table_agree():
-    text = "\n".join(
-        [
-            "Harlequin Crest",
-            "They Give", "1 X Harlequin Crest", "I Give", "1 X Um Rune", "39 分鐘前",
-            "They Give", "1 X Harlequin Crest", "I Give", "1 X Mal Rune", "44 分鐘前",
-        ]
-    )
+    text = _recent_page_text(("1 X Um Rune", "39 分鐘前"), ("1 X Mal Rune", "44 分鐘前"))
     result = read_view(_PageBrowser(RECENT_URL, text), "Harlequin Crest", "recent_trades")
     assert result["status"] == "PASSED"
     assert [r["price"] for r in result["rows"]] == ["1 X Um Rune", "1 X Mal Rune"]
@@ -466,7 +430,7 @@ def test_read_view_recent_keeps_every_entry_when_page_and_table_agree():
 
 @pytest.mark.parametrize("more", [True, False])
 def test_read_view_reports_whether_more_entries_were_left_on_the_site(more):
-    text = "\n".join(["Harlequin Crest", "They Give", "1 X Harlequin Crest", "I Give", "1 X Um Rune", "39 分鐘前"])
+    text = _recent_page_text(("1 X Um Rune", "39 分鐘前"))
     result = read_view(_PageBrowser(RECENT_URL, text, more=more), "Harlequin Crest", "recent_trades")
     assert result["status"] == "PASSED" and result["has_more"] is more
 
@@ -487,12 +451,17 @@ def test_read_view_reports_blocked_when_site_shows_a_challenge():
     assert "網站阻擋" in result["reason"]
 
 
+def _view(status, url, *, title="Harlequin Crest", text="Harlequin Crest"):
+    """A view in the shape `read_view` returns and `verify_views` and the controller consume."""
+    return {"status": status, "reason": None, "url": url, "title": title, "text": text}
+
+
 def _market(trading_url, recent_url, *, trading_status="PASSED", recent_status="PASSED", title="Harlequin Crest",
             text="Harlequin Crest"):
-    def view(url, status):
-        return {"status": status, "reason": None, "url": url, "title": title, "text": text}
-
-    return {"trading": view(trading_url, trading_status), "recent_trades": view(recent_url, recent_status)}
+    return {
+        "trading": _view(trading_status, trading_url, title=title, text=text),
+        "recent_trades": _view(recent_status, recent_url, title=title, text=text),
+    }
 
 
 def test_verify_views_passes_when_both_views_read_the_same_product():
@@ -575,9 +544,7 @@ def test_browser_without_screenshots_also_blocks_picture_urls(monkeypatch):
         return base(method, session_id, **params)
 
     monkeypatch.setenv("JEV_CHROME", "headless")
-    monkeypatch.setattr(browser_module, "ensure_chrome", lambda: None)
-    monkeypatch.setattr(browser_module, "ensure_daemon", lambda: None)
-    monkeypatch.setattr(browser_module, "cdp", fake_cdp)
+    _stub_chrome(monkeypatch, fake_cdp)
     browser_module.Browser("https://traderie.com/diablo2resurrected", images=False)
     browser_module.Browser("https://traderie.com/diablo2resurrected")
     assert "*.png*" in sent[0] and "*.webp*" in sent[0]
@@ -593,9 +560,7 @@ def test_browser_closes_its_tab_when_opening_the_page_fails(monkeypatch):
             raise RuntimeError("navigation failed")
         return base(method, session_id, **params)
 
-    monkeypatch.setattr(browser_module, "ensure_chrome", lambda: None)
-    monkeypatch.setattr(browser_module, "ensure_daemon", lambda: None)
-    monkeypatch.setattr(browser_module, "cdp", fake_cdp)
+    _stub_chrome(monkeypatch, fake_cdp)
     with pytest.raises(RuntimeError, match="navigation failed"):
         browser_module.Browser("https://traderie.com/diablo2resurrected")
     assert [m for m, _s, _p in calls].count("Target.closeTarget") == 1
@@ -657,7 +622,7 @@ def _read_stub(monkeypatch):
 
     def fake(_browser, _item, view):
         seen.append(view)
-        return {"status": "PASSED", "reason": None, "url": f"{TRADERIE_D2R_URL}/product/a", "title": "x", "text": "x"}
+        return _view("PASSED", f"{TRADERIE_D2R_URL}/product/a", title="x", text="x")
 
     monkeypatch.setattr(controller, "read_view", fake)
     return seen
@@ -688,7 +653,7 @@ def test_a_failed_handoff_read_is_repeated_by_the_next_step_before_anything_else
         reads.append(view)
         if len(reads) == 1:
             raise RuntimeError("browser hiccup")
-        return {"status": "PASSED", "reason": None, "url": "u", "title": "t", "text": "t"}
+        return _view("PASSED", "u", title="t", text="t")
 
     monkeypatch.setattr(controller, "read_view", flaky)
     agent = _FakeAgent({"awaiting_handoff": True, "status": "handoff"}, lambda a: None)
@@ -797,7 +762,7 @@ def test_a_controller_error_during_a_raised_tick_does_not_mask_the_ticks_error(m
         reads.append(view)
         if len(reads) == 1:
             raise RuntimeError("recent read hiccup")
-        return {"status": "PASSED", "reason": None, "url": "u", "title": "t", "text": "t"}
+        return _view("PASSED", "u", title="t", text="t")
 
     monkeypatch.setattr(controller, "read_view", read_raises_once)
 

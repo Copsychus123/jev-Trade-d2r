@@ -1,3 +1,4 @@
+import io
 import json
 import os
 import sys
@@ -18,6 +19,13 @@ TAIPEI = invites.TAIPEI
 NOW = datetime(2026, 5, 1, 12, 0, tzinfo=TAIPEI)
 PRODUCT = "https://www.traderie.com/diablo2resurrected/product/123"
 PAGE = {"url": PRODUCT, "title": "t", "text": "hello", "actions": []}
+# The routes both transport tests exercise: the real app has more (`app.ROUTES`), the transports need only these.
+TEST_ROUTES = {"/api/run/start": app.run_start, "/api/choose": app.choose_route}
+
+
+def jev_down(*_args, **_kwargs):
+    """A chooser/picker standing in for Jev being unavailable: every step that reaches it must answer 502."""
+    raise RuntimeError("jev down")
 
 
 @pytest.fixture
@@ -30,12 +38,30 @@ def code(store):
     return invites.add(store, "amy")
 
 
+@pytest.fixture
+def secret_env(monkeypatch):
+    """The env the transports read at request time: a run-token secret of the required length. The tests that probe a
+    missing or short secret set their own instead."""
+    monkeypatch.setenv("RUN_TOKEN_SECRET", SECRET)
+
+
+def record_of(code):
+    """Where one person's totals live: `invite:<hash of the code>`, the same key `invites.record_key` builds."""
+    return invites.record_key(invites.code_hash(code))
+
+
 def start(store, code, ip="1.1.1.1", **extra):
     body = {"invite": code, "item_name": "Harlequin Crest", **extra}
     try:
         return app.run_start(body, ip, store, SECRET, NOW)
     except invites.InviteError as err:
         return err.status, {"error": err.message}
+
+
+def start_on(store, **extra):
+    """Start a run on `store`'s own fresh invite: a test that swaps the store for a broken one cannot use the `code`
+    fixture, which adds its invite on the plain store."""
+    return start(store, invites.add(store, "amy"), **extra)
 
 
 def test_unknown_code_rejected(store):
@@ -68,7 +94,7 @@ def test_total_limit_is_per_code_not_per_day(store, code):
         assert status == 200 and body["used"] == i + 1
     status, body = start(store, code)
     assert status == 429 and "100" in body["error"]
-    assert store.data[f"invite:{invites.code_hash(code)}"]["used"] == "100"
+    assert store.data[record_of(code)]["used"] == "100"
 
 
 def test_used_up_code_stays_used_up_on_a_later_day(store, code):
@@ -82,11 +108,11 @@ def test_used_up_code_stays_used_up_on_a_later_day(store, code):
 
 def test_bad_input_does_not_count(store, code):
     assert start(store, code, item_name="   ")[1]["error"] == "請輸入裝備名稱"
-    status, body = app.run_start({"invite": code, "item_name": "a" * 201}, "i", store, SECRET, NOW)
+    status, body = start(store, code, ip="i", item_name="a" * 201)
     assert (status, body["error"]) == (400, "裝備名稱太長")
     assert start(store, code, load_more=99)[0] == 400
     assert start(store, code, load_more=True)[0] == 400
-    assert "used" not in store.data[f"invite:{invites.code_hash(code)}"]
+    assert "used" not in store.data[record_of(code)]
 
 
 def test_start_response(store, code):
@@ -97,6 +123,12 @@ def test_start_response(store, code):
 
 def token_for(store, code):
     return start(store, code)[1]["run_token"]
+
+
+def token_and_run(store, code):
+    """A fresh run's token and the `rid` it carries: what a test inspecting the run's own budget needs."""
+    token = token_for(store, code)
+    return token, tokens.verify(SECRET, token, NOW.timestamp())["rid"]
 
 
 def choose(store, token, chooser, page=PAGE, phase="trading", history=()):
@@ -121,6 +153,13 @@ def test_tampered_and_expired_tokens(store, code):
             lambda *a: {},
         )
     assert (err.value.status, err.value.message) == (401, "查詢已逾時或無效，請重新開始")
+
+
+def test_a_run_token_lives_for_the_documented_half_hour():
+    """`RUN_SECONDS` is the validity window of a run token, and the expiry test above derives its boundary from the
+    constant itself, so only this pins the value: services/README.md promises 「30 分鐘有效的查詢憑證」. Shortening or
+    lengthening it changes how long a leaked rid/sig pair stays usable, so the number is part of the contract."""
+    assert tokens.RUN_SECONDS == 30 * 60
 
 
 def test_off_scope_url(store, code):
@@ -193,10 +232,7 @@ def test_a_reservation_that_does_not_fit_takes_nothing_from_the_run(store):
 
 
 def test_chooser_failure_is_502(store, code):
-    def boom(*args, **extra):
-        raise RuntimeError("jev down")
-
-    status, body = choose(store, token_for(store, code), boom)
+    status, body = choose(store, token_for(store, code), jev_down)
     assert status == 502 and "Jev 暫時無法回應" in body["error"]
 
 
@@ -219,7 +255,11 @@ def test_a_picked_base_gets_a_new_token_for_the_base_in_the_same_run(store, code
     old, new = tokens.verify(SECRET, token, NOW.timestamp()), tokens.verify(SECRET, body["run_token"], NOW.timestamp())
     assert (new["item"], new["rid"], new["exp"]) == ("Ring", old["rid"], old["exp"])
     goals = []
-    seen = lambda page, goal, history, typed, **kw: goals.append((goal, typed)) or {"model_calls": 1}  # noqa: E731
+
+    def seen(page, goal, history, typed, **kw):
+        goals.append((goal, typed))
+        return {"model_calls": 1}
+
     choose(store, body["run_token"], seen)
     assert 'item "Ring"' in goals[0][0] and goals[0][1] == "Ring"
 
@@ -252,14 +292,10 @@ def test_base_picking_uses_the_run_call_limit_and_rejects_bad_lists(store, code)
 def test_a_failed_base_pick_keeps_its_call_and_gives_the_start_use_back_once(store, code):
     """A pick Jev cannot answer still costs the run the call it reserved, and — since the run got no answer at all —
     the start use comes back once: the counter stays at one while the invitation's `used` drops by one."""
-    token = token_for(store, code)
-    rid = tokens.verify(SECRET, token, NOW.timestamp())["rid"]
-    record = invites.record_key(invites.code_hash(code))
+    token, rid = token_and_run(store, code)
+    record = record_of(code)
 
-    def down(*args, **kw):
-        raise RuntimeError("jev down")
-
-    status, reply = pick(store, token, down)
+    status, reply = pick(store, token, jev_down)
     assert (status, reply["code"]) == (502, "model_unavailable")
     assert store.run("GET", f"run:{rid}") == "1"  # the reserved call is this attempt's cost, not handed back
     assert store.run("HGET", record, "used") == "0"  # but the start use of the unanswered run came back
@@ -269,15 +305,11 @@ def test_a_failed_base_pick_keeps_its_call_and_gives_the_start_use_back_once(sto
 def test_a_second_failed_base_pick_in_a_run_does_not_give_the_start_use_back_again(store, code):
     """The refund is claimed once per run: Jev failing twice keeps both attempts' calls, but the start use goes back
     on the first failure only (`refund:{rid}` is set with NX)."""
-    token = token_for(store, code)
-    rid = tokens.verify(SECRET, token, NOW.timestamp())["rid"]
-    record = invites.record_key(invites.code_hash(code))
+    token, rid = token_and_run(store, code)
+    record = record_of(code)
 
-    def down(*args, **kw):
-        raise RuntimeError("jev down")
-
-    assert pick(store, token, down)[0] == 502
-    assert pick(store, token, down)[0] == 502
+    assert pick(store, token, jev_down)[0] == 502
+    assert pick(store, token, jev_down)[0] == 502
     assert store.run("GET", f"run:{rid}") == "2"  # each attempt kept its own reserved call
     assert store.run("HGET", record, "used") == "0"  # one start use given back, not two
     assert store.run("GET", f"refund:{rid}") == "1"
@@ -286,15 +318,11 @@ def test_a_second_failed_base_pick_in_a_run_does_not_give_the_start_use_back_aga
 def test_a_failed_base_pick_after_an_answered_step_keeps_the_start_use(store, code):
     """Once any step of the run was answered (the `ok:{rid}` marker), a later base pick that fails costs only its own
     call: the start use stays counted, because the run did get an answer."""
-    token = token_for(store, code)
-    rid = tokens.verify(SECRET, token, NOW.timestamp())["rid"]
-    record = invites.record_key(invites.code_hash(code))
+    token, rid = token_and_run(store, code)
+    record = record_of(code)
     assert choose(store, token, lambda *a, **k: {"operation": "CLICK", "usage": {}})[0] == 200
 
-    def down(*args, **kw):
-        raise RuntimeError("jev down")
-
-    assert pick(store, token, down)[0] == 502
+    assert pick(store, token, jev_down)[0] == 502
     assert store.run("GET", f"run:{rid}") == "2"  # the answered choose kept one of two, the pick kept its one
     assert store.run("HGET", record, "used") == "1"  # no refund: this run already got an answer
 
@@ -302,9 +330,8 @@ def test_a_failed_base_pick_after_an_answered_step_keeps_the_start_use(store, co
 def test_a_successful_base_pick_costs_one_call_and_hands_nothing_back(store, code):
     """A pick Jev answers is exactly the one call it reserved and nothing else: no spare exists to hand back, and the
     start use stays counted (the person got their answer)."""
-    token = token_for(store, code)
-    rid = tokens.verify(SECRET, token, NOW.timestamp())["rid"]
-    record = invites.record_key(invites.code_hash(code))
+    token, rid = token_and_run(store, code)
+    record = record_of(code)
 
     status, body = pick(store, token, lambda item, options, **kw: {"base": "Ring", "probability": 0.9, "usage": {}})
     assert status == 200 and body["base"] == "Ring"
@@ -323,36 +350,39 @@ def test_invite_management(store):
         invites.revoke(store, "ghost")
     start(store, code)
     listed = invites.list_invites(store)
-    row = lambda r: (r["name"], r["limit"], r["expires"], r["disabled"], r["used"])  # noqa: E731
+
+    def row(r):
+        return (r["name"], r["limit"], r["expires"], r["disabled"], r["used"])
+
     assert [row(r) for r in listed] == [("bob", 5, "", False, 1)]
     assert not any(code in str(v) for v in store.data.values())
 
 
-def call_wsgi(method, path, body=b"", store=None, length=None):
-    import io
+def content_length(body=b"", length=None):
+    """The Content-Length both fake transports send: the body's own length, unless a test lies about it on purpose."""
+    return str(len(body)) if length is None else length
 
+
+def call_wsgi(method, path, body=b"", store=None, length=None):
     from jevsvc.http import wsgi
 
     seen = {}
     environ = {
         "REQUEST_METHOD": method,
         "PATH_INFO": path,
-        "CONTENT_LENGTH": str(len(body)) if length is None else length,
+        "CONTENT_LENGTH": content_length(body, length),
         "wsgi.input": io.BytesIO(body),
         "REMOTE_ADDR": "1.2.3.4",
     }
-    routes = {"/api/run/start": app.run_start, "/api/choose": app.choose_route}
 
     def start_response(status, headers):
         seen["status"], seen["headers"] = status, dict(headers)
 
-    data = b"".join(wsgi(environ, start_response, routes, store))
+    data = b"".join(wsgi(environ, start_response, TEST_ROUTES, store))
     return seen["status"], seen["headers"], data
 
 
-def test_wsgi_serves_the_two_routes_with_cors_and_rejects_everything_else(monkeypatch):
-    monkeypatch.setenv("RUN_TOKEN_SECRET", "s" * 40)
-    store = MemoryStore()
+def test_wsgi_serves_the_two_routes_with_cors_and_rejects_everything_else(store, secret_env):
     code = invites.add(store, "小明")
     start = json.dumps({"invite": code, "item_name": "Shako"}).encode()
     status, headers, data = call_wsgi("POST", "/api/run/start", start, store)
@@ -365,9 +395,7 @@ def test_wsgi_serves_the_two_routes_with_cors_and_rejects_everything_else(monkey
     assert call_wsgi("POST", "/api/run/start", wrong, store)[0].startswith("401")
 
 
-def test_wsgi_rejects_unusable_content_length_and_hostile_json_with_400(monkeypatch):
-    monkeypatch.setenv("RUN_TOKEN_SECRET", "s" * 40)
-    store = MemoryStore()
+def test_wsgi_rejects_unusable_content_length_and_hostile_json_with_400(store, secret_env):
     body = b'{"invite": "x"}'
     assert call_wsgi("POST", "/api/run/start", body, store, length="abc")[0].startswith("400")
     assert call_wsgi("POST", "/api/run/start", body, store, length="-1")[0].startswith("400")
@@ -391,14 +419,12 @@ class FakeHandler:
     """The slice of BaseHTTPRequestHandler that `http.serve` touches; it records exactly what the transport wrote."""
 
     def __init__(self, method, path, body=b"", length=None, address="1.2.3.4"):
-        import io
-
         self.command = method
         self.path = path
         self.rfile = io.BytesIO(body)
         self.wfile = io.BytesIO()
         self.client_address = (address, 12345)
-        self.headers = FakeHeaders({"Content-Length": str(len(body)) if length is None else length})
+        self.headers = FakeHeaders({"Content-Length": content_length(body, length)})
         self.status = None
         self.sent = []
 
@@ -416,34 +442,31 @@ def serve_once(method, path, body=b"", length=None, store=None):
     from jevsvc.http import serve
 
     handler = FakeHandler(method, path, body, length)
-    routes = {"/api/run/start": app.run_start, "/api/choose": app.choose_route}
-    serve(handler, routes, store)
+    serve(handler, TEST_ROUTES, store)
     return handler.status, dict(handler.sent), handler.wfile.getvalue()
 
 
-def test_the_dev_server_refuses_a_body_over_the_limit_with_the_exact_413(monkeypatch):
-    monkeypatch.setenv("RUN_TOKEN_SECRET", "s" * 40)
+def test_the_dev_server_refuses_a_body_over_the_limit_with_the_exact_413(store, secret_env):
     over = str(backend_http.MAX_BODY + 1)
-    status, headers, data = serve_once("POST", "/api/run/start", length=over, store=MemoryStore())
+    status, headers, data = serve_once("POST", "/api/run/start", length=over, store=store)
     assert status == 413
     assert json.loads(data) == {"error": "請求太大", "code": "too_large"}
     assert headers["Content-Length"] == str(len(data))
 
 
-def test_a_request_is_refused_with_500_not_configured_when_the_secret_is_missing_or_short(monkeypatch, capsys):
+def test_a_request_is_refused_with_500_not_configured_when_the_secret_is_missing_or_short(store, monkeypatch, capsys):
     for secret in (None, "s" * 31):  # None: absent; 31 bytes: present but under the 32-byte floor
         if secret is None:
             monkeypatch.delenv("RUN_TOKEN_SECRET", raising=False)
         else:
             monkeypatch.setenv("RUN_TOKEN_SECRET", secret)
-        status, _headers, data = serve_once("POST", "/api/run/start", body=b"{}", store=MemoryStore())
+        status, _headers, data = serve_once("POST", "/api/run/start", body=b"{}", store=store)
         assert status == 500
         assert json.loads(data) == {"error": "伺服器設定不完整", "code": "not_configured"}
     assert capsys.readouterr().out.count("missing or short env: RUN_TOKEN_SECRET") == 2
 
 
-def test_a_404_and_a_405_carry_their_exact_payloads():
-    store = MemoryStore()
+def test_a_404_and_a_405_carry_their_exact_payloads(store):
     status, headers, data = call_wsgi("GET", "/api/choose", store=store)
     assert status == "405 Method Not Allowed"
     assert json.loads(data) == {"error": "只接受 POST", "code": "method_not_allowed"}
@@ -455,12 +478,11 @@ def test_a_404_and_a_405_carry_their_exact_payloads():
 
 def client_key(headers, remote="203.0.113.9"):
     """Who the throttle counts: `Client_key` reads the address Vercel saw, else the proxy headers, else the socket."""
-    lower = {name.lower(): value for name, value in headers.items()}
     request = backend_http.Request(
         method="POST",
         path="/api/run/start",
         content_length="2",
-        header=lambda name: lower.get(name.lower()),
+        header=FakeHeaders(headers).get,  # the one case-insensitive header map this file fakes
         read=lambda _length: b"{}",
         remote=remote,
     )
@@ -478,6 +500,12 @@ def test_the_throttle_key_prefers_the_address_the_platform_saw():
     # The key is the address, not the header: the same caller is the same key whichever header carried it.
     assert client_key({"X-Vercel-Forwarded-For": "1.1.1.1"}) == client_key({"X-Forwarded-For": "1.1.1.1"})
     assert client_key({"X-Real-IP": "3.3.3.3"}) == client_key({"X-Forwarded-For": "3.3.3.3"})
+    # Both fallback headers at once, carrying different addresses: the platform's own header still wins, so a client
+    # cannot rotate the throttle key by adding the other one (the test above only sends them one at a time).
+    assert client_key({"X-Vercel-Forwarded-For": "1.1.1.1", "X-Real-IP": "2.2.2.2"}) == client_key(
+        {"X-Vercel-Forwarded-For": "1.1.1.1"}
+    )
+    assert client_key({"X-Real-IP": "2.2.2.2", "X-Forwarded-For": "3.3.3.3"}) == client_key({"X-Real-IP": "2.2.2.2"})
     assert client_key({"X-Forwarded-For": "9.9.9.9, 10.0.0.1"}) == client_key({"X-Forwarded-For": "9.9.9.9"})
     assert client_key({}, remote="198.51.100.7") == client_key({}, remote="198.51.100.7")
     assert client_key({}, remote="198.51.100.7") != client_key({}, remote="198.51.100.8")
@@ -504,7 +532,7 @@ def test_a_client_can_ask_again_without_the_blocked_option(store, code):
 
 
 def test_a_base_the_client_matched_itself_costs_no_model_call(store, code):
-    token = token_for(store, code)
+    token, rid = token_and_run(store, code)
 
     def never(*args, **kw):
         raise AssertionError("the model must not be called")
@@ -512,13 +540,13 @@ def test_a_base_the_client_matched_itself_costs_no_model_call(store, code):
     body = {"run_token": token, "options": ["Ring", "Amulet"], "base": "Ring"}
     status, reply = app.pick_base_step(body, store, SECRET, NOW, never)
     assert status == 200 and tokens.verify(SECRET, reply["run_token"], NOW.timestamp())["item"] == "Ring"
-    assert store.data.get(f"run:{tokens.verify(SECRET, token, NOW.timestamp())['rid']}") is None
+    assert store.data.get(f"run:{rid}") is None
     body["base"] = "Not A Base"
     assert app.pick_base_step(body, store, SECRET, NOW, never)[0] == 400
 
 
 def test_one_record_per_user_and_nothing_else(store, code):
-    key = f"invite:{invites.code_hash(code)}"
+    key = record_of(code)
     start(store, code)
     assert [k for k in store.data if k.startswith(("invite:", "used"))] == [key]
     assert set(store.data) == {key, "invite-names"}  # the record and the name index, nothing else
@@ -580,32 +608,28 @@ def test_a_body_that_is_not_an_object_is_refused_by_every_route(store):
 def test_a_request_id_of_the_wrong_shape_is_refused_before_the_use_is_counted(store, code):
     status, body = start(store, code, request_id="short")
     assert (status, body["code"]) == (400, "bad_request")
-    assert "used" not in store.data[f"invite:{invites.code_hash(code)}"]
+    assert "used" not in store.data[record_of(code)]
 
 
 def test_repeating_a_start_with_the_same_request_id_answers_the_same_and_counts_once(store, code):
     first = start(store, code, request_id="abcdefgh")
     assert start(store, code, request_id="abcdefgh") == first
-    assert store.data[f"invite:{invites.code_hash(code)}"]["used"] == "1"
+    assert store.data[record_of(code)]["used"] == "1"
 
 
-def test_a_store_that_cannot_remember_the_start_still_answers(store, code, capsys):
+def test_a_store_that_cannot_remember_the_start_still_answers(capsys):
     class Forgetful(MemoryStore):
         def run(self, *command):
             if command[0] == "SET" and str(command[1]).startswith("start:"):
                 raise StoreError("kv down")
             return super().run(*command)
 
-    forgetful = Forgetful()
-    its_code = invites.add(forgetful, "amy")
-    status, body = app.run_start(
-        {"invite": its_code, "item_name": "Shako", "request_id": "abcdefgh"}, "1.1.1.1", forgetful, SECRET, NOW
-    )
+    status, body = start_on(Forgetful(), item_name="Shako", request_id="abcdefgh")
     assert (status, body["used"]) == (200, 1)  # the use is already counted: the answer must not be lost to it
     assert "start not remembered" in capsys.readouterr().out
 
 
-def test_a_store_that_cannot_record_usage_still_answers_the_step(store, code, capsys):
+def test_a_store_that_cannot_record_usage_still_answers_the_step(capsys):
     class NoUsage(MemoryStore):
         def pipeline(self, commands, atomic=False):
             if any(c[0] == "SET" and str(c[1]).startswith("ok:") for c in commands):
@@ -613,15 +637,12 @@ def test_a_store_that_cannot_record_usage_still_answers_the_step(store, code, ca
             return super().pipeline(commands, atomic=atomic)
 
     quiet = NoUsage()
-    its_code = invites.add(quiet, "amy")
-    token = app.run_start({"invite": its_code, "item_name": "Shako"}, "1.1.1.1", quiet, SECRET, NOW)[1]["run_token"]
-    status, body = app.choose_step(
-        {"run_token": token, "phase": "trading", "page": PAGE, "history": []},
-        quiet,
-        SECRET,
-        NOW,
-        lambda *a, **k: {"operation": "CLICK", "target": "1", "model_calls": 1, "usage": {}},
-    )
+    token = start_on(quiet, item_name="Shako")[1]["run_token"]
+
+    def click(*_args, **_kwargs):
+        return {"operation": "CLICK", "target": "1", "model_calls": 1, "usage": {}}
+
+    status, body = choose(quiet, token, click)
     assert (status, body["operation"]) == (200, "CLICK")
     assert "usage not recorded" in capsys.readouterr().out
 
@@ -629,15 +650,14 @@ def test_a_store_that_cannot_record_usage_still_answers_the_step(store, code, ca
 def test_a_step_without_a_model_key_is_not_configured(store, code, monkeypatch):
     monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
     token = token_for(store, code)
-    body = {"run_token": token, "phase": "trading", "page": PAGE, "history": []}
-    status, reply = app.choose_step(body, store, SECRET, NOW)
+    # No chooser: the route builds one from the settings, which need the model key.
+    status, reply = choose(store, token, None)
     assert (status, reply["code"]) == (500, "not_configured")
 
 
 def test_a_page_that_is_not_an_object_is_a_bad_page(store, code):
     token = token_for(store, code)
-    body = {"run_token": token, "phase": "trading", "page": PRODUCT, "history": []}
-    status, reply = app.choose_step(body, store, SECRET, NOW, lambda *a, **k: {})
+    status, reply = choose(store, token, lambda *a, **k: {}, page=PRODUCT)
     assert (status, reply["code"]) == (400, "bad_page")
 
 
@@ -645,14 +665,14 @@ def test_an_item_name_the_goal_cannot_carry_is_refused_and_not_counted(store, co
     for bad in ('Shako"', "Sha\u200bko"):
         status, body = start(store, code, item_name=bad)
         assert (status, body["error"]) == (400, "裝備名稱含有不允許的字元"), bad
-    assert "used" not in store.data[f"invite:{invites.code_hash(code)}"]
+    assert "used" not in store.data[record_of(code)]
 
 
 # --- the invite rules that keep a name or an unreadable date from granting anything ---
 
 
 def test_an_invite_whose_stored_expiry_cannot_be_read_never_grants_access(store, code):
-    store.run("HSET", invites.record_key(invites.code_hash(code)), "expires", "2026/05/01")
+    store.run("HSET", record_of(code), "expires", "2026/05/01")
     assert start(store, code) == (401, {"error": "邀請碼已過期"})
 
 
@@ -706,22 +726,23 @@ def test_an_expiry_may_be_a_date_a_datetime_or_a_day_string_but_not_anything_els
     assert start(store, invites.add(store, "day", expires=date(2026, 5, 1)))[0] == 200
 
 
-def test_a_store_that_cannot_settle_a_failed_step_still_reports_the_failure(store, code, capsys):
-    class NoSettle(MemoryStore):
-        def pipeline(self, commands, atomic=False):
-            if any(c[0] == "DECRBY" and str(c[1]).startswith("run:") for c in commands):
-                raise StoreError("kv down")
-            return super().pipeline(commands, atomic=atomic)
+class NoSettle(MemoryStore):
+    """A store whose settlement pipeline fails; `_after_failure` must be best-effort and never raise."""
 
+    def pipeline(self, commands, atomic=False):
+        if any(c[0] == "DECRBY" and str(c[1]).startswith("run:") for c in commands):
+            raise StoreError("kv down")
+        return super().pipeline(commands, atomic=atomic)
+
+
+def test_a_store_that_cannot_settle_a_failed_step_still_reports_the_failure(capsys):
     broken = NoSettle()
-    its_code = invites.add(broken, "amy")
-    token = app.run_start({"invite": its_code, "item_name": "Shako"}, "1.1.1.1", broken, SECRET, NOW)[1]["run_token"]
+    token = start_on(broken, item_name="Shako")[1]["run_token"]
 
     def jev_is_down(*_args, **_kwargs):
         raise RuntimeError("provider down")
 
-    body = {"run_token": token, "phase": "trading", "page": PAGE, "history": []}
-    status, reply = app.choose_step(body, broken, SECRET, NOW, jev_is_down)
+    status, reply = choose(broken, token, jev_is_down)
     assert (status, reply["code"]) == (502, "model_unavailable")
     assert "failed step not settled" in capsys.readouterr().out
 
@@ -740,7 +761,7 @@ def test_a_failed_step_gives_back_exactly_one_of_the_two_reserved_calls(store):
 def test_a_failed_step_refunds_the_start_use_once_when_the_run_never_got_an_answer(store, code):
     """Jev being down is not the person's fault: the invitation's `used` goes back down by one, and only once."""
     digest = invites.code_hash(code)
-    record = invites.record_key(digest)
+    record = record_of(code)
     store.run("HSET", record, "used", "5")
     run_key = "run:r1"
     store.run("SET", run_key, "2")
@@ -758,7 +779,7 @@ def test_a_failed_step_never_refunds_when_a_condition_does_not_hold(store, code)
     """The refund is deliberately narrow: an answered run, an already-refunded one, a token without a record digest,
     and a record with no `limit` all leave the counter untouched."""
     digest = invites.code_hash(code)
-    record = invites.record_key(digest)
+    record = record_of(code)
     store.run("HSET", record, "used", "5")
 
     def fail(rid, inv, *, answered=False, refunded=False):
@@ -787,15 +808,9 @@ def test_a_failed_step_never_refunds_when_a_condition_does_not_hold(store, code)
     assert store.run("HGET", invites.record_key(bare), "used") is None
 
 
-def test_a_store_that_fails_mid_settlement_lets_a_failed_step_still_report_normally(store, capsys):
+def test_a_store_that_fails_mid_settlement_lets_a_failed_step_still_report_normally(capsys):
     """`_after_failure` is best-effort: a store error is printed and swallowed, never raised, so the 502 the caller
     already prepared is what the player sees."""
-    class NoSettle(MemoryStore):
-        def pipeline(self, commands, atomic=False):
-            if any(c[0] == "DECRBY" and str(c[1]).startswith("run:") for c in commands):
-                raise StoreError("kv down")
-            return super().pipeline(commands, atomic=atomic)
-
     broken = NoSettle()
     broken.run("SET", "run:r1", "2")
     app._after_failure(broken, {"rid": "r1", "inv": "a" * 64, "item": "Harlequin Crest"}, "run:r1")
@@ -806,7 +821,7 @@ def test_a_successful_step_hands_back_its_spare_call_and_records_the_usage(store
     """The answer costs what it used: the unused reservation goes back and the invitation's totals gain the calls and
     input tokens of the step; an older token with no record digest is skipped, not crashed on."""
     digest = invites.code_hash(code)
-    record = invites.record_key(digest)
+    record = record_of(code)
 
     store.run("SET", "run:a", "2")
     app._after_success(store, {"rid": "a", "inv": digest}, "run:a", spare=1, calls=1, usage={"input_tokens": 123})
@@ -840,9 +855,7 @@ def test_a_start_whose_remembered_answer_cannot_be_read_starts_again():
         its_code = invites.add(store, "amy")
         key = f"start:{invites.code_hash(its_code)}:abcdefgh"
         store.run("SET", key, saved)
-        status, body = app.run_start(
-            {"invite": its_code, "item_name": "Shako", "request_id": "abcdefgh"}, "1.1.1.1", store, SECRET, NOW
-        )
+        status, body = start(store, its_code, item_name="Shako", request_id="abcdefgh")
         assert (status, body["used"]) == (200, 1), saved
         assert json.loads(store.run("GET", key))[1] == 1  # the fresh answer replaced the unreadable one
 
@@ -859,17 +872,15 @@ def test_a_non_string_invite_is_treated_as_no_invite_and_counts_a_failure(store)
 def test_a_step_that_re_asks_keeps_two_calls_and_a_single_answer_hands_one_back(store, code):
     """Two calls are reserved up front for every step: a re-ask (`model_calls` 2) spends both, a single answer hands
     the spare back, and a count that is over the reservation, zero or missing is clamped to what was reserved."""
-    token = token_for(store, code)
-    rid = tokens.verify(SECRET, token, NOW.timestamp())["rid"]
+    token, rid = token_and_run(store, code)
     run_key = f"run:{rid}"
-    record = invites.record_key(invites.code_hash(code))
+    record = record_of(code)
 
     def step(model_calls):
         decision = {"operation": "CLICK", "usage": {}}
         if model_calls is not None:
             decision["model_calls"] = model_calls
-        body = {"run_token": token, "phase": "trading", "page": PAGE, "history": []}
-        return app.choose_step(body, store, SECRET, NOW, lambda *a, **k: decision)
+        return choose(store, token, lambda *a, **k: decision)
 
     assert step(2)[0] == 200 and store.run("GET", run_key) == "2"  # a re-ask spent both reserved calls
     assert step(1)[0] == 200 and store.run("GET", run_key) == "3"  # a single answer handed the spare back
@@ -882,8 +893,7 @@ def test_a_step_that_re_asks_keeps_two_calls_and_a_single_answer_hands_one_back(
 def test_a_given_base_that_is_not_a_string_is_refused_without_a_model_call(store, code):
     """The self-matched base shortcut keys off `base` being a name on the list: any non-string is a bad base and must
     be refused before a run call is reserved or the model is reached."""
-    token = token_for(store, code)
-    rid = tokens.verify(SECRET, token, NOW.timestamp())["rid"]
+    token, rid = token_and_run(store, code)
 
     def never(*args, **kw):
         raise AssertionError("the model must not be asked for a given base")
@@ -897,15 +907,12 @@ def test_a_given_base_that_is_not_a_string_is_refused_without_a_model_call(store
 def test_several_answered_steps_accumulate_in_the_invite_record(store, code):
     """The person's totals are the sum of their answered steps, not of one: each step's calls and input tokens add to
     the running counters the record carries, while `used` stays at the one start use."""
-    digest = invites.code_hash(code)
-    record = invites.record_key(digest)
-    token = token_for(store, code)
-    rid = tokens.verify(SECRET, token, NOW.timestamp())["rid"]
+    record = record_of(code)
+    token, rid = token_and_run(store, code)
 
     def step(usage, model_calls):
-        body = {"run_token": token, "phase": "trading", "page": PAGE, "history": []}
         decision = {"operation": "CLICK", "usage": usage, "model_calls": model_calls}
-        return app.choose_step(body, store, SECRET, NOW, lambda *a, **k: decision)
+        return choose(store, token, lambda *a, **k: decision)
 
     assert step({"input_tokens": 100, "output_tokens": 5}, 1)[0] == 200
     assert step({"input_tokens": 50}, 2)[0] == 200
@@ -921,7 +928,10 @@ def test_history_that_is_not_a_list_of_shaped_entries_is_a_bad_page(store, code)
     """`history` is bounded and typed field by field: a non-list, an over-long list, an entry that is not an object,
     or a field of the wrong type is the client's error. An absent history is an empty one, an all-None entry is fine."""
     token = token_for(store, code)
-    ok = lambda *a, **k: {"operation": "CLICK", "usage": {}, "model_calls": 1}  # noqa: E731
+
+    def ok(*_args, **_kwargs):
+        return {"operation": "CLICK", "usage": {}, "model_calls": 1}
+
     for bad in ([1], "nope", [{"action": 5}], [{"page_changed": "yes"}], [{"text": 5}], [{}] * (app.MAX_HISTORY + 1)):
         body = {"run_token": token, "phase": "trading", "page": PAGE, "history": bad}
         assert app.choose_step(body, store, SECRET, NOW, ok) == (400, {"error": app.BAD_PAGE, "code": "bad_page"}), bad

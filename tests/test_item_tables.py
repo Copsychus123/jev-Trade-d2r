@@ -23,6 +23,11 @@ def load(name: str):
 build = load("build_item_tables")
 audit = load("audit_item_tables")
 
+
+def audit_problems(data: dict) -> list[str]:
+    """The problems `audit_item_tables.audit` found in `data` (the second half of its `(report, problems)` pair)."""
+    return audit.audit(data)[1]
+
 PRODUCTS = [
     {"name": "Dagger", "slug": "dagger", "category": "base"},
     {"name": "Dreadfang", "slug": "dreadfang", "category": "uniques"},
@@ -79,8 +84,7 @@ def test_the_audit_flags_noise_generic_words_naming_items_and_footer_text():
         "game_only": ["Contact Us", "Bane's Garments"],
         "bases": ["Dagger"],
     }
-    _, problems = audit.audit(data)
-    text = " ".join(problems)
+    text = " ".join(audit_problems(data))
     assert "通用字誤配：咒符" in text and "雜訊鍵" in text and "Contact Us" in text
     assert "匕首" not in text
 
@@ -104,34 +108,32 @@ def synthetic_table(counts: dict[str, int]) -> dict:
 
 
 def test_the_committed_item_table_passes_the_audit():
-    _, problems = audit.audit(committed_items())
-    assert problems == []
+    assert audit_problems(committed_items()) == []
 
 
 def test_the_audit_flags_a_missing_category_a_short_category_a_new_duplicate_a_bad_slug_and_a_wrong_base():
-    counts = dict(audit.MIN_PRODUCTS)
-    data = synthetic_table(counts)
-    assert audit.audit(data)[1] == []
+    data = synthetic_table(audit.MIN_PRODUCTS)
+    assert audit_problems(data) == []
 
     missing = {**data, "products": [p for p in data["products"] if p["category"] != "runes"]}
-    assert any("runes" in problem for problem in audit.audit(missing)[1])
+    assert any("runes" in problem for problem in audit_problems(missing))
 
     short = {**data, "products": [p for p in data["products"] if p["name"] != data["products"][0]["name"]]}
-    assert any("低於下限" in problem for problem in audit.audit(short)[1])
+    assert any("低於下限" in problem for problem in audit_problems(short))
 
     twin = {"name": "ITEM-twin", "slug": "item-twin", "category": "sets"}
     twin_two = {**twin, "name": "The Item Twin", "slug": "item-twin2"}
     duplicated = {**data, "products": [*data["products"], twin, twin_two]}
-    assert any("重複" in problem and "item twin" in problem for problem in audit.audit(duplicated)[1])
+    assert any("重複" in problem and "item twin" in problem for problem in audit_problems(duplicated))
 
     bad_slug = {**data, "products": [*data["products"], {"name": "Odd", "slug": "Odd_Slug", "category": "sets"}]}
-    assert any("網址代稱格式" in problem for problem in audit.audit(bad_slug)[1])
+    assert any("網址代稱格式" in problem for problem in audit_problems(bad_slug))
 
     unique_item = next(p["name"] for p in data["products"] if p["category"] == "uniques")
     wrong_base = {**data, "bases": [*data["bases"], unique_item]}
-    assert any("不是底材分類" in problem for problem in audit.audit(wrong_base)[1])
+    assert any("不是底材分類" in problem for problem in audit_problems(wrong_base))
     ghost_base = {**data, "bases": [*data["bases"], "No Such Item"]}
-    assert any("不存在" in problem for problem in audit.audit(ghost_base)[1])
+    assert any("不存在" in problem for problem in audit_problems(ghost_base))
 
 
 def test_combine_lists_products_whose_names_collide_after_normalising():

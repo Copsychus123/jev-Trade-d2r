@@ -124,16 +124,23 @@ URLS = [
 ]
 
 ROOT = f"{TRADERIE_D2R_URL}/product/harlequin-crest"
-RECENT = f"{ROOT}/recent"
 
 
-def _fixture_texts():
-    paths = sorted(FIXTURES.glob("*.txt"))
-    return [p.read_text(encoding="utf-8") for p in paths]
+def _section_url(section):
+    """A product section sits beside the product root (`/recent`, `/buying`, `/wiki`); `product_section` judges it."""
+    return f"{ROOT}/{section}"
+
+
+RECENT = _section_url("recent")
 
 
 def _fixture(name):
+    """One saved page under `tests/fixtures/`: the only way this module reads a file."""
     return (FIXTURES / name).read_text(encoding="utf-8")
+
+
+def _fixture_texts():
+    return [_fixture(path.name) for path in sorted(FIXTURES.glob("*.txt"))]
 
 
 def _case(view, url, text, *, title=ITEM, settled=True, more=False):
@@ -145,10 +152,10 @@ VIEW_CASES = {
     "trading ok": _case("trading", ROOT, _fixture("trading_harlequin_crest.txt"), more=True),
     "recent ok": _case("recent_trades", RECENT, _fixture("recent_harlequin_crest.txt")),
     "trading on recent": _case("trading", RECENT, ITEM),
-    "trading on buying": _case("trading", f"{ROOT}/buying", ITEM),
-    "trading on wiki": _case("trading", f"{ROOT}/wiki", ITEM),
+    "trading on buying": _case("trading", _section_url("buying"), ITEM),
+    "trading on wiki": _case("trading", _section_url("wiki"), ITEM),
     "recent on root": _case("recent_trades", ROOT, ITEM),
-    "recent on wiki": _case("recent_trades", f"{ROOT}/wiki", ITEM),
+    "recent on wiki": _case("recent_trades", _section_url("wiki"), ITEM),
     "wrong item": _case("recent_trades", RECENT, ONE_TRADE, title="Shako"),
     "item only in the text": _case("recent_trades", RECENT, f"{ITEM}\n{ONE_TRADE}", title="Traderie - Shako"),
     "never settled": _case("recent_trades", RECENT, ONE_TRADE, settled=False),
@@ -267,7 +274,7 @@ def test_one_regex_ends_a_card_on_both_views_for_every_relative_time_form():
 def test_product_section_tells_the_trading_page_from_the_other_sections():
     assert product_section(ROOT) is None and product_section(f"{ROOT}/") is None
     assert product_section(RECENT) == "recent" and product_section(f"{RECENT}/") == "recent"
-    assert product_section(f"{ROOT}/buying") == "buying" and product_section(f"{ROOT}/wiki") == "wiki"
+    assert product_section(_section_url("buying")) == "buying" and product_section(_section_url("wiki")) == "wiki"
     assert product_section(f"{RECENT}/extra") is None and product_root_url(f"{RECENT}/extra") is None
     assert product_section("https://example.com/diablo2resurrected/product/x/recent") is None
 

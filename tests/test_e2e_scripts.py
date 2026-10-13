@@ -137,7 +137,7 @@ def test_stub_chooser_ignores_a_recent_trades_label_that_is_not_a_click():
 
 def test_stub_chooser_logs_a_timestamped_line_per_request_naming_what_it_saw():
     lines = []
-    chooser = stub_backend.StubChooser(log=lines.append)
+    chooser = stub_chooser(lines)
     chooser(stub_page(actions=[click("e13", "Log in to Load More")]), phase_goals()[0], [])
     chooser(stub_page(), phase_goals()[1], [])
     assert (chooser.requests, len(lines)) == (2, 2)
@@ -152,7 +152,7 @@ def test_the_stub_route_answers_a_whole_query_through_the_backends_own_pipeline(
     monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
     log = []
     store = MemoryStore()
-    routes = stub_backend.stub_routes(stub_backend.StubChooser(log=log.append))
+    routes = stub_backend.stub_routes(stub_chooser(log))
     status, started = routes["/api/run/start"](
         {"invite": invites.add(store, "stub"), "item_name": "Harlequin Crest", "load_more": 2},
         "1.1.1.1",
@@ -176,6 +176,19 @@ def test_the_stub_route_answers_a_whole_query_through_the_backends_own_pipeline(
     ]
     assert "request" not in trading[1] and "raw_answers" not in trading[1]  # what choose_step strips from a decision
     assert len(log) == 3
+
+
+# --- the shape every verdict test asserts on ---------------------------------------------------------------
+
+
+def only_failure(failures: list[str]) -> str:
+    """The one failure a verdict reported for a single flipped fact.
+
+    Asserting the length here is what makes each parametrized case precise: two failures would mean the flip broke an
+    unrelated check as well, and the message shows the extra ones.
+    """
+    assert len(failures) == 1, failures
+    return failures[0]
 
 
 # --- scan_e2e.verdict -------------------------------------------------------------------------------------
@@ -349,9 +362,7 @@ def _view_ran_a_query(report):
 def test_scan_verdict_reports_exactly_the_single_broken_assertion(mutate, token):
     report = scan_report()
     mutate(report)
-    failures = scan_e2e.verdict(report)
-    assert len(failures) == 1, failures
-    assert token in failures[0]
+    assert token in only_failure(scan_e2e.verdict(report))
 
 
 # --- ocr_e2e.verdict --------------------------------------------------------------------------------------
@@ -401,8 +412,13 @@ ACCURACY_FLOORS = {"scored": 22, "top1": 20, "top3": 21, "screenshots_top3": 17,
 HOLDOUT_FLOORS = {"scored": 30, "top1": 22, "top3": 26, "screenshots_top3": 16, "phone_top3": 10}
 
 
+def ocr_failures(report) -> list[str]:
+    """What `ocr_e2e.verdict` reports for `report` against the two committed floor tables."""
+    return ocr_e2e.verdict(report, floors=ACCURACY_FLOORS, holdout=HOLDOUT_FLOORS)
+
+
 def test_ocr_verdict_accepts_a_report_that_meets_every_floor_and_flag():
-    assert ocr_e2e.verdict(ocr_report(), ACCURACY_FLOORS, HOLDOUT_FLOORS) == []
+    assert ocr_failures(ocr_report()) == []
 
 
 def test_ocr_verdict_skips_the_floors_when_no_accepted_floor_is_given():
@@ -461,17 +477,13 @@ def test_ocr_verdict_accepts_the_first_holdout_run_with_no_floor():
 def test_ocr_verdict_rejects_a_download_check_that_is_not_true(key):
     report = ocr_report()
     report["download"][key] = False
-    failures = ocr_e2e.verdict(report, floors=ACCURACY_FLOORS, holdout=HOLDOUT_FLOORS)
-    assert len(failures) == 1, failures
-    assert key in failures[0]
+    assert key in only_failure(ocr_failures(report))
 
 
 def test_ocr_verdict_rejects_a_download_with_no_progress_seen():
     report = ocr_report()
     report["download"]["progress_seen"] = []
-    failures = ocr_e2e.verdict(report, floors=ACCURACY_FLOORS, holdout=HOLDOUT_FLOORS)
-    assert len(failures) == 1, failures
-    assert "進度" in failures[0]
+    assert "進度" in only_failure(ocr_failures(report))
 
 
 @pytest.mark.parametrize(
@@ -486,9 +498,7 @@ def test_ocr_verdict_rejects_a_download_with_no_progress_seen():
 def test_ocr_verdict_rejects_an_auto_check_that_is_not_true(key):
     report = ocr_report()
     report["auto"][key] = False
-    failures = ocr_e2e.verdict(report, floors=ACCURACY_FLOORS, holdout=HOLDOUT_FLOORS)
-    assert len(failures) == 1, failures
-    assert key in failures[0]
+    assert key in only_failure(ocr_failures(report))
 
 
 @pytest.mark.parametrize(
@@ -497,49 +507,41 @@ def test_ocr_verdict_rejects_an_auto_check_that_is_not_true(key):
 def test_ocr_verdict_rejects_an_affix_check_that_is_not_true(key):
     report = ocr_report()
     report["affix"][key] = False
-    failures = ocr_e2e.verdict(report, floors=ACCURACY_FLOORS, holdout=HOLDOUT_FLOORS)
-    assert len(failures) == 1, failures
-    assert key in failures[0]
+    assert key in only_failure(ocr_failures(report))
 
 
 @pytest.mark.parametrize("gate", [{"disabled": True, "whyVisible": False}, {"disabled": True, "whyVisible": True}])
 def test_ocr_verdict_rejects_a_captured_value_that_did_not_open_the_start_gate(gate):
     report = ocr_report()
     report["affix"]["start_gate_after_capture"] = gate
-    failures = ocr_e2e.verdict(report, floors=ACCURACY_FLOORS, holdout=HOLDOUT_FLOORS)
-    assert len(failures) == 1, failures
-    assert "start_gate_after_capture" in failures[0]
+    assert "start_gate_after_capture" in only_failure(ocr_failures(report))
 
 
 @pytest.mark.parametrize("gate", [{"disabled": False, "whyVisible": True}, {"disabled": True, "whyVisible": False}])
 def test_ocr_verdict_rejects_a_start_gate_that_stayed_open_with_every_box_empty(gate):
     report = ocr_report()
     report["affix"]["start_gate_after_clearing"] = gate
-    failures = ocr_e2e.verdict(report, floors=ACCURACY_FLOORS, holdout=HOLDOUT_FLOORS)
-    assert len(failures) == 1, failures
-    assert "start_gate_after_clearing" in failures[0]
+    assert "start_gate_after_clearing" in only_failure(ocr_failures(report))
 
 
 def test_ocr_verdict_rejects_a_start_that_stayed_disabled_after_filling_a_value():
     report = ocr_report()
     report["affix"]["start_enabled_after_value"] = {"disabled": True, "whyVisible": True}
-    failures = ocr_e2e.verdict(report, floors=ACCURACY_FLOORS, holdout=HOLDOUT_FLOORS)
-    assert len(failures) == 1, failures
-    assert "start_enabled_after_value" in failures[0]
+    assert "start_enabled_after_value" in only_failure(ocr_failures(report))
 
 
 def test_ocr_verdict_accepts_an_unmeasured_start_enabled_check():
     # A bool-only affix row has no number box, so start_enabled_after_value is never measured (None).
     report = ocr_report()
     report["affix"]["start_enabled_after_value"] = None
-    assert ocr_e2e.verdict(report, floors=ACCURACY_FLOORS, holdout=HOLDOUT_FLOORS) == []
+    assert ocr_failures(report) == []
 
 
 def test_scan_and_ocr_verdicts_are_pure():
     report = scan_report()
     ocr = ocr_report()
     scan_e2e.verdict(report)
-    ocr_e2e.verdict(ocr, ACCURACY_FLOORS, HOLDOUT_FLOORS)
+    ocr_failures(ocr)
     assert report == scan_report() and ocr == ocr_report()
 
 
@@ -574,6 +576,11 @@ def batch_result(**over):
     return result
 
 
+def batch_verdict(case, result, last_used: int | None = None) -> str:
+    """Just the PASS/FAIL/GAP word of `extension_batch.judge`'s `(verdict, reason)` pair."""
+    return extension_batch.judge(case, result, last_used)[0]
+
+
 def test_batch_judge_passes_a_clean_paid_run():
     assert extension_batch.judge(batch_case(), batch_result(), None) == ("PASS", "")
 
@@ -591,23 +598,23 @@ def test_batch_judge_calls_a_site_challenge_blocked():
 @pytest.mark.parametrize("expect,contains", [("error", "邀請碼無效"), ("not_found", "找不到這個裝備")])
 def test_batch_judge_checks_the_expected_message_and_that_nothing_was_read(expect, contains):
     case = batch_case(expect=expect, contains=contains)
-    assert extension_batch.judge(case, batch_result(status=contains, rows=[0, 0]), None)[0] == "PASS"
-    assert extension_batch.judge(case, batch_result(status=contains, rows=[1, 0]), None)[0] == "FAIL"
-    assert extension_batch.judge(case, batch_result(status="別的訊息", rows=[0, 0]), None)[0] == "FAIL"
+    assert batch_verdict(case, batch_result(status=contains, rows=[0, 0])) == "PASS"
+    assert batch_verdict(case, batch_result(status=contains, rows=[1, 0])) == "FAIL"
+    assert batch_verdict(case, batch_result(status="別的訊息", rows=[0, 0])) == "FAIL"
 
 
 def test_batch_judge_wants_a_stopped_run_that_let_go_of_the_sidebar():
     case = batch_case(expect="stop")
-    assert extension_batch.judge(case, batch_result(status="已停止"), None)[0] == "PASS"
-    assert extension_batch.judge(case, batch_result(status="已停止", locked=True), None)[0] == "FAIL"
-    assert extension_batch.judge(case, batch_result(status=extension_batch.DONE), None)[0] == "FAIL"
+    assert batch_verdict(case, batch_result(status="已停止")) == "PASS"
+    assert batch_verdict(case, batch_result(status="已停止", locked=True)) == "FAIL"
+    assert batch_verdict(case, batch_result(status=extension_batch.DONE)) == "FAIL"
 
 
 def test_batch_judge_accepts_either_the_expected_slug_or_a_clean_not_found():
     case = batch_case(expect="not_found_or_slug")
     assert extension_batch.judge(case, batch_result(), None) == ("PASS", "配到預期商品")
     wrong = batch_result(urls=[f"{BATCH_PRODUCT}/../windforce", ""])
-    assert extension_batch.judge(case, wrong, None)[0] == "FAIL"
+    assert batch_verdict(case, wrong) == "FAIL"
     empty = batch_result(status="找不到這個裝備", rows=[0, 0], pills=["NOT_RUN", "NOT_RUN"])
     assert extension_batch.judge(case, empty, None) == ("PASS", "找不到（可接受）")
 
@@ -636,22 +643,22 @@ def test_batch_judge_fails_the_pass_case_when_one_fact_is_wrong(broken, needle):
 
 def test_batch_judge_requires_load_more_to_have_loaded_more_listings():
     case = batch_case(load_more=5)
-    assert extension_batch.judge(case, batch_result(rows=[60, 2]), None)[0] == "PASS"
+    assert batch_verdict(case, batch_result(rows=[60, 2])) == "PASS"
     verdict, reason = extension_batch.judge(case, batch_result(rows=[30, 2]), None)
     assert verdict == "FAIL" and "載入更多" in reason
 
 
 def test_batch_judge_allows_an_empty_market_only_when_the_case_says_so():
-    assert extension_batch.judge(batch_case(), batch_result(rows=[0, 0]), None)[0] == "FAIL"
-    assert extension_batch.judge(batch_case(allow_empty=True), batch_result(rows=[0, 0]), None)[0] == "PASS"
+    assert batch_verdict(batch_case(), batch_result(rows=[0, 0])) == "FAIL"
+    assert batch_verdict(batch_case(allow_empty=True), batch_result(rows=[0, 0])) == "PASS"
 
 
 def test_batch_judge_checks_that_a_double_click_spent_only_one_query():
     case = batch_case(double_click=True)
-    assert extension_batch.judge(case, batch_result(quota="已用 4/100"), 3)[0] == "PASS"
+    assert batch_verdict(case, batch_result(quota="已用 4/100"), 3) == "PASS"
     verdict, reason = extension_batch.judge(case, batch_result(quota="已用 5/100"), 3)
     assert verdict == "FAIL" and "額度" in reason
-    assert extension_batch.judge(case, batch_result(quota="—"), 3)[0] == "FAIL"
+    assert batch_verdict(case, batch_result(quota="—"), 3) == "FAIL"
 
 # --- demo_e2e.verdict (the demo page's result rendering) -----------------------------------------------------
 
@@ -756,8 +763,7 @@ def _demo_overlay_position_numbered(report):
 def test_demo_verdict_reports_exactly_the_single_broken_assertion(mutation, needle):
     report = demo_report()
     mutation(report)
-    failures = demo_e2e.verdict(report)
-    assert len(failures) == 1 and needle in failures[0], failures
+    assert needle in only_failure(demo_e2e.verdict(report))
 
 
 # --- probe_stats.param_changed_the_list (what a filter address did to the list) ----------------------------

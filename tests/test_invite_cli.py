@@ -22,6 +22,11 @@ import invite  # noqa: E402
 NOW = datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc)
 
 
+def stub_dotenv(monkeypatch):
+    """Keep the developer's `.env` out of the CLI's environment; the caller sets whatever else the run needs."""
+    monkeypatch.setattr(invite, "load_dotenv", lambda: None)
+
+
 @pytest.fixture
 def cli(monkeypatch):
     """One in-memory store behind the CLI, with `.env` and the Upstash client out of the way."""
@@ -32,7 +37,7 @@ def cli(monkeypatch):
         built.append((url, token))
         return store
 
-    monkeypatch.setattr(invite, "load_dotenv", lambda: None)
+    stub_dotenv(monkeypatch)
     monkeypatch.setattr(invite, "Store", factory)
     monkeypatch.setenv("KV_REST_API_URL", "https://example.test")
     monkeypatch.setenv("KV_REST_API_TOKEN", "t")
@@ -93,7 +98,7 @@ def test_a_limit_of_zero_is_refused_before_the_database_is_touched(cli, capsys):
 
 
 def test_without_the_database_credentials_it_says_so(monkeypatch, capsys):
-    monkeypatch.setattr(invite, "load_dotenv", lambda: None)
+    stub_dotenv(monkeypatch)
     monkeypatch.delenv("KV_REST_API_URL", raising=False)
     monkeypatch.delenv("KV_REST_API_TOKEN", raising=False)
     assert invite.main(["list"]) == 1
