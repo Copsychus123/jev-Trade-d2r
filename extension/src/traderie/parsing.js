@@ -302,7 +302,10 @@ function listingBounds(lines) {
 
   let end = lines.length;
   for (let i = start; i < lines.length; i += 1) {
-    if (lines[i].includes("Log in to Load More") || lines[i].startsWith("HELP")) {
+    // The footer's own line is exactly "HELP" (measured on a product page: one line, between "Load More" and
+    // "Getting Started"). An exact match, because a seller name may start with those four letters, and cutting the list
+    // there made the rows disagree with the page's markers.
+    if (lines[i].includes("Log in to Load More") || lines[i] === "HELP") {
       end = i;
       break;
     }

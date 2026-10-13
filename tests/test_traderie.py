@@ -386,6 +386,21 @@ def test_browser_blocks_ad_hosts_only_in_the_dedicated_chrome(monkeypatch, mode,
     assert bool(sent) is blocks
 
 
+def test_a_seller_name_that_starts_with_help_does_not_end_the_listings():
+    """The page's own end-of-listings line is exactly "HELP" (measured on a product page: one line, between "Load More"
+    and "Getting Started"). Reading it as a prefix cut the list at a seller called "HELPfulTrader", so the rows then
+    disagreed with the page's markers and every listing after it was lost."""
+    def card(seller):
+        return "\n".join([
+            seller, " (11)", "1 X Harlequin Crest", "Softcore -", "PC -", "Ladder", "Trading For", "1 X Pul Rune",
+            "High Rune Value: 0.5", "1 分鐘前",
+        ])
+
+    text = "\n".join([card("alpha"), card("HELPfulTrader"), card("gamma"), "HELP"])
+    rows = parse_trading_txt(text)
+    assert [row.seller for row in rows] == ["alpha", "HELPfulTrader", "gamma"]
+
+
 @pytest.mark.parametrize(("price_line", "expected_ask", "expected_high_rune"), [
     ("NaN", "NaN", "High Rune Value: NaN"),
     ("Infinity", "Infinity", "High Rune Value: Infinity"),

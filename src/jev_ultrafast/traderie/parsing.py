@@ -306,7 +306,10 @@ def _listing_bounds(lines: list[str]) -> tuple[int, int]:
 
     end = len(lines)
     for i in range(start, len(lines)):
-        if "Log in to Load More" in lines[i] or lines[i].startswith("HELP"):
+        # The footer's own line is exactly "HELP" (measured on a product page: one line, between "Load More" and
+        # "Getting Started"). An exact match, because a seller name may start with those four letters, and cutting the
+        # list there made the rows disagree with the page's markers.
+        if "Log in to Load More" in lines[i] or lines[i] == "HELP":
             end = i
             break
 

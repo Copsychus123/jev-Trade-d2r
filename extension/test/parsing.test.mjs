@@ -38,6 +38,22 @@ test("recent trades keep platform, mode, ladder and game version from the They G
   assert.deepEqual([b.platform, b.mode, b.ladder, b.game_version], [null, null, null, null]);
 });
 
+test("a seller name that starts with HELP does not end the listings early", () => {
+  // The page's end-of-listings line is exactly "HELP" (measured: one line, between "Load More" and "Getting Started").
+  // Reading it as a prefix cut the list at a seller called "HELPfulTrader", so the rows then disagreed with the page's
+  // markers and the whole trading read failed. The card builder is spelled out here on purpose: this test must not
+  // depend on a helper another change introduces.
+  const card = (seller, time) =>
+    [seller, "1 X Axe", "PC •", "Softcore •", "Trading For", "1 X Pul Rune", time].join("\n");
+  const page = [
+    "Apply this search for all", card("alpha", "21 小時前"), card("HELPfulTrader", "20 小時前"),
+    card("gamma", "19 小時前"), "HELP",
+  ].join("\n");
+  const rows = parseTradingTxt(page, { itemName: "Axe" });
+  assert.deepEqual(rows.map((r) => r.seller), ["alpha", "HELPfulTrader", "gamma"]);
+});
+
+
 test("listings keep old entries that show a date, and a date inside a line does not end a listing", () => {
   const card = (seller, time) =>
     [seller, "1 X Axe", "PC •", "Softcore •", "Trading For", "1 X Pul Rune", time].join("\n");
