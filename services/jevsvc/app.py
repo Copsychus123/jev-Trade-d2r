@@ -119,6 +119,10 @@ def run_start(body, caller, store, secret, now):
     invite = body.get("invite")
     invite = invite if isinstance(invite, str) else ""
     # A client that repeats a start it never got an answer for (same request_id) gets the same answer, uncounted.
+    # This returns before the invite checks on purpose: the reply is the token already signed for that rid, so it
+    # shares that run's own 30-call budget and cannot multiply it. The consequence is that revoke, disable and pause
+    # are not immediate for a start that already happened -- which is true of an issued token anyway, since it lives
+    # until its own expiry. A security pass (2026-10) raised closing that gap on this path; the owner kept it as is.
     saved_key = None if request_id is None else f"start:{invites.code_hash(invite)}:{request_id}"
     if reply := _remembered_start(store, saved_key, secret):
         return reply

@@ -49,7 +49,13 @@ def normalize_path(path: str) -> str:
 
 def client_key(request: Request) -> str:
     """Who is asking, as a short hash (the address itself is never stored): the address Vercel saw, else the proxy
-    headers, else the socket."""
+    headers, else the socket.
+
+    The leftmost entry of a forwarding chain is taken on purpose, and `tests/test_services.py` pins that choice: the
+    deployment's own header is read first, and the only consumer is the throttle in front of 128-bit invite codes,
+    which is not protecting a guessable secret. A security pass (2026-10) raised taking the rightmost entry instead;
+    the owner kept it as it is, because which hop to trust is a property of the deployment, not of this function.
+    """
     forwarded = (
         request.header("X-Vercel-Forwarded-For")
         or request.header("X-Real-IP")
