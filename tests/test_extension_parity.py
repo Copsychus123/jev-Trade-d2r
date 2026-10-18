@@ -200,6 +200,7 @@ def _run_node(texts, urls, cases):
     result = subprocess.run(
         ["node", "--input-type=module", "-e", SCRIPT],
         input=payload, capture_output=True, text=True, encoding="utf-8", timeout=60,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout)

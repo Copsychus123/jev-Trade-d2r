@@ -16,7 +16,8 @@ def run_node(expression: str):
     # stdin is a real handle on purpose: pytest's capture leaves the parent's stdin odd, and duplicating an invalid
     # handle is what fails with WinError 6 on Windows.
     result = subprocess.run(
-        ["node", "-e", script], capture_output=True, text=True, timeout=30, check=True, stdin=subprocess.DEVNULL
+        ["node", "-e", script], capture_output=True, text=True, timeout=30, check=True, stdin=subprocess.DEVNULL,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     return json.loads(result.stdout)
 

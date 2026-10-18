@@ -21,5 +21,6 @@ def test_extension_node_suite():
         encoding="utf-8",
         timeout=180,
         stdin=subprocess.DEVNULL,  # see tests/test_csv_export.py: an invalid inherited stdin fails with WinError 6
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     assert result.returncode == 0, result.stdout + result.stderr

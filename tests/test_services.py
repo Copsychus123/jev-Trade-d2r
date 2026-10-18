@@ -591,6 +591,7 @@ print("ok")
         text=True,
         stdin=subprocess.DEVNULL,  # see tests/test_csv_export.py: an invalid inherited stdin fails with WinError 6
         env={k: v for k, v in os.environ.items() if k != "RUN_TOKEN_SECRET"},
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
     )
     assert result.returncode == 0, f"Build import failed: {result.stderr}"
     assert "ok" in result.stdout

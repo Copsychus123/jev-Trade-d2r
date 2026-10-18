@@ -26,6 +26,7 @@ def test_the_wheel_carries_the_demo_page_and_nothing_it_should_not(tmp_path):
         text=True,
         encoding="utf-8",
         stdin=subprocess.DEVNULL,  # see tests/test_csv_export.py: an invalid inherited stdin fails with WinError 6
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         timeout=300,
     )
     assert result.returncode == 0, (result.stdout + result.stderr)[-2000:]

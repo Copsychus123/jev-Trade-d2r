@@ -86,7 +86,10 @@ async def _cdp(port: int, method: str, params: dict | None = None, wait: float =
 def build_extension(api: str) -> None:
     say("打包擴充功能…")
     command = [sys.executable, "extension/build.py", "--api", api, "--out", str(E2E_DIST)]
-    subprocess.run(command, cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
+    subprocess.run(
+        command, cwd=ROOT, check=True, stdout=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
 
 
 def port_free(port: int) -> bool:
