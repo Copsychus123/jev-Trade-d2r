@@ -83,3 +83,16 @@ def test_build_writes_a_one_line_shipped_table_into_the_out_dir(tmp_path):
     tokens = out / "tokens.css"
     assert tokens.read_text(encoding="utf-8") == TOKENS.read_text(encoding="utf-8")
     assert '<link rel="stylesheet" href="tokens.css" />' in (out / "sidepanel.html").read_text(encoding="utf-8")
+
+
+def test_the_build_ships_source_files_and_leaves_backups_and_scratch_files_behind(tmp_path):
+    """A stray `engine.js.bak` in extension/src once rode into dist and the zip (75 files where the source has 70)."""
+    stray = ["engine.js.bak", "panel.js.orig", "notes.tmp", "session.js.swp", "sidepanel.html~"]
+    real = ["engine.js", "backup.js", "bak.json", "tokens.css"]
+    for name in stray + real:
+        (tmp_path / name).write_text("x", encoding="utf-8")
+    (tmp_path / "folder.bak").mkdir()  # a directory is never a shipped file
+
+    assert [name for name in stray if build.is_shipped(tmp_path / name)] == []
+    assert [name for name in real if not build.is_shipped(tmp_path / name)] == []
+    assert not build.is_shipped(tmp_path / "folder.bak")

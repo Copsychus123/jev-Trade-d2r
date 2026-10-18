@@ -29,6 +29,9 @@ STATIC_FILES = ("csv.js", "tokens.css")
 # What extension/src/traderie/lookup.js (indexTables, productUrlFor) reads; audit-only fields stay in the source table.
 SHIPPED_TABLE_KEYS = ("generated_at", "version", "products", "zh", "bases", "game_only")
 SHIPPED_PRODUCT_KEYS = ("name", "slug")
+# Editor and tool leftovers that can land inside extension/src: a build must never copy them into the shipped tree
+# (a backup of a module once rode along into dist and the zip: 75 files where the source has 70).
+NOT_SHIPPED_SUFFIXES = (".bak", ".orig", ".tmp", ".swp", "~")
 
 
 def ship_table(table: dict) -> dict:
@@ -57,6 +60,11 @@ def scan(files: list[Path]) -> list[Path]:
         if SECRET_PATTERN.search(text) or any(secret in text for secret in secrets):
             leaked.append(path)
     return leaked
+
+
+def is_shipped(source: Path) -> bool:
+    """True for a source file the extension ships; backup and scratch files (NOT_SHIPPED_SUFFIXES) stay behind."""
+    return source.is_file() and not source.name.endswith(NOT_SHIPPED_SUFFIXES)
 
 
 def copy_file(source: Path, target: Path) -> None:
@@ -92,7 +100,7 @@ def build(api: str, out: Path | None = None) -> int:
     dist_dir.mkdir(parents=True)
 
     for source in sorted((EXT / "src").rglob("*")):
-        if source.is_file():
+        if is_shipped(source):
             copy_file(source, dist_dir / source.relative_to(EXT / "src"))
     write_shipped_table(dist_dir)
     write_manifest(dist_dir, api)
