@@ -103,14 +103,6 @@ summary {
   gap: 6px;
   margin-top: 6px;
 }
-#ocr-progress,
-#scan-progress {
-  display: block;
-  width: 100%;
-  height: 8px;
-  margin-top: 6px;
-  accent-color: var(--accent);
-}
 .row input {
   flex: 1;
   min-width: 0;
@@ -354,6 +346,54 @@ summary {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+.line1 button.remove {
+  flex: none;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0 6px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  line-height: 1;
+}
+#learn-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  overflow-wrap: anywhere;
+}
+#learn-list button.remove {
+  flex: none;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0 6px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  line-height: 1;
+}
+.options[aria-label]::before {
+  content: attr(aria-label) "：";
+  flex: none;
+  font-size: 12px;
+  color: var(--muted);
+}
+.name-box {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 6px;
+}
+.name-box .name-input {
+  flex: 1 1 120px;
+  min-width: 0;
+}
+.name-box .muted {
+  flex-basis: 100%;
+}
 .side {
   max-width: 45%;
   text-align: right;
@@ -401,6 +441,12 @@ summary {
 }
 .pager button {
   min-width: 36px;
+}
+.options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 12px;
+  margin-top: 6px;
 }
 .actions {
   display: flex;

@@ -1,16 +1,17 @@
 // The screenshot reader (ocr/panel.js) driven against a hand-built DOM. Nothing imported it in a test, so a change to
-// the download notice, the candidate buttons, the supersede rule or the status wording could reach the player
-// silently. The module takes its own collaborators internally (the model store via IndexedDB, the OCR engine via a
-// Worker, the pixels via createImageBitmap/OffscreenCanvas), so this file injects those browser-only pieces as
-// globalThis fakes and reads back exactly what the player would see: the notice text, the progress value, the status
-// line and its kind, and the candidate buttons.
+// the silent first-time download, the candidate buttons, the supersede rule or the status wording could reach the
+// player silently. The module takes its own collaborators internally (the model store via IndexedDB, the OCR engine
+// via a Worker, the pixels via createImageBitmap/OffscreenCanvas), so this file injects those browser-only pieces as
+// globalThis fakes and reads back exactly what the player would see: the status line and its kind, every id the
+// module looked up (so the removed download UI stays unreached), and the candidate buttons.
 
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
 
+import { createCorrections } from "../src/ocr/corrections.js";
 import { initOcrPanel } from "../src/ocr/panel.js";
-import { formatMB, PPOCR, PPOCR_FILES } from "../src/ocr/models.js";
+import { PPOCR, PPOCR_FILES } from "../src/ocr/models.js";
 import { indexTables } from "../src/traderie/lookup.js";
 
 // --- the long timers ------------------------------------------------------------------------------------------
@@ -86,6 +87,10 @@ function makeElement(tagName = "div") {
   element.setPointerCapture = () => {};
   element.getBoundingClientRect = () => ({ left: 0, top: 0, width: 640, height: 480 });
   element.click = () => element.fire("click");
+  element.focusCount = 0;
+  element.focus = () => {
+    element.focusCount += 1;
+  };
   element.fire = (type, event = {}) => {
     const detail = {
       ...event,
@@ -113,15 +118,11 @@ const IDS = [
   "ocr-dot",
   "ocr-tag",
   "ocr-close",
-  "ocr-cancel",
   "ocr-panel",
   "ocr-preview",
   "ocr-box",
   "ocr-time",
   "ocr-text",
-  "ocr-download",
-  "ocr-download-text",
-  "ocr-progress",
   "item",
 ];
 
@@ -131,17 +132,35 @@ function makeDocument() {
   // The states sidepanel.html ships them in, so a missing "unhide" shows up as a test failure. `ocr-dot` is NOT in
   // here: the html ships it hidden but initPreferences sets it on every load, so seeding it hidden would make the
   // "the hint dot is gone once it was seen" assertion pass without the code (the not-seen case asserts it visible).
-  for (const id of ["ocr-hint", "ocr-tag", "ocr-dropzone", "ocr-panel", "ocr-preview", "ocr-box", "ocr-download"]) {
+  for (const id of ["ocr-hint", "ocr-tag", "ocr-dropzone", "ocr-panel", "ocr-preview", "ocr-box"]) {
     byId.get(id).hidden = true;
   }
   // sidepanel.html ships 辨識 disabled and hidden: a picture in the panel is what turns it on.
   byId.get("ocr-go").hidden = true;
   byId.get("ocr-go").disabled = true;
+  // Every id the module reaches for, and every status line it writes, in order: the silent download is pinned by
+  // asserting that no download id is ever looked up and no status write carries a download line.
+  const lookups = [];
+  const statusTexts = [];
+  const status = byId.get("ocr-status");
+  let statusValue = "";
+  Object.defineProperty(status, "textContent", {
+    get: () => statusValue,
+    set: (value) => {
+      statusValue = value;
+      statusTexts.push(value);
+    },
+  });
   const listeners = {};
   return {
     byId,
+    lookups,
+    statusTexts,
     createElement: (tag) => makeElement(tag),
-    getElementById: (id) => byId.get(id) ?? null,
+    getElementById: (id) => {
+      lookups.push(id);
+      return byId.get(id) ?? null;
+    },
     addEventListener: (type, handler) => (listeners[type] ??= []).push(handler),
     fire: (type, event = {}) => {
       const detail = { ...event, preventDefault() {} };
@@ -240,11 +259,15 @@ class FakeWorker {
         this.emit({ type: "status", stage: "loading" });
         this.emit({ type: "status", stage: "ready" });
       });
+    } else if (message.type === "warmup") {
+      queueMicrotask(() => {
+        this.emit({ type: "warmupResult", id: message.id });
+      });
     } else if (message.type === "recognize") {
       const deliver = () => {
         clock += 600; // one read's worth of time, so "辨識用時" is a known string
         if (workerBehaviour.failWith) this.emit({ type: "error", id: message.id, message: workerBehaviour.failWith });
-        else this.emit({ type: "result", id: message.id, text: workerBehaviour.text });
+        else this.emit({ type: "result", id: message.id, text: workerBehaviour.text, tones: workerBehaviour.tones });
       };
       if (workerBehaviour.hold) this.held.push(deliver);
       else queueMicrotask(deliver);
@@ -320,7 +343,6 @@ function makeIndexedDB(databases) {
 
 const bytesKey = (name) => `jev/ppocr/${name}`;
 const hashKey = (name) => `jev/ppocr/${name}.sha256`;
-const TOTAL_BYTES = PPOCR_FILES.reduce((sum, name) => sum + PPOCR[name].bytes, 0);
 
 /** A store that already holds every model (or, with `short`, only the version record plus a stub byte array). */
 function seed(databases, { short = false } = {}) {
@@ -389,8 +411,10 @@ const tables = indexTables({
     { name: "Ripsaw", slug: "ripsaw", category: "uniques" },
     { name: "Ring Mail", slug: "ring-mail", category: "base" },
     { name: "Buckler", slug: "buckler", category: "base" },
+    { name: "Arachnid Mesh", slug: "arachnid-mesh", category: "uniques" },
+    { name: "Griswold's Honor", slug: "griswolds-honor", category: "sets" },
   ],
-  zh: { 瑞普煞: "Ripsaw", 鎖子甲: "Ring Mail" },
+  zh: { 瑞普煞: "Ripsaw", 鎖子甲: "Ring Mail", 蜘蛛之網: "Arachnid Mesh", 格里斯瓦德的榮耀: "Griswold's Honor" },
   bases: ["Ring Mail", "Buckler"],
   game_only: [],
 });
@@ -417,14 +441,21 @@ const advanceClock = async (ms) => {
 
 const image = (width = 640, height = 480) => ({ type: "image/png", width, height });
 
-function setup({ seed: seedMode = "missing", busy = false, pick = true, storage = {}, fetch = bytesFetch(), worker = {} } = {}) {
+// What the shipped matcher answers for these tables, and what decideCandidates says about it (see match.js).
+const SURE_TEXT = "蜘蛛之網\n格里斯瓦德的榮耀"; // two item names, no type line: sure, the longer name first
+const SURE_TYPES_TEXT = "鎖子甲\nBuckler"; // two type names: sure
+const UNSURE_TEXT = "Ripsaw\nRing Mail"; // an item with its type line under it: could be a rare with that random name
+const UNSURE_ALONE_TEXT = "瑞普煞"; // a three-character name alone: collides with stat words too easily
+
+function setup({ seed: seedMode = "missing", busy = false, pick = true, storage = {}, fetch = bytesFetch(), worker = {}, corrections = null } = {}) {
   storageData = { ...storage };
   clock = 1000;
   urlCount = 0;
   workers.length = 0;
   revokedUrls.length = 0;
   canvasSizes.length = 0;
-  workerBehaviour = { text: "Ripsaw\nRing Mail", hold: false, failWith: null, ...worker };
+  // The default read is a sure one (two item names, no type line); the unsure and base-only reads set their own text.
+  workerBehaviour = { text: SURE_TEXT, hold: false, failWith: null, ...worker };
 
   const databases = new Map();
   if (seedMode === "present") seed(databases);
@@ -437,13 +468,16 @@ function setup({ seed: seedMode = "missing", busy = false, pick = true, storage 
   globalThis.fetch = (url, options) => fetch(url, options);
 
   const picks = [];
+  const fields = []; // what the name field is told to show for each pick
   const texts = [];
   let images = 0;
   let isBusy = busy;
-  initOcrPanel({
+  const api = initOcrPanel({
     tables,
-    onPick: (name, kind) => {
+    corrections,
+    onPick: (name, kind, shown) => {
       picks.push([name, kind]);
+      fields.push(shown);
       return pick;
     },
     onText: (text) => texts.push(text),
@@ -455,9 +489,11 @@ function setup({ seed: seedMode = "missing", busy = false, pick = true, storage 
 
   const el = (id) => document.byId.get(id);
   return {
+    api,
     document,
     el,
     picks,
+    fields,
     texts,
     images: () => images,
     setBusy: (value) => {
@@ -469,8 +505,6 @@ function setup({ seed: seedMode = "missing", busy = false, pick = true, storage 
     candidateLabels: () => el("ocr-candidates").children.map((button) => button.textContent),
   };
 }
-
-const noticeText = `首次使用，正在下載辨識模型（約 ${formatMB(TOTAL_BYTES)} MB，只下載一次，存在這個瀏覽器裡，之後可以離線使用）。`;
 
 /**
  * A panel whose models are already stored, with one whole picture pasted and the read run to completion. The
@@ -485,9 +519,12 @@ async function readImage(overrides = {}) {
   return s;
 }
 
-// --- the download notice ---------------------------------------------------------------------------------------
+// --- the silent first-time download ----------------------------------------------------------------------------
 
-test("while the models are missing the download notice appears with a progress value and a cancel button", async () => {
+/** The ids the removed download UI carried: the module must never reach for any of them. */
+const DOWNLOAD_IDS = ["ocr-download", "ocr-download-text", "ocr-progress", "ocr-cancel"];
+
+test("first use downloads the models by itself, with no download element looked up and no download line shown", async () => {
   const stream = streamFetch();
   const s = setup({ fetch: stream.impl });
   await settle(2);
@@ -495,67 +532,26 @@ test("while the models are missing the download notice appears with a progress v
   s.paste([image()]);
   await settle(3);
 
-  assert.equal(s.el("ocr-download").hidden, false, "the notice is on screen");
-  assert.equal(s.el("ocr-download-text").textContent, noticeText);
-  assert.equal(s.el("ocr-progress").value, 0, "nothing has arrived yet");
-  assert.equal(s.status().text, "已讀入圖片，正在辨識…", "the read is waiting behind the download");
   assert.equal(stream.state.readers.length, 1, "the first file is being downloaded");
+  assert.equal(s.status().text, "已讀入圖片，正在辨識…", "the read is waiting behind the download");
+  for (const id of DOWNLOAD_IDS) {
+    assert.equal(s.document.lookups.includes(id), false, `${id} is never looked up`);
+  }
+  assert.equal(s.document.statusTexts.some((text) => text.includes("下載辨識模型")), false, "no download line");
 });
 
-test("a running download reports its progress on the notice as bytes arrive", async () => {
-  const stream = streamFetch();
-  const s = setup({ fetch: stream.impl });
-  await settle(2);
-
-  s.paste([image()]);
-  await settle(3);
-  stream.state.readers[0].deliver(new Uint8Array(1_000_000));
-  await settle(3);
-
-  assert.equal(s.el("ocr-progress").value, 3, "1 of 31.8 MB is 3%");
-  assert.equal(s.status().text, "下載辨識模型（1.0 / 31.8 MB）");
-  assert.equal(s.status().kind, "");
-});
-
-test("cancelling the download hides the notice, aborts the transfer and does not start a read", async () => {
-  const stream = streamFetch();
-  const s = setup({ fetch: stream.impl });
-  await settle(2);
-
-  s.paste([image()]);
-  await settle(3);
-  assert.equal(s.el("ocr-download").hidden, false);
-
-  s.el("ocr-cancel").click();
-  await settle(3);
-
-  assert.equal(stream.state.signals[0].aborted, true, "the transfer itself was aborted");
-  assert.equal(s.el("ocr-download").hidden, true, "the notice is gone");
-  assert.equal(s.status().text, "已取消下載，沒有辨識模型就無法辨識。");
-  assert.deepEqual(s.texts, [], "no read ran");
-  assert.deepEqual(s.candidateButtons(), [], "no candidates");
-  assert.deepEqual(s.picks, []);
-
-  // The notice is reusable: pressing 辨識 again offers the download once more.
-  s.el("ocr-go").click();
-  await settle(3);
-  assert.equal(s.el("ocr-download").hidden, false, "a second press starts a fresh download");
-  assert.equal(s.el("ocr-progress").value, 0);
-});
-
-test("the models arriving hide the notice and the read goes on to its candidates", async () => {
-  const s = setup();
+test("the models arriving let the read go on to its candidates, still with no download line", async () => {
+  const s = setup({ worker: { text: UNSURE_TEXT } });
   await settle(2);
 
   s.paste([image()]);
   await settle(5);
 
-  assert.equal(s.el("ocr-download").hidden, true, "the notice is gone once the models are stored");
-  assert.equal(s.el("ocr-progress").value, 100);
   assert.deepEqual(s.texts, ["Ripsaw\nRing Mail"], "the OCR text reached the form");
-  assert.equal(s.el("ocr-text").textContent, "Ripsaw\nRing Mail");
+  assert.equal(s.el("ocr-text").textContent, "Ripsaw（瑞普煞）\nRing Mail（鎖子甲）", "the read text carries the Chinese names");
   assert.equal(s.el("ocr-time").textContent, "辨識用時 0.6 秒");
   assert.equal(s.el("ocr-panel").classes.has("done"), true, "a result shrinks the picture to a thumbnail");
+  assert.equal(s.document.statusTexts.some((text) => text.includes("下載辨識模型")), false, "no download line");
 });
 
 test("with the models already stored the read starts by itself, and waits for the player while a query runs", async () => {
@@ -571,7 +567,7 @@ test("with the models already stored the read starts by itself, and waits for th
   s.setBusy(false);
   s.el("ocr-go").click();
   await settle(5);
-  assert.deepEqual(s.texts, ["Ripsaw\nRing Mail"]);
+  assert.deepEqual(s.texts, [SURE_TEXT]);
 });
 
 test("auto-read turned off in storage keeps the 辨識 button on screen", async () => {
@@ -600,44 +596,149 @@ test("the hint dot shows until the pick is first used, and using the pick rememb
 
 // --- the candidates --------------------------------------------------------------------------------------------
 
-test("the candidates are one button per name, labelled with the Chinese name, and the best one fills the field", async () => {
+test("the candidates are one button per name, labelled Chinese first, and the best one fills the field", async () => {
   const s = await readImage();
 
-  assert.deepEqual(s.picks, [["Ripsaw", "item"]], "the best result goes into the name field through the handler");
+  assert.deepEqual(s.picks, [["Griswold's Honor", "item"]], "the best result goes into the name field through the handler");
   assert.equal(s.el("ocr-tag").hidden, false, "the name is marked as coming from a picture");
   assert.equal(
     s.status().text,
-    "已辨識，並填入裝備名稱「Ripsaw（瑞普煞）」。請確認後自己按「開始查詢」。不對的話，可改點下面其他名稱：",
+    "已辨識，並填入裝備名稱「格里斯瓦德的榮耀（Griswold's Honor）」。請確認後自己按「開始查詢」。不對的話，可改點下面其他名稱：",
   );
   assert.equal(s.status().kind, "ok");
-  assert.deepEqual(s.candidateLabels(), ["Ripsaw（瑞普煞）", "Ring Mail（鎖子甲）"]);
+  assert.deepEqual(s.candidateLabels(), ["格里斯瓦德的榮耀（Griswold's Honor）", "蜘蛛之網（Arachnid Mesh）"]);
   assert.deepEqual(
     s.candidateButtons().map((button) => [button.dataset.kind, button.dataset.name]),
     [
-      ["item", "Ripsaw"],
-      ["base", "Ring Mail"],
+      ["item", "Griswold's Honor"],
+      ["item", "Arachnid Mesh"],
     ],
   );
   assert.equal(s.el("ocr-candidates").dataset.firstKind, "item", "the first kind is exposed for the end-to-end check");
-  assert.equal(s.el("ocr-candidates").dataset.firstName, "Ripsaw");
+  assert.equal(s.el("ocr-candidates").dataset.firstName, "Griswold's Honor", "the query value stays English");
+  assert.equal(s.el("ocr-candidates").dataset.unsure, "", "a sure read is not marked unsure");
+  assert.deepEqual(s.fields, ["格里斯瓦德的榮耀"], "the name field is told to show the Chinese name");
 });
 
-test("picking another candidate writes it into the name field through the handler only", async () => {
+test("a name the table has no Chinese for is shown in English, with no empty brackets", async () => {
+  const s = await readImage({ worker: { text: "Buckler" } });
+
+  assert.deepEqual(s.picks, [["Buckler", "base"]]);
+  assert.deepEqual(s.fields, ["Buckler"], "no Chinese name: the field shows the English name");
+  assert.equal(s.status().text.includes("「Buckler」"), true);
+  assert.equal(s.status().text.includes("（）"), false);
+});
+
+test("picking another candidate of a sure read writes it into the name field through the handler only", async () => {
   const s = await readImage();
   s.picks.length = 0; // the automatic best pick is not what this test is about
+  s.fields.length = 0;
 
   s.candidateButtons()[1].click();
-  assert.deepEqual(s.picks, [["Ring Mail", "base"]]);
-  assert.equal(s.status().text, "已改填「Ring Mail（鎖子甲）」。請確認後自己按「開始查詢」。");
+  assert.deepEqual(s.picks, [["Arachnid Mesh", "item"]]);
+  assert.deepEqual(s.fields, ["蜘蛛之網"], "the field shows Chinese, the picked name stays English");
+  assert.equal(s.status().text, "已改填「蜘蛛之網（Arachnid Mesh）」。請確認後自己按「開始查詢」。");
   assert.equal(s.status().kind, "ok");
   assert.equal(s.el("ocr-tag").hidden, false);
+});
+
+test("a sure read of two type names fills the better one at once and offers the other, as before", async () => {
+  const s = await readImage({ worker: { text: SURE_TYPES_TEXT } });
+
+  assert.deepEqual(s.picks, [["Buckler", "base"]]);
+  assert.equal(s.status().text.startsWith("只認出底材（不會依品質篩選），並填入裝備名稱「Buckler」"), true);
+  assert.deepEqual(s.candidateLabels(), ["Buckler", "鎖子甲（Ring Mail）"]);
 });
 
 test("a result the form refuses is not marked as coming from a picture", async () => {
   const s = await readImage({ pick: false });
 
-  assert.deepEqual(s.picks, [["Ripsaw", "item"]], "the handler was still offered the name");
+  assert.deepEqual(s.picks, [["Griswold's Honor", "item"]], "the handler was still offered the name");
   assert.equal(s.el("ocr-tag").hidden, true, "but the refused name is not tagged");
+});
+
+// --- an unsure read asks the player ----------------------------------------------------------------------------
+
+test("an unsure read fills nothing and asks: no auto-fill sentence, the names as buttons, then 都不是", async () => {
+  const s = await readImage({ worker: { text: UNSURE_TEXT } });
+
+  assert.deepEqual(s.picks, [], "nothing is put into the name field");
+  assert.equal(s.el("ocr-tag").hidden, true, "and nothing is marked as coming from a picture");
+  assert.equal(s.status().text, "不確定是哪一件，請點選一個：");
+  assert.equal(s.status().text.includes("請確認"), false, "the auto-fill sentence is not shown");
+  assert.deepEqual(s.candidateLabels(), ["瑞普煞（Ripsaw）", "鎖子甲（Ring Mail）", "都不是，我自己輸入"]);
+  assert.deepEqual(
+    s.candidateButtons().slice(0, 2).map((button) => [button.dataset.kind, button.dataset.name]),
+    [
+      ["item", "Ripsaw"],
+      ["base", "Ring Mail"],
+    ],
+    "the decision buttons keep the English name and the kind",
+  );
+  assert.equal(s.candidateButtons()[2].dataset.none, "true", "the last one is the way out and names nothing");
+  assert.equal(s.candidateButtons()[2].dataset.name, undefined);
+  assert.equal(s.el("ocr-candidates").dataset.unsure, "true");
+  assert.equal(s.texts.length, 1, "the form still hears the text, so the affix conditions are read as always");
+});
+
+test("clicking a name of an unsure read fills the Chinese-first name through the handler and marks the tag", async () => {
+  const s = await readImage({ worker: { text: UNSURE_TEXT } });
+
+  s.candidateButtons()[1].click();
+
+  assert.deepEqual(s.picks, [["Ring Mail", "base"]], "the English name and its kind");
+  assert.deepEqual(s.fields, ["鎖子甲"], "the field shows the Chinese name");
+  assert.equal(s.el("ocr-tag").hidden, false, "the name is marked as coming from a picture");
+  assert.equal(s.status().text, "已填入「鎖子甲（Ring Mail）」。請確認後自己按「開始查詢」。");
+  assert.equal(s.status().kind, "ok");
+});
+
+test("都不是 focuses the name field and fills nothing", async () => {
+  const s = await readImage({ worker: { text: UNSURE_TEXT } });
+  const field = s.el("item");
+  assert.equal(field.focusCount, 0);
+
+  s.candidateButtons().at(-1).click();
+
+  assert.equal(field.focusCount, 1, "the player is put in the name field");
+  assert.deepEqual(s.picks, [], "nothing was filled in");
+  assert.equal(field.value, "");
+  assert.equal(s.el("ocr-tag").hidden, true);
+});
+
+test("an item with its type line under it fills itself in when its name line is unique gold, and still asks when it is rare yellow", async () => {
+  // The worker sends one lettering colour per text line; line 0 is the name line of UNSURE_TEXT.
+  const gold = await readImage({ worker: { text: UNSURE_TEXT, tones: [[198, 178, 120], [250, 250, 250]] } });
+  assert.deepEqual(gold.picks, [["Ripsaw", "item"]], "a gold name is a catalogue item: it goes into the field by itself");
+  assert.equal(
+    gold.status().text,
+    "已辨識，並填入裝備名稱「瑞普煞（Ripsaw）」。請確認後自己按「開始查詢」。不對的話，可改點下面其他名稱：",
+  );
+  assert.equal(gold.el("ocr-candidates").dataset.unsure, "");
+  const yellow = await readImage({ worker: { text: UNSURE_TEXT, tones: [[248, 248, 100], [250, 250, 250]] } });
+  assert.deepEqual(yellow.picks, [], "a yellow name may be a rare item's random name: nothing is filled in");
+  assert.equal(yellow.status().text, "不確定是哪一件，請點選一個：");
+});
+
+test("the colours of the read are kept on the text for the end-to-end check", async () => {
+  const s = await readImage({ worker: { text: UNSURE_TEXT, tones: [[198, 178, 120], null] } });
+  assert.equal(s.el("ocr-text").dataset.tones, "[[198,178,120],null]");
+});
+
+test("a single candidate that is not sure still asks, with the one name and 都不是", async () => {
+  const s = await readImage({ worker: { text: UNSURE_ALONE_TEXT } });
+
+  assert.deepEqual(s.picks, []);
+  assert.equal(s.status().text, "不確定是哪一件，請點選一個：");
+  assert.deepEqual(s.candidateLabels(), ["瑞普煞（Ripsaw）", "都不是，我自己輸入"]);
+});
+
+test("an unsure read the form could not take is not marked either when the player picks a name", async () => {
+  const s = await readImage({ worker: { text: UNSURE_TEXT }, pick: false });
+
+  s.candidateButtons()[0].click();
+  assert.deepEqual(s.picks, [["Ripsaw", "item"]], "the handler was offered the picked name");
+  assert.equal(s.el("ocr-tag").hidden, true, "but a refused name is not tagged");
 });
 
 test("a read that matches nothing says so in the error kind", async () => {
@@ -652,6 +753,7 @@ test("a read that matches nothing says so in the error kind", async () => {
   assert.deepEqual(s.picks, []);
   assert.equal(s.el("ocr-candidates").dataset.firstKind, "");
   assert.equal(s.el("ocr-candidates").dataset.firstName, "");
+  assert.equal(s.el("ocr-candidates").dataset.unsure, "", "no candidates is not an unsure read: today's message stays");
 });
 
 // --- the picture and the box -----------------------------------------------------------------------------------
@@ -748,21 +850,20 @@ test("a drag the panel could not turn into numbers leaves no region, instead of 
 
 // --- supersede: a new picture or a closed panel drops the read in flight ----------------------------------------
 
-test("replacing the picture aborts the download in flight and leaves no notice behind", async () => {
+test("replacing the picture aborts the download in flight", async () => {
   const stream = streamFetch();
   const s = setup({ fetch: stream.impl });
   await settle(2);
 
   s.paste([image()]);
   await settle(3);
-  assert.equal(s.el("ocr-download").hidden, false);
+  assert.equal(stream.state.readers.length, 1, "the download is in flight");
 
   s.setBusy(true); // the second picture waits for the player, so it does not start a download of its own
   s.paste([image(320, 200)]);
   await settle(3);
 
   assert.equal(stream.state.signals[0].aborted, true, "the download in flight was aborted");
-  assert.equal(s.el("ocr-download").hidden, true, "the notice is gone");
   assert.equal(s.status().text, "已讀入圖片。可在圖上拖一個框只讀那一塊（不框就讀整張），再按「辨識」。");
   assert.deepEqual(s.texts, []);
 });
@@ -854,10 +955,10 @@ test("a read still running after 15 s shows the slow notice, which the finished 
   await settle(4);
   assert.equal(
     s.status().text,
-    "已辨識，並填入裝備名稱「Ripsaw（瑞普煞）」。請確認後自己按「開始查詢」。不對的話，可改點下面其他名稱：",
+    "已辨識，並填入裝備名稱「格里斯瓦德的榮耀（Griswold's Honor）」。請確認後自己按「開始查詢」。不對的話，可改點下面其他名稱：",
     "the result replaced the notice once the read finished",
   );
-  assert.deepEqual(s.texts, ["Ripsaw\nRing Mail"]);
+  assert.deepEqual(s.texts, [SURE_TEXT]);
 });
 
 test("a read that finishes quickly never shows the slow notice, and its timer is cleared", async () => {
@@ -891,4 +992,172 @@ test("a non-image paste says so, a cancelled file dialog does nothing", async ()
   await settle(3);
   assert.equal(s.images(), 1);
   assert.equal(s.el("ocr-panel").hidden, false);
+});
+
+test("the read text gets a Chinese name only on lines that matched; the raw text is what the form hears", async () => {
+  const raw = "Ripsaw\n+9 力量(STR)\n需要等級:46\n鎖子甲\nZZZZZZ";
+  const s = await readImage({ worker: { text: raw } });
+
+  assert.equal(
+    s.el("ocr-text").textContent,
+    "Ripsaw（瑞普煞）\n+9 力量(STR)\n需要等級:46\n鎖子甲\nZZZZZZ",
+    "a stat line, a line already in Chinese and an unmatched line stay as read",
+  );
+  assert.deepEqual(s.texts, [raw], "the form still receives the raw OCR text");
+});
+
+// --- possible names: a read that matched nothing still offers the next best table names ---------------------------------
+
+test("a read that matched nothing but sits near a table name lists it as a possible name and fills nothing", async () => {
+  // Three wrong characters in an eight-character name: more than the matcher accepts, within the possible-names tolerance.
+  const s = await readImage({ worker: { text: "格里斯好德的好好" } });
+
+  assert.deepEqual(s.picks, [], "nothing is put into the name field");
+  assert.equal(s.status().text, "沒有把握，可能是下面這些，請點選一個：");
+  assert.deepEqual(s.candidateLabels(), ["格里斯瓦德的榮耀（Griswold's Honor）", "都不是，我自己輸入"]);
+  assert.equal(s.candidateButtons()[0].dataset.name, "Griswold's Honor", "the button keeps the English name");
+  assert.equal(s.el("ocr-candidates").dataset.unsure, "true");
+
+  s.candidateButtons()[0].click();
+  assert.deepEqual(s.picks, [["Griswold's Honor", "item"]]);
+  assert.deepEqual(s.fields, ["格里斯瓦德的榮耀"], "the field gets the Chinese name, the query value stays English");
+});
+
+test("an unsure read lists its own candidates first and a sure read lists no extra names", async () => {
+  const unsure = await readImage({ worker: { text: UNSURE_TEXT } });
+  assert.deepEqual(unsure.candidateLabels().slice(0, 2), ["瑞普煞（Ripsaw）", "鎖子甲（Ring Mail）"]);
+  const sure = await readImage({ worker: { text: SURE_TEXT } });
+  assert.deepEqual(sure.candidateLabels(), ["格里斯瓦德的榮耀（Griswold's Honor）", "蜘蛛之網（Arachnid Mesh）"]);
+});
+
+// --- the correction memory ----------------------------------------------------------------------------------------------
+
+/** A correction memory over a plain object, written at once, so a second panel start can read what the first kept. */
+async function memory(stored) {
+  const storage = { stored, get: async () => storage.stored, set: async (value) => (storage.stored = JSON.parse(JSON.stringify(value))) };
+  const corrections = createCorrections({ storage, setTimer: (fn) => queueMicrotask(fn), clearTimer: () => {} });
+  await corrections.load();
+  return { corrections, storage };
+}
+
+/** Paste the same picture again and wait for its read. */
+async function readAgain(s) {
+  s.picks.length = 0;
+  s.fields.length = 0;
+  s.paste([image()]);
+  await settle(5);
+}
+
+test("one earlier choice puts that name first with a hint and still asks; two make it sure and fill it", async () => {
+  const { corrections } = await memory();
+  const s = await readImage({ worker: { text: UNSURE_TEXT }, corrections });
+  assert.deepEqual(s.candidateLabels(), ["瑞普煞（Ripsaw）", "鎖子甲（Ring Mail）", "都不是，我自己輸入"], "nothing learned yet");
+
+  s.candidateButtons()[1].click(); // the player says it is the type name, Ring Mail
+  await readAgain(s);
+  assert.deepEqual(s.candidateLabels(), ["鎖子甲（Ring Mail） · 你上次選過這個", "瑞普煞（Ripsaw）", "都不是，我自己輸入"]);
+  assert.equal(s.status().text, "不確定是哪一件，請點選一個：", "one choice only moves it up");
+  assert.deepEqual(s.picks, [], "and nothing is filled in by itself");
+
+  s.candidateButtons()[0].click(); // the same choice again
+  await readAgain(s);
+  assert.deepEqual(s.picks, [["Ring Mail", "base"]], "chosen twice: the field is filled by itself");
+  assert.equal(s.status().text.includes("（照你之前的選擇）"), true);
+  assert.equal(s.el("ocr-candidates").dataset.unsure, "");
+});
+
+test("clicking another name than the one a sure read filled in is a correction the next read remembers", async () => {
+  const { corrections } = await memory();
+  const s = await readImage({ corrections }); // SURE_TEXT: Griswold's Honor filled in, Arachnid Mesh offered
+  assert.deepEqual(s.picks, [["Griswold's Honor", "item"]]);
+
+  s.candidateButtons()[1].click(); // "不對的話，可改點下面其他名稱"
+  await readAgain(s);
+
+  assert.deepEqual(s.picks, [], "the sure read now asks");
+  assert.equal(s.candidateButtons()[0].dataset.name, "Arachnid Mesh");
+  assert.equal(s.candidateButtons()[0].dataset.learned, "1");
+});
+
+test("a different choice for the same text starts the count again, so one mis-click never auto-fills", async () => {
+  const { corrections } = await memory();
+  const s = await readImage({ worker: { text: UNSURE_TEXT }, corrections });
+  s.candidateButtons()[1].click();
+  await readAgain(s);
+  s.candidateButtons()[1].click(); // the second read: the player now says Ripsaw (not what it said before)
+  await readAgain(s);
+
+  assert.deepEqual(s.picks, [], "Ring Mail was chosen once and Ripsaw once: neither is sure");
+  assert.equal(s.candidateButtons()[0].dataset.name, "Ripsaw", "the latest choice leads");
+  assert.equal(s.candidateButtons()[0].dataset.learned, "1");
+});
+
+test("the memory is read again after a restart of the panel: the same read is promoted by what the last session stored", async () => {
+  const first = await memory();
+  const a = await readImage({ worker: { text: UNSURE_TEXT }, corrections: first.corrections });
+  a.candidateButtons()[1].click();
+  await first.corrections.flush();
+
+  const second = await memory(first.storage.stored);
+  const b = await readImage({ worker: { text: UNSURE_TEXT }, corrections: second.corrections });
+
+  assert.equal(b.candidateButtons()[0].dataset.name, "Ring Mail");
+  assert.equal(b.candidateLabels()[0].endsWith("你上次選過這個"), true);
+});
+
+test("a name typed over an auto-filled read is a correction: the next read of the same text asks, never fills the first name again", async () => {
+  const { corrections } = await memory();
+  const s = await readImage({ corrections }); // SURE_TEXT: Griswold's Honor is filled in by itself
+  assert.deepEqual(s.picks, [["Griswold's Honor", "item"]]);
+
+  s.el("item").fire("input"); // the player types another name over it ...
+  s.api.noteQueryName("蜘蛛之網"); // ... and starts the search
+  await readAgain(s);
+
+  assert.deepEqual(s.picks, [], "a sure read of the matcher became a question: the player corrected it before");
+  assert.deepEqual(s.candidateLabels().slice(0, 2), ["蜘蛛之網（Arachnid Mesh） · 你上次選過這個", "格里斯瓦德的榮耀（Griswold's Honor）"]);
+});
+
+test("a name typed for a read nothing named is remembered under the read's first name line", async () => {
+  const { corrections } = await memory();
+  const s = await readImage({ worker: { text: "Hxnor Of Dxrkness" }, corrections });
+  assert.equal(s.el("ocr-candidates").dataset.unsure, "", "nothing was offered at all");
+
+  s.el("item").fire("input");
+  s.api.noteQueryName("Griswold's Honor");
+  await readAgain(s);
+
+  assert.deepEqual(s.candidateLabels(), ["格里斯瓦德的榮耀（Griswold's Honor） · 你上次選過這個", "都不是，我自己輸入"]);
+});
+
+test("a search with a name that was not typed after the read teaches nothing, and a name the tables lack is never kept", async () => {
+  const { corrections } = await memory();
+  const s = await readImage({ worker: { text: UNSURE_TEXT }, corrections });
+  s.api.noteQueryName("蜘蛛之網"); // the field was filled some other way: no input event
+  assert.equal(corrections.size, 0);
+
+  const t = await readImage({ worker: { text: UNSURE_TEXT }, corrections });
+  t.el("item").fire("input");
+  t.api.noteQueryName("Not An Item");
+  assert.equal(corrections.size, 0);
+});
+
+test("only the first search after a read counts as the player's verdict on it", async () => {
+  const { corrections } = await memory();
+  const s = await readImage({ worker: { text: UNSURE_TEXT }, corrections });
+  s.api.noteQueryName("Ripsaw"); // the first search: nothing was typed
+  s.el("item").fire("input");
+  s.api.noteQueryName("蜘蛛之網"); // a later search for something else
+  assert.equal(corrections.size, 0);
+});
+
+test("a memory that cannot be read changes nothing about a read", async () => {
+  const storage = { get: async () => { throw new Error("gone"); }, set: async () => {} };
+  const corrections = createCorrections({ storage, setTimer: () => 0, clearTimer: () => {} });
+  await corrections.load();
+  const s = await readImage({ worker: { text: UNSURE_TEXT }, corrections });
+
+  assert.deepEqual(s.candidateLabels(), ["瑞普煞（Ripsaw）", "鎖子甲（Ring Mail）", "都不是，我自己輸入"]);
+  s.candidateButtons()[0].click(); // choosing still works
+  assert.deepEqual(s.picks, [["Ripsaw", "item"]]);
 });

@@ -48,10 +48,16 @@ export class OcrPipeline {
   constructor(ort, sessions, characters) {
     globalThis.__ppocrWorkerTest.builds.push({ ort, sessions, characters });
   }
-  async recognizeImage(image) {
+  async recognizeImage(image, options = {}) {
     const state = globalThis.__ppocrWorkerTest;
     state.reads.push(image);
+    state.readOptions.push(options);
     return state.answer(image);
+  }
+  async detect(image) {
+    const state = globalThis.__ppocrWorkerTest;
+    state.detects?.push(image);
+    return state.detAnswer ? state.detAnswer(image) : [];
   }
 }
 `;
@@ -81,6 +87,7 @@ function workerState(overrides = {}) {
     bgr: [], // what imageDataToBgr returned, in order
     builds: [], // OcrPipeline constructor arguments
     reads: [], // what recognizeImage was handed
+    readOptions: [], // the options recognizeImage was handed (nameRegionOnly, capDet)
     answer: async () => ({ lines: [] }),
     ...overrides,
   };
@@ -238,17 +245,35 @@ test("a recognize before any init is answered under its own id, nothing converte
   assert.deepEqual(state.conversions, []);
 });
 
+test("a recognize tells the pipeline whether this read asked to cap detection", async () => {
+  const { scope, state } = await readyWorker(workerState({ answer: async () => ({ lines: [] }) }));
+  scope.receive({ type: "recognize", id: 1, width: 1, height: 1, data: new Uint8ClampedArray([1, 2, 3, 4]), capDet: true });
+  await settleUntil(() => scope.posted.length >= 2, "the capped answer");
+  scope.receive({ type: "recognize", id: 2, width: 1, height: 1, data: new Uint8ClampedArray([5, 6, 7, 8]) });
+  await settleUntil(() => scope.posted.length >= 3, "the plain answer");
+
+  assert.equal(state.readOptions[0].capDet, true);
+  assert.equal(state.readOptions[1].capDet, false, "reads that did not ask never cap detection");
+});
+
 test("a recognize converts the panel's pixels and answers with the same id and the lines joined by a newline", async () => {
   const { scope, state } = await readyWorker(
     workerState({
-      answer: async () => ({ lines: [{ text: "哈勒昆", score: 0.9 }, { text: "之冠", score: 0.8 }] }),
+      answer: async () => ({
+        lines: [{ text: "哈勒昆", score: 0.9, tone: [198, 178, 120] }, { text: "之冠", score: 0.8, tone: null }],
+      }),
     }),
   );
 
   const data = new Uint8ClampedArray([1, 2, 3, 4, 5, 6, 7, 8]);
   scope.receive({ type: "recognize", id: 5, width: 2, height: 1, data });
   await settleUntil(() => scope.posted.length === 3, "the result");
-  assert.deepEqual(scope.posted[2], { type: "result", id: 5, text: "哈勒昆\n之冠" });
+  assert.deepEqual(scope.posted[2], {
+    type: "result",
+    id: 5,
+    text: "哈勒昆\n之冠",
+    tones: [[198, 178, 120], null], // one lettering colour per text line, in the same order
+  });
 
   const converted = state.conversions[0];
   assert.ok(converted.data instanceof Uint8ClampedArray, "the RGBA bytes are rebuilt as clamped pixels");
@@ -365,7 +390,7 @@ function watchRead(engine) {
 test("the engine and the worker agree end to end: init, the two phase texts, a read and a close", async () => {
   const scope = makeScope();
   const state = workerState({
-    answer: async () => ({ lines: [{ text: "第一行", score: 0.9 }, { text: "第二行", score: 0.8 }] }),
+    answer: async () => ({ lines: [{ text: "第一行", score: 0.9, tone: null }, { text: "第二行", score: 0.8, tone: null }] }),
   });
   await loadWorker(scope, state);
 
@@ -404,7 +429,7 @@ test("the engine and the worker agree end to end: init, the two phase texts, a r
 
   const reading = watchRead(engine);
   await settleUntil(() => reading.state !== "pending", "the read to come back from the worker");
-  assert.deepEqual(reading, { state: "resolved", text: "第一行\n第二行" });
+  assert.deepEqual(reading, { state: "resolved", text: { text: "第一行\n第二行", tones: [null, null] } });
   assert.deepEqual(statuses, ["正在準備辨識引擎…", "正在辨識文字…"], "the worker's stages are the panel's phase texts");
   assert.deepEqual(scope.posted.map((m) => m.type), ["status", "status", "result"]);
   assert.deepEqual(relay.posted[1].type, "recognize");

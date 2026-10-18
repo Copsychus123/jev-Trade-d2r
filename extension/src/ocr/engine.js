@@ -7,10 +7,17 @@ export const OCR_CAPABILITY = "ppocr";
 
 /** 有可用的 GPU adapter 才請求 WebGPU；不然只用 wasm。gpu 預設取 globalThis.navigator?.gpu。 */
 export async function chooseProviders(gpu = globalThis.navigator?.gpu) {
-  if (!gpu) return ["wasm"];
+  if (!gpu) {
+    globalThis.__jevOcrProvider = "wasm";
+    return ["wasm"];
+  }
   try {
-    return (await gpu.requestAdapter()) ? ["webgpu", "wasm"] : ["wasm"];
+    const adapter = await gpu.requestAdapter();
+    const ep = adapter ? ["webgpu", "wasm"] : ["wasm"];
+    globalThis.__jevOcrProvider = ep[0];
+    return ep;
   } catch {
+    globalThis.__jevOcrProvider = "wasm";
     return ["wasm"];
   }
 }
@@ -31,11 +38,18 @@ export function createEngineCache({ create, idleMs = ENGINE_IDLE_MS, setTimer = 
   let current = null; // { capability, promise }
   let timer = null;
   let active = 0; // reads in progress: the idle countdown only runs while there are none
+  let warmCount = 0; // reasons to stay warm: while warmCount > 0, idle countdown is paused
 
   const stop = (entry) => entry.promise.then((engine) => engine.terminate(), () => {});
   const stopTimer = () => {
     clearTimer(timer);
     timer = null;
+  };
+  const scheduleIdle = () => {
+    stopTimer();
+    if (!active && warmCount === 0 && current) {
+      timer = setTimer(release, idleMs);
+    }
   };
   const release = () => {
     stopTimer();
@@ -67,11 +81,27 @@ export function createEngineCache({ create, idleMs = ENGINE_IDLE_MS, setTimer = 
         return await work(await engineFor(capability));
       } finally {
         active -= 1;
-        if (!active && current) {
-          stopTimer();
-          timer = setTimer(release, idleMs);
-        }
+        scheduleIdle();
       }
+    },
+    /** Pre-warms the engine and prevents idle-termination while active. Returns a release function. */
+    keepWarm(capability, { warmup = true } = {}) {
+      warmCount += 1;
+      stopTimer();
+      const warming = (async () => {
+        const engine = await engineFor(capability);
+        if (warmup) await engine.warmup?.();
+        return engine;
+      })().catch(() => {});
+      let released = false;
+      const release = () => {
+        if (released) return;
+        released = true;
+        warmCount = Math.max(0, warmCount - 1);
+        scheduleIdle();
+      };
+      release.ready = warming;
+      return release;
     },
     release,
   };
@@ -91,7 +121,15 @@ function connectWorker(worker, waiting, onStatus) {
         if (message.stage === "ready") resolve();
         onStatus(message.stage === "loading" ? "正在準備辨識引擎…" : "正在辨識文字…");
       } else if (message.type === "result") {
-        waiting.get(message.id)?.resolve(message.text);
+        const res = { text: message.text, tones: message.tones ?? [] };
+        if (message.stages !== undefined) res.stages = message.stages;
+        waiting.get(message.id)?.resolve(res);
+        waiting.delete(message.id);
+      } else if (message.type === "detectResult") {
+        waiting.get(message.id)?.resolve(message.boxes);
+        waiting.delete(message.id);
+      } else if (message.type === "warmupResult") {
+        waiting.get(message.id)?.resolve(message.log);
         waiting.delete(message.id);
       } else if (message.type === "error") {
         const error = new Error(message.message);
@@ -134,15 +172,45 @@ export async function createOcrEngine({ models, providers, onStatus = () => {}, 
     { type: "init", providers: executionProviders, wasmPaths, models: modelBuffers },
     Object.values(modelBuffers),
   );
+  let warmupPromise = null;
+  function warmup() {
+    if (!warmupPromise) {
+      warmupPromise = (async () => {
+        try {
+          await ready;
+          const id = nextId++;
+          const res = await new Promise((resolve) => {
+            waiting.set(id, { resolve, reject: resolve });
+            worker.postMessage({ type: "warmup", id });
+          });
+          globalThis.__jevWarmupLog = res;
+          return res;
+        } catch {
+          // silently ignored: a failed warm-up never surfaces an error
+        }
+      })();
+    }
+    return warmupPromise;
+  }
   return {
-    async recognize({ width, height, data }) {
+    async recognize({ width, height, data }, { nameRegionOnly = false, capDet = false } = {}) {
       await ready;
       const id = nextId++;
       return new Promise((resolve, reject) => {
         waiting.set(id, { resolve, reject });
-        worker.postMessage({ type: "recognize", id, width, height, data }, [data.buffer]);
+        worker.postMessage({ type: "recognize", id, width, height, data, nameRegionOnly, capDet }, [data.buffer]);
       });
     },
+    async detectBoxes({ width, height, data }) {
+      await ready;
+      const id = nextId++;
+      return new Promise((resolve, reject) => {
+        waiting.set(id, { resolve, reject });
+        worker.postMessage({ type: "detect", id, width, height, data }, [data.buffer]);
+      });
+    },
+    ready,
+    warmup,
     terminate() {
       worker.postMessage({ type: "close" });
       worker.terminate();

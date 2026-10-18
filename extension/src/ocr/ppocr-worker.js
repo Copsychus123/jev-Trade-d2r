@@ -54,10 +54,79 @@ async function handleRecognize(message) {
       height: message.height,
       data: new Uint8ClampedArray(message.data),
     });
-    const { lines } = await pipeline.recognizeImage(image);
-    self.postMessage({ type: "result", id: message.id, text: lines.map((line) => line.text).join("\n") });
+    const recognized = await pipeline.recognizeImage(image, {
+      nameRegionOnly: Boolean(message.nameRegionOnly),
+      capDet: Boolean(message.capDet),
+    });
+    const lines = recognized.lines ?? [];
+    const resultMsg = {
+      type: "result",
+      id: message.id,
+      text: lines.map((line) => line.text).join("\n"),
+      tones: lines.map((line) => line.tone),
+    };
+    if (recognized.stages !== undefined && recognized.stages !== null) {
+      resultMsg.stages = recognized.stages;
+    }
+    self.postMessage(resultMsg);
   } catch (error) {
     postError(message.id, errorText(error));
+  }
+}
+
+async function handleDetect(message) {
+  if (!pipeline) {
+    postError(message.id, "辨識引擎尚未就緒");
+    return;
+  }
+  try {
+    const image = imageDataToBgr({
+      width: message.width,
+      height: message.height,
+      data: new Uint8ClampedArray(message.data),
+    });
+    const quads = await pipeline.detect(image);
+    const boxes = quads.map((q) => {
+      const xs = q.map(([x]) => x);
+      const ys = q.map(([, y]) => y);
+      const minX = Math.min(...xs);
+      const maxX = Math.max(...xs);
+      const minY = Math.min(...ys);
+      const maxY = Math.max(...ys);
+      return {
+        x: Math.round(minX),
+        y: Math.round(minY),
+        width: Math.round(maxX - minX),
+        height: Math.round(maxY - minY),
+      };
+    });
+    self.postMessage({
+      type: "detectResult",
+      id: message.id,
+      boxes,
+      width: message.width,
+      height: message.height,
+    });
+  } catch (error) {
+    postError(message.id, errorText(error));
+  }
+}
+async function handleWarmup(message) {
+  let log = null;
+  if (!pipeline) {
+    if (message.id !== undefined && message.id !== null) {
+      self.postMessage({ type: "warmupResult", id: message.id, log: ["no pipeline"] });
+    }
+    return;
+  }
+  try {
+    log = await pipeline.warmup();
+  } catch (error) {
+    log = [`error: ${error?.message}`];
+  } finally {
+    if (message.id !== undefined && message.id !== null) {
+      self.postMessage({ type: "warmupResult", id: message.id, log });
+    }
   }
 }
 
@@ -65,5 +134,7 @@ self.addEventListener("message", (event) => {
   const message = event.data;
   if (message.type === "init") handleInit(message);
   else if (message.type === "recognize") handleRecognize(message);
+  else if (message.type === "detect") handleDetect(message);
+  else if (message.type === "warmup") handleWarmup(message);
   else if (message.type === "close") self.close();
 });

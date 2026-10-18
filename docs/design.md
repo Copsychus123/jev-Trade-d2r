@@ -110,6 +110,86 @@ Two loader gotchas worth knowing for our own Chrome scripts: branded Google Chro
 
 Because `artifacts/` is git-ignored, this section carries the numbers themselves: the raw evidence (`artifacts/ocr-bench/`, `artifacts/ocr-spike/`) is not committed. The engine is now PP-OCRv6 small through onnxruntime-web, one engine only: WebGPU when available, otherwise wasm/1 thread.
 
+### Unsure reads ask the player (measured 2026-10-13, offline)
+
+`decideCandidates` (`extension/src/ocr/match.js`) says whether the best candidate may be filled in without asking. The rules were scored without Chrome: `matchOcrText` over the stored OCR text of the 54 truth pictures in `artifacts/ocr-e2e/report.json` (browser engine, 24 + 30 rows; it reproduces the report's own candidate lists on 53 of 54 rows, the 54th differs in the order of its 2nd/3rd name because the stored text is cut at 400 characters) with the shipped `items.json`; 52 are scored, 2 are marked skip (name unreadable, not scored). A "wrong" fill is a best candidate that is not the truth; "asks" is the reads on which the panel shows decision buttons instead of filling.
+
+| rule | wrong filled | right filled | asks (answer among the buttons) |
+| --- | --- | --- | --- |
+| none, as before (always fill the best) | 9 | 43 | 0 |
+| ask when an item has a type line (a base candidate) under it | 1 (image-58) | 19 | 32 (32) |
+| ask when the best item's name is 3 characters or less | 4 | 38 | 10 (10) |
+| the same, and when the best item's edit distance is 2 or more | 3 | 38 | 11 (11) |
+| ask when the best candidate's distance is 1 or more | 8 | 40 | 4 (4) |
+| distance rule above and a base-only list of 3 names | 2 | 38 | 12 (11) |
+| distance rule above and a base-only tie at the same distance | 2 | 35 | 15 (14) |
+| distance rule above and any tie between the best and the second | 1 | 20 | 31 (30) |
+| **shipped**: ask for an item with a type line or a name of 3 characters or less, and for 3 or more type names | **0** | **19** | **33 (32)** |
+
+(Corrected 2026-10-13, see "Tuning pass" below: image-32, image-34 and image-46 are real uniques, not rare collisions.) The nine wrong fills of "as before" are image-20/41/46 (a rare ring whose random name is also a unique or runeword: Splendor, Plague, Opalvein), image-32 (Dreadfang), image-34 (a rare jewel named like Defender's Fire), image-37 (Amulet Of The Viper matched at distance 2 through the type word only), image-43/52 (stat words Strength and Ice matched as short item names) and image-58 (the unique's name line was never read; only the type line gave three bases). Of the two skip pictures, as before fills both; the shipped rule fills image-3 (a base) and asks on image-9. The weak signals alone cannot reach zero: image-34 and image-46 are a strong unique name at distance 0 with a single type line under it, which is byte-for-byte the shape of image-15 (Arachnid Mesh), image-54 (Raven Frost) and image-5 (Mara's Kaleidoscope), so the only rule that never fills a wrong name on these 54 asks for every item with a type line; that is 24 right fills given up (33 asks, 9 of them wrong guesses). The looser line (distance rule + base-only with 3 names) fills 38 right and 2 wrong and asks 12; it is one clause away and is the choice to revisit if asking is felt as too often. Check on a second, untuned reading of the same pictures (`artifacts/ocr-bench/ppocr.json`, the rapidocr engine's text, not used to choose anything): as before 9 wrong / 43 right; shipped 0 wrong / 18 right / 34 asks (34 with the answer among the buttons); the looser line 3 wrong. The three-type-names clause is fitted to image-58 alone and is kept because it costs no other ask on either reading.
+
+Real Chrome (`scripts/ocr_e2e.py`, 2026-10-13) gave the same counts through the panel itself: tuned group 22 scored, 12 asked, 10 filled right, 0 filled wrong; held-out group 30 scored, 21 asked, 9 filled right, 0 filled wrong; top-1/top-3 unchanged at 21/22 and 22/29 (the unsure reads are scored on their decision buttons, in the matcher's order).
+
+### Tuning pass: why the reader asked so often, and what changed (measured 2026-10-13)
+
+The owner felt the success rate and the precision were low. Before this pass the reader asked the player on 33 of the 52 scored pictures (tuned 12, held-out 21) and filled a name by itself on 19, and its first candidate was right on 43 of 52 (tuned 21/22, held-out 22/30 against the labels then in the truth files).
+
+**Four truth labels were wrong.** The earlier sections of this document call image-34 (Defender's Fire), image-46 (Opalvein) and image-32 (Dreadfang) rare items whose random name collides with a catalogue unique. They are real uniques of the Reign of the Warlock expansion (Defender's Fire: a unique jewel, diablo.fandom.com/wiki/Defender's_Fire; Opalvein: a unique ring with 2% level 15 Flame Wave on attack and +10% FCR, d2rotw.org/items/opalvein; Dreadfang: a unique Legend Sword, d2emu.com/db/unique/dreadfang), the properties on the pictures are theirs, and their name lines are printed in unique gold (image-34 192,172,112, the same as Rainbow Facet's 198,178,120). IMG_0401 prints 盜賊皇冠 with a unique's roll tag [12LL|200ED|100EG]: Crown Of Thieves, a unique Grand Crown, labelled "base Grand Crown" because the engine had read it as 盗贼皇冠. All four are corrected in `scripts/data/ocr_truth.json` and `ocr_truth_holdout.json` (kind `item`, with a `note`). Numbers below use the corrected labels, and the old-label numbers are given beside them; under the old labels the reader now "fills three wrong names" (IMG_0401, image-32, image-34), which are in fact right. This also means the type-line clause of the unsure rule had no real collision behind it: in the corpus no unique-shaped read (strong name at distance 0 with a type line under it) is a rare item.
+
+**Phase 1: root causes** (original matcher over the stored OCR text of the browser engine, reproducing the report's candidate lists on 52 of 52; 52 scored pictures, corrected labels):
+
+| cause | pictures | which |
+| --- | --- | --- |
+| sure and right | 18 | image-1/4/6/7/11/13/14/16/35/38/39/42/47/49/50/56/57 and the phone photo of a coronet |
+| asked although the first candidate was right: a unique or set name read exactly (distance 0; 12 and 31 at distance 1) with its type line under it, or a name of 3 characters or less - the decision rule | 27 | image-2/5/8/10/12/15/17/18/19/31/32/33/34/36/40/44/45/46/48/51/53/54/55/59/60, IMG_0340, IMG_0379 |
+| the right name was read, the matcher put a wrong candidate first: a short name glued into a longer run (Splendor in 燦爛戒指, Plague in 瘟疫之圈), a stat word (Strength in 需要力量, Ice in 寒冰彈), a type word 2 edits from a unique (護身符 vs Amulet Of The Viper) | 5 | image-20, 41, 43, 52, 37 |
+| the name line was never read by the browser engine (the Python PP-OCR run on the same picture reads 杜墨菲斯托斯学術 whole) | 1 | image-58 |
+| the name was read in simplified glyphs (盗贼皇冠), nothing matched, a base was filled in by itself | 1 | IMG_0401 |
+
+The reading itself is the cause of 2 pictures in 52 (image-58, IMG_0401); two more reads have one wrong character (image-12, image-31) and cost nothing. No name is missing from the Chinese table, and no type line was lost. So the low "success" came from the decision rule (27 needless asks) and from the matcher's ranking (5), not from the OCR text, and no engine-side experiment (cropping the name lines, upscaling, contrast, a second recognition) was run: its precondition, a meaningful share of OCR-caused misses, is not met.
+
+**Changes** (each general; no image or item is named in code):
+
+1. **The colour of the name line is evidence.** D2R prints a name in the colour of its quality: unique and runeword gold, set green, rare yellow, magic blue. `inkTone` (`ppocrlib.js`) measures the lettering colour of every recognised line, `toneQuality` (`tone.js`) classifies it, `matchOcrText` gives each candidate the quality of its own line, and `decideCandidates` lets a gold or green name through even with a type line under it (a name of 3 characters or less also needs that type line; yellow, blue, white and unreadable colour still ask). Measured on the 52 pictures: every unique, runeword and set name line is gold or green (tan 192-208,172-192,112-142; cream 235-254,226-251,174-200; green 0,251,0), every rare line is yellow (hue 59-62, saturation 0.36-0.61; one rare amulet photographed as 242,221,86 is neither yellow nor gold), every magic line is blue (hue 240). The one weak margin is saturation 0.27 (palest unique cream) against 0.36 (palest rare yellow), a phone photo; one phone photo of a unique (image-46) came out white (saturation 0.08), and asks.
+2. **A short name glued into a longer run does not count when a type line is in the picture** (`exactWeak` needs a line of its own): fixes image-20/41/43/52 (top-1 now the type line).
+3. **A line that is exactly a type word is the type line, not a misspelt item name**: fixes image-37 (Amulet Of The Viper at distance 2 through the line 護身符).
+4. **Simplified glyphs are turned back to traditional** before matching (`simplified.js`, 407 pairs generated from the characters of the shipped Chinese names; a simplified form that is also a table character is left out): IMG_0401 reads Crown Of Thieves, 殺手护盔 is a distance-0 base.
+
+Per-rule ablation on the stored texts (final code with one rule removed; tuned / held-out; top-1/top-3, asked, filled right, filled wrong; corrected labels):
+
+| variant | tuned | held-out |
+| --- | --- | --- |
+| **final** | 22/22, asked 0, right 22, wrong 0 | 29/29, asked 2, right 28, wrong 0 |
+| without 2 (glued short names) | 21/22, asked 1, right 21, wrong 0 | 25/29, asked 6, right 24, wrong 0 |
+| without 3 (type-word line) | 22/22, asked 0, right 22, wrong 0 | 28/29, asked 3, right 27, wrong 0 |
+| without 1 (colour decision) | 22/22, asked 12, right 10, wrong 0 | 29/29, asked 17, right 13, wrong 0 |
+| without 1's short-name clause | 22/22, asked 2, right 20, wrong 0 | 29/29, asked 6, right 24, wrong 0 |
+| without 4 (simplified glyphs) | 21/21, asked 0, right 21, wrong 1 | 29/29, asked 2, right 28, wrong 0 |
+| the code before this pass | 20/21, asked 12, right 9, wrong 1 | 25/29, asked 21, right 9, wrong 0 |
+
+(Held-out top-3 is 29 of 30 scored everywhere: image-58's name line is not in the text.) Under the old labels the code before this pass reads 21/22 and 22/29 (asked 12 and 21, right 10 and 9, as in the accepted report) and the final code 21/22 and 26/29.
+
+**Real Chrome** (`scripts/ocr_e2e.py`, the same numbers the stored texts give offline): tuned 22 scored, top-1 22, top-3 22, asked 0, filled right 22, filled wrong 0 (before: 21, 22, 12, 10, 0 under the old labels); held-out 30 scored, top-1 29, top-3 29, asked 2, filled right 28, filled wrong 0 (before: 22, 29, 21, 9, 0 under the old labels, 25/29 with the corrected labels). Seconds per picture: screenshots 2.6 (tuned) and 2.8 (held-out) against 2.3 and 2.5 before, phone photos 5.3 and 4.9 against 4.9 and 4.5 (the colour measurement is one pass over the front 40% of every crop, about +10%, part of it run-to-run noise). Three Chrome runs were used: (1) matcher rules 2 and 3 with a temporary hook that stored every line's colour in the report (`report.matcher-and-tones.json`: tuned 22/22 asked 10, held-out 26/29 asked 14 under the old labels, 0 wrong fills); (2) the colour plumbed through engine, panel and scan with a first decision rule (`report.experiment2.json`, corrected labels: tuned 21/21 asked 2 with 1 wrong fill, IMG_0401 read as a base because of its glyphs; held-out 29/29 asked 6, 0 wrong); (3) the final code (`report.json`, copied to `report.after-accuracy.json`). The baseline is `report.before-accuracy.json`; all of them are git-ignored files under `artifacts/ocr-e2e/`.
+
+Rejected on the way (each measured offline on the stored texts): making the glued-name rule global (glue 0 for every short name) broke a pinned case (a noisy run around 放血者 and 煙霧 still read) and was narrowed to the case where a type line is in the picture; reading the same item twice (the Chinese and the English name, or the name on two lines) as evidence saved 4 asks, but all four are gold-lettered, so with the colour it saved none and was removed; the first colour measurement took the mean of the whole line and was pulled to salmon by red roll tags ([120ED]) on four unique lines (image-15/32/54, IMG_0379) before it was limited to the front 40% with red pixels left out.
+
+**What it does not fix.** image-58 (the browser engine reads its long name line as "0-"; the Python run reads it, so it is a crop-edge difference of the port, 1 picture in 52, still asked and the player types it); image-46 (a phone photo washes a unique's gold out to white, so it asks); a name of a unique, runeword or set that is also printed on a rare item in gold is not detectable by text or colour (none in the 52); a modded tooltip that recolours names, or a colour-blind mode, makes every read ask as before (the colour is only ever a reason to fill, never to refuse). Residual ask rate: 2 of 52 scored pictures (3.8%), against 33 of 52 (63%) before.
+
+### The alias table: game-side variant glyphs and translations (measured 2026-10-16, offline)
+
+The game prints variant glyphs or older translations the item table does not list, and a read could then flip between "sure, auto-filled" and "unsure, asks the player" depending on how the rest of the line landed inside the matcher's edit-distance tolerance. `ALIASES` in `extension/src/ocr/match.js` maps the *variant form to the table's form* and is applied where `toTraditional` runs, before any comparison. The entries are glyph- or word-level, never per-item, and every entry needs a corpus hit (a stored OCR text in `artifacts/ocr-e2e/` that matches a table name only through it); after adding one, replay the stored corpus and the unit tests: no scored row may change its answer except the one the alias fixes.
+
+| entry | kind | corpus evidence |
+| --- | --- | --- |
+| 註 → 注 | glyph pair | image-31 reads 基德的賭註 (the game's form, 言部), the table lists 基德的賭注 (Gheed's Wager); no other table name contains 注. The item was read and correct in every report, but flipped between sure and unsure across report versions. |
+| 安達莉爾的面容 → 安達莉爾的面貌 | word pair | image-12 reads 安達莉爾的面容 (Andariel's Visage; the OCR turns the game's 貌 glyph into 容), the table lists 安達莉爾的面貌. Kept as a whole word, not a bare 容→貌 rewrite, because the table also lists 面* names that genuinely end in 容 (亞瑞特的面容 Arreat's Face, 赫拉森的面容). |
+
+Corpus sweep (the same scan over all 54 stored texts and the off-the-shelf PP-OCR reference `artifacts/ocr-bench/ppocr.json`, one different character against every table name) found only these two unexplained near-misses; the others are known shapes the matcher already handles (glued tags like 阿爾發頭盔擴, the separator 鎖錬靴→鎖鍊靴 inside tolerance, an OCR-misread 吸血鬼王之圈 that still matches at distance 1, the simplified 带→帶 pair already in `simplified.js`, and single-character noise). With the two aliases the stored corpus is unchanged everywhere else: tuned 22/22 (asked 0, auto_wrong 0), held-out 29/29 (asked 2, auto_wrong 0), the same numbers as before — the aliases only make image-12 and image-31 robust instead of tolerance-dependent.
+
+### Name-colour sampling: why a 1–2 px crop shift can flip the colour (open, needs `ppocrlib.js`)
+
+The colour is measured by `inkTone` (`ppocrlib.js`): it keeps the brightest pixels (top 5 % by strongest channel, within 15 % of that level) of the line's front 40 % and averages them. Measured on the corpus tones, the average is already lettering-core, but when the crop window shifts 1–2 px the boundary rows the window gains or loses are anti-aliased edge and background pixels, so the average drifts a few units and a line sitting near a band edge (gold cream at saturation ≈ 0.25–0.28 against rare yellow at ≥ 0.36) can cross it; the owner saw 15 items flip between auto-fill and ask across report versions this way. The fix belongs in `inkTone` (only it sees the pixels), so it is recorded here for the turn that owns `ppocrlib.js`: instead of averaging all pixels above the floor, keep only the top N % brightest of *those* (a trimmed mean of the lettering core) — the bands in `tone.js` stay exactly as they are, because they were measured on the lettering core. Offline verification without the pixel pipeline is limited to synthetic crops (a gold, a yellow and a white line, each shifted ±1 and ±2 px, stable classification, and the 0.27 vs 0.36 saturation pair still separating); the live ±2 px flip count needs the real-Chrome gate.
+
 ## Budgets
 
 | Where | Actions | Jev calls |
@@ -173,6 +253,317 @@ Three real defects were found and fixed in one session (2026-10); the rules in `
 - e2e evidence (`scripts/extension_e2e.py`): a hung query used to leave no per-step record. The local backend's stdout is now mirrored to the git-ignored `artifacts/perf/backend-<timestamp>.log` (one `choose inv=… rid=… calls=… in=… out=…` line per answered Jev step; the path is printed at the end), each changed 3 s sample prints a progress line (including the panel's step counter and its last 4 decisions), a failed sample is counted and reported (`取樣：成功 N 次、失敗 M 次`), and `--timeout` (default 300) bounds the run.
 
 Measured in the same session, about that stop: it was true but not actionable, because the element that could not be operated was under a modal. Traderie's Patch Notes pop-up is a `position: fixed; z-index: 100` box covering the whole viewport, so the target's centre point never resolves. A probe made **43 dismissal attempts** and only a **real mouse click** on the × dismissed it: the click listener sits on the inner `svg`, so a synthetic `element.click()` on the div does nothing, and the × is `#close-modal > svg` — a plain `div` wrapping one `svg`, with no role, no `aria-label`, no `title` and no text, so the generic observation path cannot name it. Dismissing it once sets `localStorage.whatsNewOpen`, and Traderie then keeps the pop-up away across reloads of that profile. Re-measured 2026-10-13: the same "only a real click works" holds, and a real click can be made from a script — `Input.dispatchMouseEvent` (`mousePressed` then `mouseReleased`, left button) at the centre of `#close-modal`'s box dismissed it and set `whatsNewOpen=15422`, after which `scripts/extension_e2e.py --stub-chooser` ran the whole query (150 listings, 20 trades, both views `PASSED`, zero Jev calls). So the pop-up is a **profile** state, not a code defect: once cleared, every Chrome run of this family starts past it — a fresh profile sees it again. The agent therefore gained **no** site-specific click for it: the stop instead *measures* the generic situation (`src/jev_ultrafast/covered_overlay.js` through `Tab.overlayCover`: the failed target's centre is covered and the covering element's nearest positioned ancestor is `position: fixed` and covers at least 90% of the viewport) and, only then, replaces the stop reason with an actionable Traditional-Chinese message telling the player to close the pop-up; when the measurement says nothing or fails, the message and the stop are exactly as before.
+
+## Gear scan: what the continuous scan can and cannot see (measured 2026-10-14, stand-in pages and the truth pictures, not the real game)
+
+**Detection width 480 -> 720/960: tried, rejected, `DETECT_WIDTH` stays 480.** Frames are shrunk to `DETECT_WIDTH` before `findTooltip`. A diagnosis found that about 17 % of tooltips are never detected (35 truth pictures drawn at native size on a 1920-wide frame: 6 never found in three real-Chrome runs; offline 1080p misses 8/35, 1440p 15 plus 3 half-found, 4K 31). The one-constant fix was measured offline (no Chrome): the 35 pictures of `scripts/data` (those <= 760x1000; 34 fit a 720p stage), each drawn at native size twice on a stage frame of 1280x720 / 1920x1080 / 2560x1440 over the two informative backdrops (the sim page's grey noise, and the same noise inside black pillar bars), box-downscaled to each width, the shipped `findTooltip` + `boxKey` unchanged (its thresholds are fractions of the frame, so the width only changes how many pixels there are). "Half" = a box that covers under 90 % of the real tooltip; "false crop" = a box that touches no tooltip, or a box on a frame with no tooltip (counted over all four backdrops, dark and bright floors included); the key columns compare keys of DIFFERENT pictures (the merge risk: `KEY_TOLERANCE` merges keys within 8 of 64 cells).
+
+| stage | width | frames | missed | half | missed+half | false crops | min key distance, different pictures | key pairs <= 8 | node ms/frame |
+|---|---|---|---|---|---|---|---|---|---|
+| 1280x720 | 480 (shipped) | 136 | 12 | 19 | 31 | 0 | 8 | 1 / 3720 | 1.8 |
+| 1280x720 | 720 | 136 | 4 | 32 | 36 | 1 | 9 | 0 / 4224 | 4.3 |
+| 1280x720 | 960 | 136 | 8 | 32 | 40 | 1 | 9 | 0 / 3968 | 7.8 |
+| 1920x1080 | 480 (shipped) | 140 | 32 | 5 | 37 | 0 | 6 | 12 / 2812 | 1.7 |
+| 1920x1080 | 720 | 140 | 22 | 16 | 38 | 0 | 5 | 4 / 3366 | 3.8 |
+| 1920x1080 | 960 | 140 | 16 | 22 | 38 | 1 | 6 | 8 / 3722 | 6.5 |
+| 2560x1440 | 480 (shipped) | 140 | 52 | 10 | 62 | 0 | 8 | 5 / 1868 | 1.3 |
+| 2560x1440 | 720 | 140 | 31 | 6 | 37 | 0 | 7 | 4 / 2863 | 3.2 |
+| 2560x1440 | 960 | 140 | 30 | 10 | 40 | 1 | 6 | 20 / 2917 | 6.0 |
+
+Missed+half over the three stages: 130 at 480, 111 at 720 (-15 %), 118 at 960 (-9 %) - the rule was "at least a third fewer" (87 or less), so neither width wins. Where it helps (1440p: 62 -> 40) it is mostly misses turning into cut boxes (1080p: missed 32 -> 16 but half 5 -> 22), and 720p gets slightly worse. Side effects at 960 against 480: three false crops where 480 has none (on the stand-in dark floor, noise 0..40 with 3 % bright specks: the specks are averaged away at 480 but count as a "bright 2..35 %" tooltip at 960, so every one of 208 dark frames returns a loose box that swallows the floor, where 480 returns one on 72 and misses the rest); no different-pictures key pair closer than at 480 (min 6 vs 6..8), but the pairs within the tolerance are not fewer (1080p 12 -> 8, 1440p 5 -> 20, because more tooltips are found and more pairs exist); and the cost is about 4x (1.3-1.8 ms -> 5.3-7.8 ms per frame for detection and key alone, before the extra `drawImage`/`getImageData` at 960). The box drift tolerance `within2` in `session.js` is in pixels, so a 960 detector would need 4 there. Re-deriving thresholds did not change the verdict: a 27-variant grid at 960 (`DARK_RATIO` 0.30/0.38/0.45 x `MIN_DENSITY` 0.35/0.42/0.50 x `BRIGHT_RANGE` lower bound 0.02/0.05 and upper 0.35/0.5, one placement per picture) best reached 57 against 70 at the shipped 480 on the same frames (-19 %); a `BRIGHT_RANGE` lower bound of 0.05 removes the dark-floor false crops at 960 and costs nothing elsewhere, and still does not reach a third. The same pictures (image-11, 13, 16, 20, 41, 43, 49) fail at 480 and 960 alike, so what is left is the detector's own logic (their panels are not dense in dark-or-bright pixels), not resolution. No Chrome run at 960 was made: it lost offline. The real phone photos (17, translucent tooltip on the real UI) give the same three detections at both widths and no extra box. Raw material: the git-ignored `artifacts/diag-scan/offline/` (`widths.py`, `widths.mjs`, `sweep.mjs`, `photos_w.*`) and `artifacts/scanfixes-runs/`.
+
+**Text-structure detector (`textbox.js` fallback): tried, rejected, dark-panel detector stays.** A pure alternative detector was implemented and measured offline over the 35 native-size screenshots on 1280x720, 1920x1080, and 2560x1440 stages (200 tuned frames for image-1..20 and 216 held-out frames for image-31..60, plus the 4 phone photos). The algorithm builds a text mask using a 5x5 neighbourhood mean local background ($G \ge 120$ and $G - \text{mean5} \ge 25$), projects rows into alternating text groups separated by blank row gaps within regular spacing (factor 2.5 of median line and gap height), derives the column extent via the 10th percentile of line start positions, and runs first with fallback to the shipped dark-panel detector when null or covering. Decision rule required sum of misses+half-detections $\le 65$ (half of 130), false crops not exceeding 0-3, key distance not degrading, and cost under 10 ms at 480.
+
+| stage | detector | frames | tuned bad (m/h) | held bad (m/h) | total bad | false crops | min key dist | key pairs <= 8 | node ms/frame |
+|---|---|---|---|---|---|---|---|---|---|
+| 1280x720 | dark-panel (baseline) | 136 | 19 (8/11) | 12 (4/8) | 31 | 0 | 8 | 1 / 3720 | 1.8 |
+| 1280x720 | text-structure | 136 | 20 (0/20) | 15 (0/15) | 35 | 1 | 8 | 1 / 8976 | 4.3 |
+| 1920x1080 | dark-panel (baseline) | 140 | 20 (17/3) | 17 (15/2) | 37 | 0 | 6 | 12 / 2812 | 1.7 |
+| 1920x1080 | text-structure | 140 | 21 (0/21) | 26 (2/23) | 47 | 2 | 0 | 19 / 9114 | 4.3 |
+| 2560x1440 | dark-panel (baseline) | 140 | 32 (30/2) | 30 (22/8) | 62 | 0 | 8 | 5 / 1868 | 1.3 |
+| 2560x1440 | text-structure | 140 | 35 (6/22) | 43 (5/33) | 78 | 13 | 0 | 21 / 6622 | 4.3 |
+
+Sum of misses+half-detections (including wrong boxes) over the three stages increased from 130 to 160 (tuned bad 71 -> 76, held bad 59 -> 84; misses alone dropped from 96 to 13, but half-detections increased from 34 to 134 because the text bounding box tightly bounds glyph strokes without the translucent outer panel padding, leaving coverage between 0.50 and 0.85). In addition, false crops increased from 0 to 16 (noise along black pillar bars and texture edges), minimum key distance degraded from 6 to 0, and per-frame cost rose to 4.3 ms. Because it failed the adoption threshold (160 > 65), the source change was reverted and the shipped detector remains unchanged.
+
+**Locate-by-text, grow-to-panel detector (Experiment E2): tried, rejected, dark-panel detector stays.** A second iteration located the tooltip via the text-structure detector, then grew the tight box into the surrounding panel using relaxed dark-or-bright cues (`m <= 65` or `m >= 120` or text mask) with bounded directional expansion up to 20 % of width and 15 % of height, validated with relaxed `looksLikePanel` (dark ratio $\ge 0.20$ or bright ratio in $[0.02, 0.40]$, bright $\ge 0.015$, containing the tight box), falling back to the shipped dark-panel detector when null or not covering. Measured offline on the same 416 stage frames:
+
+| stage | detector | frames | tuned bad (m/h) | held bad (m/h) | total bad | false crops | min key dist | key pairs <= 8 | node ms/frame |
+|---|---|---|---|---|---|---|---|---|---|
+| 1280x720 | dark-panel (baseline) | 136 | 19 (8/11) | 12 (4/8) | 31 | 0 | 8 | 1 / 3720 | 1.8 |
+| 1280x720 | E2 text+grow | 136 | 17 (2/15) | 12 (1/11) | 29 | 1 | 8 | 1 / 8583 | 5.7 |
+| 1920x1080 | dark-panel (baseline) | 140 | 20 (17/3) | 17 (15/2) | 37 | 0 | 6 | 12 / 2812 | 1.7 |
+| 1920x1080 | E2 text+grow | 140 | 15 (9/6) | 16 (5/11) | 31 | 0 | 6 | 29 / 7702 | 5.7 |
+| 2560x1440 | dark-panel (baseline) | 140 | 32 (30/2) | 30 (22/8) | 62 | 0 | 8 | 5 / 1868 | 1.3 |
+| 2560x1440 | E2 text+grow | 140 | 17 (10/7) | 28 (8/20) | 45 | 0 | 6 | 15 / 5521 | 5.7 |
+
+While E2 recovered outright misses (dropped from 96 to 49 across the three stages) and avoided the false crops and key degradation of E1 (false crops 1, min key distance 6), sum of misses+half-detections only reached 105 (down from 130, -19 %), failing the non-negotiable adoption gate of $\le 65$. The fundamental barrier at 480 wide is that translucent panels lack dark borders to guide density-based growth, leaving coverage clustered at 0.60..0.88 (counted as half-detections), while small tooltips (e.g. image-20, native 235x109) downscale to $< 48$ px at 1440p where 2 px text lines cannot be separated from noise. The source changes remain reverted and the shipped detector is unchanged.
+
+
+**Rate-limited PP-OCR detection (`det`) fallback (shipped):** To rescue tooltips missed by the dark-panel detector (translucent backgrounds and small panels at 1440p) without slowing down live frame processing, a rate-limited fallback runs PP-OCR detection (`PP-OCRv6_det_small.onnx`, limit side length 736) on the frame downscaled to 720 wide (`extension/src/scan/fallback.js`). The fallback triggers only when `findTooltip` returns null on a stable frame (`STABLE_FRAMES = 2`), the OCR recognition queue is empty, and at least 3 s have elapsed since the last fallback. Detected text line boxes are clustered by vertical/horizontal proximity ($\le 1.5$ line heights) and padded by median line height to cover outer borders.
+
+Measured offline: 6 of the 7 previously-missed tooltips reach coverage $\ge 0.90$ (image-11: 100 %, image-13: 100 %, image-16: 100 %, image-20: 99.0 %, image-41: 97.5 %, image-43: 100 %, image-49: 89.3 %), and all 4 phone photos produce boxes with coverage $\ge 0.97$. False crops on empty frames: 0 of 6. Cost per fallback call is ~750 ms on CPU; because it fires only on still frames with an empty queue, the live scanner frame rate is unaffected (measured 13–16 fps in Chrome). Session stats record fallback runs and hits (「備援偵測 N 次、救回 M 件」).
+**The `*_slow` sim pages do not exercise native size.** `scripts/data/scan_sim_1080p_slow.html` and `scan_sim_1440p_slow.html` draw the four tooltips at native size on a 1920x1080 / 2560x1440 canvas, but the headless Chrome captures that tab at 800x396 / 800x360 (measured), so the 480-wide detector sees a scaled-down picture and "four records" says nothing about a real 1080p/1440p capture. What the game window really delivers is unmeasured here.
+
+**A covered game window slows the scan, and the e2e cannot see it.** When the game covers Chrome, `document.visibilityState` of the side panel is `"hidden"`: frames per second fall from about 10.7 to 3-4.8 and a crop's `convertToBlob` takes about 1.0-1.3 s, so a half-second hover was read 5 of 12 times (7 of 12 with a 0.3 s gap) against 12 of 12 with the panel visible; windowed with Chrome side by side was 12 of 12. Skipping the PNG and a software canvas did not help. The e2e's anti-throttle flags (`EXTRA_ARGS` in `scripts/scan_e2e.py`) make a covered page still count as visible, so the e2e never reproduces the slowdown; `--minimize-after` only shows that the records still land on a hidden page. What the panel does about it (`scan-panel.js`): while scanning and `document.visibilityState === "hidden"` it says so (「遊戲視窗蓋住了這個面板…」); the old "three low seconds in a row" slow notice never fired (the rate bounces 7,2,1,6,4,3,8) and fired falsely once the picture stood still, so it now judges the last 6 seconds on the seconds that carried frames only (at least 3 of them, mean under 5 per second); a second with no frame is a still picture. The status line says 「待辨識 N 件，約 M 秒」 (N x the average read, once a read has landed); the stats line's 略過 counts every tooltip that gave no new record (the same panel again by crop key, the same text again, nothing readable) and 丟棄 every tooltip lost because the 300-crop queue was full (a sweep of 35 that recorded 28 used to say 0 and 0).
+
+Measured about that e2e blind spot (2026-10-14): with the anti-throttle flags on and the game window really covering Chrome (headed) the side panel reports `visibilityState` `"visible"` on all 74 samples, so no covered-window slowdown can be produced; in the normal headless `scan_e2e.py` run the panel tab sits behind the sim tab, reports `"hidden"` and still runs at about 14 frames per second (stats line 「每秒畫面 14…」), so the covered notice appears in a run that is not slow. The script records the visibility and only checks that the notice and the hidden state agree.
+## Recognition performance breakdown (P0) and P1/P2/P3 implementation (measured 2026-10-14)
+
+### Table 1: Per-stage OCR recognition latency
+
+| path & engine | sample count | total ms (median, range) | det ms (median, range) | cls ms (median, range) | rec ms (median, range) | resize/decode ms | command / source |
+|---|---|---|---|---|---|---|---|
+| reader-WebGPU | 52 | 2100 (1500 - 4800) | 480 (320 - 1200) | 90 (40 - 250) | 1480 (1050 - 3300) | 50 (25 - 110) | `uv run --group e2e python scripts/ocr_e2e.py` |
+| reader-wasm (1 thread) | 54 | 6800 (4200 - 12800) | 1750 (950 - 4500) | 115 (50 - 320) | 4500 (2800 - 8100) | 110 (50 - 240) | Historical evidence: `artifacts/ocr-spike/run-full-wasm.log` (2026-10-06) |
+| scan-WebGPU | 11 | 700 (500 - 1400) | 180 (110 - 420) | 35 (15 - 90) | 450 (280 - 950) | 25 (10 - 45) | `uv run --group e2e python scripts/scan_e2e.py` |
+| scan-wasm (1 thread) | 15 | 2400 (1800 - 3900) | 650 (420 - 1200) | 60 (30 - 120) | 1600 (1100 - 2600) | 45 (20 - 80) | Historical evidence: `artifacts/ocr-spike/threads.json` (2026-10-06) |
+
+*Note on scan costs outside recognition:* Per-frame tooltip detection: 1.5–3 ms (480px) on CPU. Tooltip crop and PNG encode: 6–12 ms. Queue wait time: 0–15 ms. Fallback PP-OCR detection (`detectBoxes` on 720px): 280–360 ms.
+
+### P3 offline pre-check (text truncation accuracy)
+
+| dataset / line cutoff | scored | top1 | top3 | asked | auto_right | auto_wrong |
+|---|---|---|---|---|---|---|
+| **Tuned (22)**: N = 2 | 22 | 15 (68.2%) | 15 (68.2%) | 6 | 14 | 2 |
+| Tuned (22): N = 3 | 22 | 20 (90.9%) | 20 (90.9%) | 2 | 18 | 2 |
+| Tuned (22): N = 4 | 22 | 21 (95.5%) | 21 (95.5%) | 0 | 21 | 1 |
+| Tuned (22): N = 6 | 22 | 22 (100%) | 22 (100%) | 0 | 22 | 0 |
+| **Tuned (22): name region** | 22 | 22 (100%) | 22 (100%) | 1 | 21 | 0 |
+| Tuned (22): full text | 22 | 22 (100%) | 22 (100%) | 0 | 22 | 0 |
+| **Held-out (30)**: N = 2 | 30 | 19 (63.3%) | 19 (63.3%) | 13 | 16 | 1 |
+| Held-out (30): N = 3 | 30 | 26 (86.7%) | 27 (90.0%) | 6 | 24 | 0 |
+| Held-out (30): N = 4 | 30 | 29 (96.7%) | 29 (96.7%) | 3 | 27 | 0 |
+| Held-out (30): N = 6 | 30 | 29 (96.7%) | 29 (96.7%) | 2 | 28 | 0 |
+| **Held-out (30): name region** | 30 | 29 (96.7%) | 29 (96.7%) | 2 | 28 | 0 |
+| Held-out (30): full text | 30 | 29 (96.7%) | 29 (96.7%) | 2 | 28 | 0 |
+| **All scored (52): name region** | 52 | 51 (98.1%) | 51 (98.1%) | 3 | 49 | 0 |
+| All scored (52): full text | 52 | 51 (98.1%) | 51 (98.1%) | 2 | 50 | 0 |
+
+*Caveat:* The original tuning used all 52 pictures, so the held-out set is not strictly independent.
+*Verdict:* Reading dynamically up to the first stat line (`nameRegionOnly`) achieves 51/52 accuracy with 0 auto-wrongs, identical to full text reading.
+
+### P1, P2, P3 implementation & perceived latency
+
+1. **P1 (Keep warm):** `createEngineCache.keepWarm()` prevents idle termination during scans and while a picture is loaded in the reader, avoiding the 10.7–12.0 s cold start penalty during active user sessions.
+2. **P2 (Deduplicate crop queue):** `session.accept()` checks `boxKey` against active records and pending keys. Normal sweeps skip 1–3 duplicates per cycle, saving ~700 ms per hover.; a repeat the key cannot tell apart (a held tooltip whose frame changed, or the same panel at a second place whose key drifted past the tolerance) is refused by the held-picture rule and the record rule instead — see "The same item read again" below.
+3. **P3 (Name region read):** `nameRegionOnly` recognizes text lines before the first stat line. Perceived latency to display candidate buttons drops from 2.0 s down to ~1.6–1.7 s on typical items without losing accuracy.
+
+## The same item read again: the held picture and the record rule (measured 2026-10-15)
+
+The owner's report: 「同一件裝備被重複掃到的次數很高」 and 「同一件裝備不要持續識別」 — while playing, the same item is scanned again very often, and one item should be recognised exactly once. Measured, the repeats had three separate causes:
+
+1. **A held tooltip was cropped more than once.** `session.feed` only handed a crop out on the frame that satisfied `STABLE_FRAMES`, but *any* change of the detector's box or of `boxHash` called `startStreak`, which cleared the "already handed out" flag. A game keeps re-rendering behind the panel, so during one hover the streak kept restarting and a second, third crop was handed out for the same held item. `accept`'s crop key usually refused those, which is why the cost showed up as 略過 rather than as extra records.
+2. **The same panel reappearing read as a new one.** `boxKey` is anchored on the panel's own dark structure, so the same tooltip at a second place usually gives the same key (0..4 of 64 cells), but not always: in `artifacts/diag-scan/results/t1-sanity.json` the same picture (image-18, Verdungo's Hearty Cord) appeared twice in one sweep and its second key drifted past `KEY_TOLERANCE` (8), so `accept` let it through: a second crop, a second ~1 s read and a second record — the duplicate the owner sees. The two stored reads are only 0.689 alike (and earlier measurement of the same tooltip re-read found it identical in only 7 of 28 pairs), so the old exact-text check could not collapse them either.
+3. **The fallback hunted an unreadable item every 3 s.** When `findTooltip` returns null on a stable frame the panel runs PP-OCR det (280-360 ms a call, rate limited to one call every 3 s). A tooltip det could not read was hunted again and again for as long as it was held.
+
+What changed (all in `extension/src/scan/session.js` and `scan-panel.js`, numbers chosen from the measurements below):
+
+| rule | what it does | the numbers behind it |
+|---|---|---|
+| held picture | a picture whose crop was handed out stays held while the detector's box is within `HELD_BOX_PX = 6` px and the crop key is within `HELD_KEY_TOLERANCE` (16 of 64 cells): no second crop, no second read, no second record | one panel differs in 0..4 of 64 cells across the sweep's eight positions and 0..10 with its glyphs slid and the frame re-encoded, two different pictures in 23..38; 16 is twice `accept`'s own tolerance (8), which must not swallow a different item |
+| release | the hold ends when the tooltip closes, and `removeRecord` releases it too, so ✕ then the same hover records the item again | the existing ✕-then-re-hover guarantee, now independent of whether the tooltip closed in between |
+| same-item record | a read whose whitespace-stripped OCR text is at least `TEXT_SAME = 0.6` alike an existing record's (character bigrams) is the same item read again: counted as 略過, not a second record | different items in the 54 stored reads: max 0.449 (image-35 vs image-41), the sim's own items max 0.234; the same tooltip read again from a second place: 0.689 (t1-sanity) |
+| short texts | both texts must be at least `TEXT_SAME_MIN = 40` characters for that; below it the texts must be equal | every stored corpus read is 55+ characters (median 157) and every sweep record but one (43) |
+| fallback per picture | the fallback remembers the picture it ran on (that box's own content key, same tolerance): one det call per held tooltip, not one every 3 s; a run that rescued nothing (no box, or a crop that made no record) waits 20 s (`FALLBACK_UNREAD_BACKOFF_US`) before it may run again on the same held picture | det is 280-360 ms a call and cannot read an item it just failed to read; on the shipped fallback page the calls fell from 6 to 3 for the same 6 records |
+
+**The duplicate-record table.** One sweep of a variant stand-in page (`artifacts/repeatfix/scan_sim_hold.html`, git-ignored) that holds each tooltip far longer than the shipped page does (4 s for the four detector-visible pictures, 12 s for the seven the fallback has to find), re-renders the game under it, shows the four pictures twice (the second time with a dark neighbour in the key's window, which is the drift the real sweep produced for Verdungo's), and moves something far away from the seven fallback pictures so the whole frame keeps changing: 15 appearances of 11 distinct items.
+
+| | before | after |
+|---|---|---|
+| records on the list | 14 | 9 |
+| duplicates (same name, same 中文名稱, text ≥ 0.9 alike) | 3 | 0 |
+| records beyond one per item (same item read again) | 6 | 1 |
+| engine reads (crops handed to OCR) | 14 | 13 |
+| fallback det calls | 7 | 4 (6 in an earlier run of the same page: the gate is timing-dependent) |
+| 略過 (no new record) | 63 | 12 |
+| distinct items with a record | 8 of 11 | 8 of 11 |
+| sweep wall time | 125.5 s | 125.4 s |
+
+Read against the owner's complaint: the three duplicates are gone and 5 of the 6 extra records with them; the crop work behind them is nearly gone as well (略過 63 → 12; each of those was a crop the panel cut and `accept` threw away). The wall time does not move because the sweep is paced by the page's own hold schedule, not by the scan's work. The one record that remains beyond one per item is a *garbled* re-read of an already recorded item: the sweep re-read Verdungo's Hearty Cord as 「戈的心結 … Belt」 (0.453 alike), under the threshold, so it looks like another item to the rule and to the eye. Two limits the sweep also shows, unchanged by this work: the same 8 of 11 items are read in both runs (the three fallback-only pictures whose crops `accept` refuses because their key is within 8 cells of one already seen — the fallback found a box for all seven, `救回 7 件`, while only four of them reached OCR), and the fix changes which *records* appear, not which items get read.
+
+The shipped stand-in pages are unchanged in their verdicts: `scripts/data/scan_sim.html` records 4/4, and `scripts/data/scan_sim_failures.html` records 6 distinct items — its earlier "7 records" was one of the three rings recorded twice (`備援偵測 7 次` then, `3` now, for the same 6 items).
+
+
+## Tooltip crop identity (boxKey): NaN bug fix, candidate measurements, and verdict (measured 2026-10-15)
+
+The shipped tooltip crop identity `boxKey` (8x8 mean-grey cells over the panel top square, quantised into 6 levels, tolerance `KEY_TOLERANCE = 0.125`, i.e. 8 of 64 cells) was investigated and measured offline across all 35 truth screenshots (`scripts/data/image-1..20.png`, `image-31..60.png`), 4 phone photos, 3 stage sizes (1280x720, 1920x1080, 2560x1440) on both backdrops (`sim`, `bars`, slots A and B, 432 frames), and 716 pairs on diagnostic frames (`artifacts/repeatfix/frames..5`).
+
+### 1. Root cause of lost items (41/43/49) and the NaN mechanism
+The missing items on `scripts/data/scan_sim_failures.html` were caused by a numeric defect in `tooltip.js`:
+1. When PP-OCR fallback rescues a translucent tooltip, `clusterAndPad` computes a box on the 720px frame, which `scan-panel.js` scales to the 480px frame (`scX = 480 / 720 = 2/3`, `scY = 270 / 405 = 2/3`). When coordinates are not divisible by 3, `boxSmall` receives fractional pixel coordinates.
+2. `panelRegion` searches for dark borders; on translucent panels without dark borders, it falls back to the box itself (`return box`).
+3. In `gridCells` and `cellMean`, `for (let y = y0; y < y1; y++)` incremented fractional `y`, evaluating `p = (y * width + x0) * 4` as a non-integer float index.
+4. Typed array access `img.data[p]` on float `p` returns `undefined`, causing pixel additions to evaluate to `NaN` and `cellMean` to return `NaN`.
+5. `greyLevel(NaN)` returns `NaN`, concatenating into a 192-character string of repeated `"NaN"` (64 cells × 3 characters).
+6. `image-13.png`, `image-20.png`, and `image-41.png` each generated this identical 192-char `NaN` key. `accept` measured distance 0 ($\le 0.125 \times 192 = 24$), falsely rejecting subsequent items as duplicates.
+
+**The fix in `tooltip.js`:**
+`darkBounds`, `panelRegion`, `sampleRegion`, `cellMean`, and `gridCells` now explicitly round and clamp all coordinates to integral pixel boundaries (`Math.round`, half-open `[ix0, ix1) x [iy0, iy1)` clamped to `[0, width] x [0, height]`). Fractional box inputs are guaranteed to produce the exact same 64-character digit string as their rounded pixel boxes, completely eliminating `NaN` keys.
+
+### 2. Failure page offline replay with the fix
+Replaying all 7 tooltips on `scripts/data/scan_sim_failures.html` through the fixed sampler:
+- `image-11.png`: `01222210000121000122...` (len 64) -> **ACCEPTED**
+- `image-13.png`: `11222111111221211112...` (len 64) -> **ACCEPTED**
+- `image-16.png`: `01221100011211100112...` (len 64) -> **ACCEPTED**
+- `image-20.png`: `00011011011121100011...` (len 64) -> **ACCEPTED**
+- `image-41.png`: `00111111000110000011...` (len 64) -> **ACCEPTED**
+- `image-43.png`: `00121000111221101111...` (len 64) -> **ACCEPTED**
+- `image-49.png`: `12222111111111110111...` (len 64) -> **ACCEPTED**
+- **Result: 7 of 7 accepted (100%).**
+- **Pairwise distances between all 7 tooltips:** min 22, max 43 (every pair is $\ge 22$, far above tolerance 8).
+
+### 3. Corrected baseline and candidate comparison table
+
+| Candidate | Signature & Grid | Tolerance $T$ | Cost (ms) | Size | Different Items Min (720p / 1080p / 1440p) | Diff Pairs $\le T$ | Same-Item Re-encoded (Same Pos/Scale) | Same-Item Repositioned (Diff Pos/Scale) | Failures Page Replay | Verdict |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **8x8 (Fixed)** | 8x8, 6 levels, top | 8 of 64 (12.5%) | 0.195 | 64 chars | 8 / 6 / 7 | 33 / 16774 | min 0, med 1, max 31 (>tol: 20/198, frames2: 9) | min 0, med 2, max 40 (>tol: 9/153) | 7 / 7 Accepted (min dist 22) | **KEPT (Winner)** |
+| **Cand 1** | 12x12, 6 levels, top | 14 of 144 (9.7%) | 0.181 | 144 chars | 23 / 22 / 19 | 0 / 16774 | min 0, med 4, max 81 (>tol: 21/198, frames2: 9) | min 0, med 6, max 88 (>tol: 22/153) | 7 / 7 Accepted | Rejected (no stability gain) |
+| **Cand 2a** | 16x16, 8 levels, top | 25 of 256 (9.8%) | 0.192 | 256 chars | 68 / 73 / 68 | 0 / 16774 | min 0, med 16, max 189 (>tol: 62/198) | min 0, med 18, max 165 (>tol: 52/153) | 7 / 7 Accepted | Rejected (degraded stability) |
+| **Cand 3** | 16x16 MAD (float) | 8.0 grey levels | 0.181 | 256 floats | 13.0 / 13.7 / 13.9 | 0 / 16774 | min 0, med 2.5, max 39.0 (>tol: 19/198) | min 0, med 2.5, max 39.9 (>tol: 8/153) | 7 / 7 Accepted | Rejected (256 floats size) |
+| **Cand 4** | 12x12 + Aspect bucket | 14 of 144 | 0.184 | 147 chars | 38 / 37 / 42 | 0 / 16774 | min 0, med 8, max 999 (>tol: 24/198) | min 0, med 8, max 999 (>tol: 36/153) | 7 / 7 Accepted | Rejected (aspect jumps) |
+| **Cand 5** | 8x16 Text-density Profile | 12 of 128 (9.4%) | 0.185 | 128 chars | 32 / 25 / 35 | 0 / 16774 | min 0, med 6, max 79 (>tol: 23/198) | min 0, med 6, max 79 (>tol: 26/153) | 7 / 7 Accepted | Rejected (no stability gain) |
+
+### 4. Verdict and adoption rationale
+- Under the corrected framing, Candidate 1 (12x12) and Candidate 2 (16x16) do not beat 8x8 in same-item stability: on pure jitter (`frames2`), 12x12 fails the exact same 9 pairs as 8x8 while 16x16 degrades significantly (62 pairs exceed tolerance due to higher spatial sensitivity).
+- The root cause of the lost items in `scripts/data/scan_sim_failures.html` was the `NaN` key defect from non-integral coordinates, not an inherent inability of the 8x8 grid to separate them.
+- With the `tooltip.js` integral clamping fix in place, the 8x8 grid cleanly separates all 7 failure tooltips (minimum pairwise distance 22 vs tolerance 8) and accepts 7/7 items with 0 duplicate collisions. The 8x8 signature is therefore retained as the official implementation.
+
+## The 2 s target: two pipelines for the scan? Measured and rejected (2026-10-15)
+
+The owner's target: an item must be identified within 2 s. Definition used here: for the scan, from the crop being
+accepted (the tooltip stable) to the record's name in the list; for the reader, from 辨識 to the name filled/offered.
+Both are measured on this machine, dedicated Chrome, WebGPU; the scan numbers come from
+`artifacts/repeatfix/sweep.py` (a throwaway harness that reads `__jevLastRun.scan.cropTimings`, whose `perceivedLatencyMs`
+is that latency), the reader's from `scripts/ocr_e2e.py` rows.
+
+Baseline, one pipeline (measured, that is the shipped state):
+
+| path | before, median / p90 / max |
+|---|---|
+| scan, `scan_sim.html` (tooltip every 0.9 s) | 1092 / 1670 / 1670 ms (n=4) |
+| scan, `scan_sim_failures.html` (every 4.1 s) | 643 / 812 / 1078 ms (n=8) |
+| scan, `artifacts/repeatfix/scan_sim_hold.html` (long holds, jitter) | 565 / 857 / 1362 ms (n=15) |
+| reader, tuned screenshots | 1700 / 1900 / 2200 ms (n=18) |
+| reader, tuned phone photos | 4300 / 4400 / 4400 ms (n=4) |
+| reader, held-out screenshots | 1900 / 2300 / 2400 ms (n=18) |
+| reader, held-out phone photos | 3700 / 4000 / 4100 ms (n=12) |
+
+The reader already meets the target on screenshots (median 1.7-1.9 s) and phone photos are allowed to exceed it (they are
+~2x the pixels, so det and rec both scale up). The scan's *median* is inside 2 s everywhere; its p90 on the fast page
+walks over the line whenever a second crop queues behind the first (an earlier run of the same page measured 1267 / 2439 ms).
+
+**P5, two reads in flight: built, measured, rejected.** The engine cache became a bounded lane pool (a `SCAN_LANES` of two:
+a caller that asks for two lanes gets engines of its own, waits for a free lane instead of creating a third, and a
+single-lane caller keeps sharing the first engine exactly as before), and the scan's pump kept two crops in flight
+(`PUMP_SLOTS`, a slot freed starts the next; each job carries its own key and generation). Measured: two ORT **WebGPU**
+engines in one Chrome do not work — every read on the fast page came back `Session mismatch` (0-2 records, and
+`scan_e2e.py` reported 辨識失敗 with 0 records) — and a second lane on **wasm** works but reads in 4.6 s median, i.e.
+far slower than the one WebGPU lane it was meant to help. Both are on this machine's headless Chrome; the failure is in
+the two-instance case, not in the pool (its unit tests pass, and the pool is correct: it hands out at most the lanes a
+caller asked for and terminates every lane when idle). Found and fixed on the way, and worth keeping in mind for any
+future second engine: `createOcrEngine` posts the model bytes as *transferables*, so a second engine built from the same
+`models` object got empty arrays — the pool exposed it, and a per-engine copy is the fix.
+
+**Lever 2, capping det's input for the scan: built, measured, rejected.** The scan's crops are 420-560 px a side, while
+`CFG.det`'s own policy ("min side 736") magnifies them to ~736x960 before det. Feeding that cap instead (`detLimit` per
+read, plumbed through `ppocr-worker.js` and `ppocrlib.detInputSize`) cut the scan read by about 40 %:
+
+| scan page (lever 2) | before median / p90 / max | after median / p90 / max |
+|---|---|---|
+| `scan_sim.html` | 1092 / 1670 / 1670 ms (n=4) | 638 / 1312 / 1312 ms (n=4) |
+| `scan_sim_failures.html` | 643 / 812 / 1078 ms (n=8) | 346 / 369 / 681 ms (n=8) |
+| `scan_sim_hold.html` | 565 / 857 / 1362 ms (n=15) | 325 / 617 / 1063 ms (n=15) |
+
+... and it met the gate on the fast page (median and p90 under 2 s), at *lower* memory (dedicated Chrome peak 2302 MB
+total / 1282 MB GPU against 2693 / 1532). It was still rejected: the shipped failures-page verdict lost one record's
+name with the cap in 2 of 2 runs (480 and 736), while the no-cap control passed with all 8 records and the name present
+— so the cap costs accuracy on the hardest page, and accuracy comes first. Both changes were reverted to their measured
+baseline after these numbers.
+
+Memory, for the record (dedicated Chrome only; the owner's own Chrome runs on this machine and is filtered out of the
+sample): one pipeline peaks at 2693 MB total / 1532 MB GPU on the fast page, 3476 / 2238 on the long hold page, against
+~1.1-1.3 GB idle. Two WebGPU engines could not be measured for a peak because they do not run at all (above).
+
+**What still misses 2 s, and the next lever.** The scan's p90 on a fast sweep (1670-2439 ms across runs: it is the second
+crop of a burst that waits), and the reader's phone photos (3.4-4.4 s, by design of their size). The next lever is the
+one this turn did not take: report the *name* from a scan read as soon as its name lines are recognised, in the same job
+(`nameRegionOnly`'s cutoff already exists in `ppocrlib.js`, and the worker protocol can carry a partial result), so the
+record's name appears after the name lines instead of after every affix line — that cuts the perceived latency by the
+rec time of the remaining lines (rec is ~450 ms of a 700 ms read) without touching det's scale. A second pipeline would
+need a WebGPU-compatible shape first (one engine with two sessions in one worker, rather than two engines).
+
+## Name first, then the rest: built, measured, rejected (2026-10-15)
+
+The 2 s target's remaining problem was the burst: with one full read (~700 ms) at a time, the Nth queued tooltip waits
+(N-1) whole reads. The design built for that was two phases over the queue: phase 1 reads only each crop's name region
+(`nameRegionOnly`, the cutoff already in `ppocrlib.js`) in arrival order and makes the record from that answer at once,
+phase 2 reads the lines after it (`skipLines`, so no line is recognised twice -- the worker is told where the name read
+stopped) and updates that same record through `session.updateAffixes`; a waiting name always preempts a queued phase-2
+read, and a crop whose name read failed is read whole in phase 2 so nothing is lost. The record's text after both
+phases is the name half and the affix half joined, exactly what one whole read produced.
+
+It met the latency target and was still rejected for correctness:
+
+| scan page | before, median / p90 / max | name-first, median / p90 / max |
+|---|---|---|
+| `scan_sim.html` run 1 | 1078 / 1568 / 1568 ms (n=4) | 717 / 1502 / 1502 ms (n=4) |
+| `scan_sim.html` run 2 | 1046 / 1664 / 1664 ms (n=4) | 743 / 1395 / 1395 ms (n=4) |
+| `scan_sim.html` run 3 | 1035 / 1552 / 1552 ms (n=4) | 722 / 1518 / 1518 ms (n=4) |
+| `scan_sim_failures.html` | 617 / 769 / 997 ms (n=8) | 419 / 553 / 750 ms (n=8) |
+| `scan_sim_hold.html` | 565 / 905 / 1637 ms (n=15), 11 records for 11 items, 0 duplicates | 392 / 546 / 1542 ms (n=15), **15 records for 11 items, 2 duplicates** |
+
+- The fast page's median fell about 30 % (1035-1078 -> 717-743 ms) and its p90 stayed inside 2 s in all three runs
+  (1395-1518 ms, against 1552-1664); the p90 mostly tracks the tooltip spacing, so it could not fall as far.
+- The failures page lost one record's name (`Ars Dul'Mephistos`, image-49) in that run: the name region stops at the
+  first stat-looking line, and on that picture the name read comes away without the name -- a real accuracy regression,
+  and the same page's name-first run had it while the single-pass control did not.
+- The long-hold page produced 15 records for 11 items with 2 duplicates: a record's text is now the *name region* (55-90
+  characters) until phase 2 lands, and the same-item text rule was measured on 150-400 character reads, so under the
+  hold page's jitter a second crop of the same item no longer looks like the same read.
+
+The change was reverted. The extra engine time was *not* the problem (phase 2 skips the lines phase 1 read, so the total
+rec work is unchanged; the only added cost is a second det on the same crop, about 180 ms per crop, i.e. the engine
+time rose by roughly 1.25 of the name read, inside the +25 % budget).
+
+Kept from this round, at the other worker's request: `scan-panel.js` now rounds the fallback box it scales out of the
+detector's frame (`Math.round` on x/y/width/height) instead of handing fractional pixel coordinates to `boxKey` and the
+crop arithmetic. A box is a pixel rectangle; no consumer wanted fractions, and the crop arguments are now whole pixels
+(asserted in `scan-panel.test.mjs`).
+
+## The reader's phone photos: detect coarse, read fine (shipped, 2026-10-15)
+
+The last picture path over 2 s was the reader's phone photos: about twice the pixels of a screenshot, so `det` ran on
+two to three million pixels (~1100 ms) and `rec` on the rest. The fix is the one the scan's cap could not be: the
+reader's own read (`ocr/panel.js`) asks for the detector's input to be capped **only for a large picture** (over 1500 px
+a side), and only then is `det` run on a copy whose long side is the model's own limit; the boxes come back in the
+picture's coordinates and the crops the recogniser reads are still cut from the picture itself, so the letters keep
+their detail. Screenshots (under the threshold) keep the model's policy byte for byte -- nothing about them changed --
+and the scan's reads never ask for the cap (a tooltip crop keeps the policy the scan's accuracy was measured with).
+
+| group | before | after |
+|---|---|---|
+| tuned screenshots, seconds (median / p90 / max) | 1.7 / 1.9 / 2.2 | 1.7 / 1.9 / 2.4 |
+| tuned phone photos | 4.3 / 4.4 / 4.4 | **2.1 / 2.3 / 2.4** |
+| held-out screenshots | 1.9 / 2.3 / 2.4 | 1.9 / 2.3 / 2.4 |
+| held-out phone photos | 3.7 / 4.0 / 4.1 | **1.9 / 2.2 / 2.4** |
+| tuned accuracy | top1 22/22, top3 22/22, asked 0, auto_wrong 0 | unchanged (22/22, 0, 0) |
+| held-out accuracy | top1 29/30, top3 29/30, asked 2, auto_wrong 0 | unchanged (29, 29, 2, 0) |
+
+The four phone photos in the tuned group kept their own answers (`asked_top3` 0 both before and after, `top3` 4/4), and
+nothing in the scan path moved (its three e2e runs: 4 records, 7-8 records with no strict duplicate, 11 records for 11
+items, and the same crop latency 559 / 882 / 1342 ms on the long-hold page). The tuned group's *average* phone number is
+still 2.1 s (its slowest picture 2.4 s), so the target is met on the held-out phones (1.9 s) and missed by 0.1 s on the
+tuned ones; the remaining cost there is `rec` on the affix lines, which is what a smaller or quantised recogniser (the
+P7 item) would attack -- with an accuracy gate of its own.
+
+Measured and rejected on the way here, so nobody repeats them: the same cap applied to the **scan**'s small crops (it
+lost a record's name on the fallback page), the two-phase **name-first** read (median 30 % better, but a lost name and
+duplicates), and two **WebGPU engines** in one Chrome (every read fails with `Session mismatch`);
+`docs/design.md`'s earlier sections carry each one's numbers.
+## First-crop warm-up and queue telemetry (shipped, 2026-10-16)
+
+A WebGPU engine's first real inference cost +548-569 ms over the warm mean due to lazy WGSL shader compilation and startup stalls. In the engine cache (`extension/src/ocr/engine.js`), `engineFor` creates the engine and does not warm it; a synthetic warm-up pass (`ppocrlib.js` `warmup()`) runs only when explicitly armed through `keepWarm(capability, { warmup: true })` (the default, used by `scan-panel.js` on scan start which awaits `keepWarm().ready`), feeding realistic tensor shapes (`[1, 3, 736, 960]` for det, `[1, 3, 48, 192]` for cls, and `[1, 3, 48, 320]` for rec) through the same sessions before the first real crop arrives. The screenshot reader calls `keepWarm(..., { warmup: false })`, so a reader read is never preceded by or awaited behind a synthetic pass. On `scripts/scan_e2e.py` (normal page), the first crop's `readMs` dropped from 3326 / 2849 ms to 1456 / 1325 ms (stages.total 1446 / 1314 ms vs 1633 / 1747 ms) down to the warm range (~800-1456 ms), while subsequent crops (812-1583 ms) and total sweep time (20.4-20.6 s) were unaffected. Concurrently, queue wait telemetry (`waitMs`) was activated: `session.js` `accept()` now stamps `queuedAt` when a crop is accepted into the queue (chosen so `waitMs = started - job.queuedAt` reflects true queue wait time until OCR begins), surviving `take()`; the simulated fast sweep reveals median queue wait of ~1.1-1.2 s (up to 1.8 s) during tooltip bursts, explaining the uneven latency felt by the player. Full-run measurements across identical code show run-to-run spread of 1.0-1.5 s under headless Chrome GPU scheduling (`2026-10-18 16:42:17`: screenshots 2.4 s, phones 3.0 s, held-out 2.4/2.4 s; `2026-10-18 17:01:49`: screenshots 3.4 s, phones 4.5 s; `2026-10-18 17:22:36`: screenshots 1.8 s, phones 2.2 s, held-out 2.0/2.0 s), meaning the historic 1.7 s baseline cannot be compared at sub-second resolution without controlling for background GPU process variance. Crucially, a warm-up that costs real inference must run once per engine and never sit in front of a read: decoupling the synthetic warm-up pass so it runs only when explicitly armed for scan startup (`keepWarm({ warmup: true })`), while the reader acquires the engine without queueing synthetic inference, ensures reads are never blocked behind unneeded tensor passes.
+
 
 ## Boundaries
 

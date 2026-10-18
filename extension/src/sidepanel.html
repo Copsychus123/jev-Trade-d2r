@@ -63,6 +63,22 @@
         <p class="muted small">辨識引擎：PP-OCRv6（同一個模型支援中、英、日、韓等多種語言，會自動判斷，不必選語言）。</p>
         <label class="check"><input id="ocr-auto" type="checkbox" checked /> 放入圖片後自動辨識</label>
         <p class="muted small">第一次使用需下載辨識模型（約 31.8 MB），只下載一次，存在這個瀏覽器裡，之後可離線使用；模型已經下載好時，放入圖片才會自動辨識。</p>
+
+        <h3>學習紀錄</h3>
+        <p class="muted small">你在截圖辨識或裝備掃描裡點選過、或自己輸入過的名稱，會記在這台電腦上；下次同樣的辨識結果出現時，會把你選過的名稱排在第一個。選過兩次以上才會自動填入，只選過一次還是會問你。只存在這台電腦，不會傳到任何地方，也不會存圖片或整段辨識文字。</p>
+        <p id="learn-count" class="muted"></p>
+        <div class="row">
+          <button id="learn-clear" type="button" hidden>清除學習紀錄</button>
+          <span id="learn-confirm" class="row" hidden>
+            <span>確定全部清除嗎？</span>
+            <button id="learn-clear-yes" type="button">確定清除</button>
+            <button id="learn-clear-no" type="button">取消</button>
+          </span>
+        </div>
+        <details id="learn-details" hidden>
+          <summary>看看記住了什麼</summary>
+          <ul id="learn-list" class="listings"></ul>
+        </details>
       </section>
 
       <!-- 第一步：選查法 -->
@@ -90,7 +106,7 @@
       <section id="part-form" hidden>
         <div class="mode-chosen">
           <span id="mode-title" class="mode-title"></span>
-          <button id="mode-change" type="button" class="link">換一種查法</button>
+          <button id="mode-change" type="button" class="link">← 返回</button>
         </div>
         <p id="mode-help" class="muted help"></p>
 
@@ -114,15 +130,10 @@
             <button id="ocr-close" type="button" class="icon" aria-label="收起">✕</button>
           </div>
           <button id="ocr-go" type="button" class="primary" disabled hidden>辨識</button>
-          <div id="ocr-download" hidden>
-            <p id="ocr-download-text"></p>
-            <progress id="ocr-progress" max="100" value="0"></progress>
-            <div class="row"><button id="ocr-cancel" type="button">取消下載</button></div>
-          </div>
           <p id="ocr-status" role="status"></p>
           <div id="ocr-candidates" class="row"></div>
           <div class="ocr-links">
-            <details>
+            <details id="ocr-details">
               <summary class="muted">看辨識出的文字</summary>
               <pre id="ocr-text"></pre>
             </details>
@@ -161,16 +172,11 @@
       <section id="part-scan" hidden>
         <div class="mode-chosen">
           <span class="mode-title">裝備掃描</span>
-          <button id="scan-change" type="button" class="link">換一種查法</button>
+          <button id="scan-change" type="button" class="link">← 返回</button>
         </div>
         <p class="muted help">在遊戲裡把滑鼠移到每件裝備上，停約半秒。遊戲請用「視窗化全螢幕」或視窗模式。程式不會操作遊戲，只看畫面；完全相同的兩件只記一筆。</p>
         <button id="scan-start" type="button" class="primary wide">選擇遊戲視窗並開始</button>
         <button id="scan-stop" type="button" hidden>停止掃描</button>
-        <div id="scan-download" hidden>
-          <p id="scan-download-text"></p>
-          <progress id="scan-progress" max="100" value="0"></progress>
-          <div class="row"><button id="scan-cancel" type="button">取消下載</button></div>
-        </div>
         <p id="scan-status" role="status"></p>
         <div class="actions" role="group" aria-label="掃描紀錄">
           <button id="scan-csv" type="button" class="primary" disabled>下載 CSV</button>

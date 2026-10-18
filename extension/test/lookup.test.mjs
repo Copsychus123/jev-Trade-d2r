@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
   baseOptions,
   chineseName,
+  fieldName,
   findProduct,
   indexTables,
   isWellFormed,
@@ -251,7 +253,7 @@ test("suggestions come from the tables, best match first, and never repeat what 
   assert.equal(suggestNames("", suggestTables).length, 0);
 });
 
-test("a candidate label pairs the English name with its Chinese name, and stays plain when there is none", () => {
+test("a candidate label puts the Chinese name first with the English name in brackets, and stays plain when there is none", () => {
   const t = buildTables({
     products: [{ name: "Arachnid Mesh", slug: "arachnid-mesh", category: "uniques" }],
     zh: {
@@ -264,11 +266,11 @@ test("a candidate label pairs the English name with its Chinese name, and stays 
     },
     bases: ["Diadem", "Defender", "Ring", "Circlet", "Kite Shield"],
   });
-  assert.equal(labelWithChinese("Diadem", t), "Diadem（權冠）");
-  assert.equal(labelWithChinese("Defender", t), "Defender（防禦盾）");
-  assert.equal(labelWithChinese("Ring", t), "Ring（戒指）");
-  assert.equal(labelWithChinese("Arachnid Mesh", t), "Arachnid Mesh（蜘蛛之網）");
-  assert.equal(labelWithChinese("Circlet", t), "Circlet（頭環）");
+  assert.equal(labelWithChinese("Diadem", t), "權冠（Diadem）");
+  assert.equal(labelWithChinese("Defender", t), "防禦盾（Defender）");
+  assert.equal(labelWithChinese("Ring", t), "戒指（Ring）");
+  assert.equal(labelWithChinese("Arachnid Mesh", t), "蜘蛛之網（Arachnid Mesh）");
+  assert.equal(labelWithChinese("Circlet", t), "頭環（Circlet）");
   // No Chinese in the table, an unknown name, and an empty one are shown plain: never "（）".
   assert.equal(labelWithChinese("Kite Shield", t), "Kite Shield");
   assert.equal(labelWithChinese("No Such Thing", t), "No Such Thing");
@@ -289,18 +291,18 @@ test("a Chinese screenshot's own name is echoed, and anything else falls back to
     bases: ["Diadem", "Defender", "Ring", "Circlet", "Monarch"],
   });
   // The picture spells the alias the reverse map would not pick: echo what the player sees.
-  assert.equal(labelWithChinese("Circlet", t, "頭飾"), "Circlet（頭飾）");
-  assert.equal(labelWithChinese("Monarch", t, "統治者大盾"), "Monarch（統治者大盾）");
+  assert.equal(labelWithChinese("Circlet", t, "頭飾"), "頭飾（Circlet）");
+  assert.equal(labelWithChinese("Monarch", t, "統治者大盾"), "統治者大盾（Monarch）");
   // English matched text is not a Chinese name: fall back to the reverse map.
-  assert.equal(labelWithChinese("Diadem", t, "Diadem"), "Diadem（權冠）");
+  assert.equal(labelWithChinese("Diadem", t, "Diadem"), "權冠（Diadem）");
   // A glued OCR run is not a table key: fall back, never show the raw run.
-  assert.equal(labelWithChinese("Ring", t, "芭戒指天要等級"), "Ring（戒指）");
+  assert.equal(labelWithChinese("Ring", t, "芭戒指天要等級"), "戒指（Ring）");
   // A key that belongs to a different name does not win either.
-  assert.equal(labelWithChinese("Defender", t, "防禦"), "Defender（防禦盾）");
-  assert.equal(labelWithChinese("Diadem", t, "戒指"), "Diadem（權冠）");
+  assert.equal(labelWithChinese("Defender", t, "防禦"), "防禦盾（Defender）");
+  assert.equal(labelWithChinese("Diadem", t, "戒指"), "權冠（Diadem）");
   // No matched text at all keeps the reverse-map behaviour.
-  assert.equal(labelWithChinese("Circlet", t), "Circlet（頭環）");
-  assert.equal(labelWithChinese("Monarch", t), "Monarch（君主盾）");
+  assert.equal(labelWithChinese("Circlet", t), "頭環（Circlet）");
+  assert.equal(labelWithChinese("Monarch", t), "君主盾（Monarch）");
 });
 
 test("the Chinese half of a label comes from the reverse map", () => {
@@ -342,7 +344,7 @@ test("the helper is the Chinese half of the label, so the two cannot drift", () 
     bases: ["Diadem", "Ring", "Circlet", "Monarch", "Kite Shield"],
   });
   // Parse the display string here, in the test: if the bracket format ever moves, this is what notices.
-  const displayChinese = (label) => /（(.*)）$/u.exec(label)?.[1] ?? "";
+  const displayChinese = (label) => /^(.*)（.*）$/u.exec(label)?.[1] ?? "";
   const inputs = [
     ["Diadem", ""],
     ["Ring", ""],
@@ -357,6 +359,7 @@ test("the helper is the Chinese half of the label, so the two cannot drift", () 
   for (const [name, matched] of inputs) {
     const label = labelWithChinese(name, t, matched);
     assert.equal(chineseName(name, t, matched), displayChinese(label), `${name} / ${matched} -> ${label}`);
+    assert.equal(fieldName(name, t, matched), chineseName(name, t, matched) || name, `${name} / ${matched} field`);
   }
 });
 
@@ -385,4 +388,37 @@ test("a search page that lists the item as a link means a blocked verdict was a 
     searchShowsItem({ ...found, actions: [{ kind: "click", role: "button", label: "Harlequin Crest" }] }, "Harlequin Crest"),
     false,
   );
+});
+
+test("the name field shows Chinese when the table has a Chinese name and English otherwise", () => {
+  const t = buildTables({
+    zh: { 權冠: "Diadem", 頭飾: "Circlet", 頭環: "Circlet" },
+    bases: ["Diadem", "Circlet", "Kite Shield"],
+  });
+  assert.equal(fieldName("Diadem", t), "權冠");
+  assert.equal(fieldName("Circlet", t, "頭飾"), "頭飾", "the alias the picture spelled is what the field shows");
+  assert.equal(fieldName("Kite Shield", t), "Kite Shield");
+  assert.equal(fieldName("No Such Thing", t), "No Such Thing");
+});
+
+test("whatever the field shows for a table name, it resolves back to that English name", () => {
+  // The shipped table, every name that has a Chinese name: the field text must give Traderie the same English name,
+  // and the base layer's resolver must agree for the plain item types.
+  const data = JSON.parse(readFileSync(new URL("../src/traderie/data/items.json", import.meta.url), "utf8"));
+  const real = indexTables(data);
+  const names = new Set([...Object.values(data.zh), ...data.bases]);
+  const broken = [];
+  let withChinese = 0;
+  for (const english of names) {
+    const shown = fieldName(english, real);
+    if (shown === english) continue;
+    withChinese += 1;
+    const query = resolveInput(shown, real).query;
+    if (normalizeName(query) !== normalizeName(english) || /[\u3400-\u9fff]/u.test(query)) broken.push([english, shown, query]);
+    if (data.bases.includes(english) && normalizeName(resolveBase(shown, real)) !== normalizeName(english)) {
+      broken.push([english, shown, "base"]);
+    }
+  }
+  assert.ok(withChinese > 100, "the table has plenty of Chinese names to check");
+  assert.deepEqual(broken, []);
 });

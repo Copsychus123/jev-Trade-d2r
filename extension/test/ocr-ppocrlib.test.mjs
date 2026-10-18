@@ -4,11 +4,13 @@ import test from "node:test";
 import {
   OcrPipeline,
   buildCharacterList,
+  detLimitFor,
   imageDataToBgr,
   resizeLinear,
   dbPostprocess,
   sortedBoxes,
   getRotateCropImage,
+  inkTone,
 } from "../src/ocr/ppocrlib.js";
 
 test("buildCharacterList adds blank and space and drops one trailing newline", () => {
@@ -44,6 +46,14 @@ test("resizeLinear follows OpenCV's half-pixel convention", () => {
       for (let c = 0; c < 3; c += 1) assert.equal(out.data[(y * 4 + x) * 3 + c], v, `pixel (${x},${y}) channel ${c}`);
     }),
   );
+});
+
+test("a read that asked to cap detection does so only for a large picture, and never for a small one", () => {
+  assert.equal(detLimitFor(2400, 1800, true).limit_type, "max", "a phone photo is detected on a capped copy");
+  assert.equal(detLimitFor(2400, 1800, true).limit_side_len, 736);
+  assert.equal(detLimitFor(2400, 1800, false), null, "a read that did not ask keeps the model's own policy");
+  assert.equal(detLimitFor(1200, 800, true), null, "a screenshot is small: its detection stays as measured");
+  assert.equal(detLimitFor(1500, 900, true), null, "the boundary itself is small");
 });
 
 test("dbPostprocess returns one inflated box for a filled probability rectangle", () => {
@@ -152,4 +162,68 @@ test("ctcDecode drops repeats and blanks and averages the kept probabilities", (
   logits[2 * C + 0] = 0.9; // blank -> dropped
   logits[3 * C + 2] = 0.4; // b
   assert.deepEqual(pipeline.ctcDecode(logits, 0, T, C), { text: "ab", score: 0.6 });
+});
+
+// --- the lettering colour of a line (inkTone), which the matcher reads as the item's quality ---------------------------
+
+/** A BGR crop of `w` x `h` whose pixel at column x is `colourAt(x)` ([r, g, b]) on every row, with a dark top row. */
+function stripe(w, h, colourAt) {
+  const data = new Uint8Array(w * h * 3);
+  for (let y = 1; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const [r, g, b] = colourAt(x);
+      data.set([b, g, r], (y * w + x) * 3);
+    }
+  }
+  return { data, w, h };
+}
+const BACKGROUND = [18, 18, 20];
+
+test("inkTone is the colour of the lettering, not of the dark tooltip behind it", () => {
+  // Ten columns of gold lettering among dark ones: the dark pixels are most of the crop, and none of them counts.
+  const crop = stripe(100, 12, (x) => (x % 10 < 3 ? [198, 178, 120] : BACKGROUND));
+  assert.deepEqual(inkTone(crop), [198, 178, 120]);
+});
+
+test("inkTone reads only the front of the line: a name stands first and a tag in another colour follows it", () => {
+  // 蜘蛛之網[120ED] shape: the first 40% is the name (cream), the rest is the roll tag (blue here).
+  const crop = stripe(100, 12, (x) => (x < 40 ? [253, 249, 187] : [100, 150, 255]));
+  assert.deepEqual(inkTone(crop), [253, 249, 187]);
+});
+
+test("inkTone leaves red pixels out unless the whole line is red", () => {
+  // A red bracket among the first columns must not drag the cream name's colour toward salmon.
+  const named = stripe(100, 12, (x) => (x < 4 ? [255, 100, 100] : x < 40 ? [253, 249, 187] : BACKGROUND));
+  assert.deepEqual(inkTone(named), [253, 249, 187]);
+  const red = stripe(100, 12, (x) => (x < 40 ? [255, 100, 100] : BACKGROUND));
+  assert.deepEqual(inkTone(red), [255, 100, 100]);
+});
+
+test("inkTone has nothing to say about an empty crop", () => {
+  assert.equal(inkTone({ data: new Uint8Array(0), w: 0, h: 0 }), null);
+});
+
+test("each recognized line keeps the colour of its own crop, and a line dropped for its score takes its colour along", async () => {
+  // Three boxes on a 300x100 picture: gold, blue and green lettering. The middle line is recognised with a score under
+  // the 0.5 floor, so it is dropped; the two that stay must keep their own colours, in order.
+  const w = 300;
+  const h = 100;
+  const data = new Uint8Array(w * h * 3);
+  const paint = (x0, colour) => {
+    for (let y = 10; y < 90; y++) for (let x = x0; x < x0 + 80; x++) data.set([colour[2], colour[1], colour[0]], (y * w + x) * 3);
+  };
+  paint(10, [198, 178, 120]);
+  paint(110, [133, 133, 246]);
+  paint(210, [0, 251, 0]);
+  const box = (x0) => [[x0, 10], [x0 + 80, 10], [x0 + 80, 90], [x0, 90]];
+  const pipeline = new OcrPipeline(null, null, []);
+  pipeline.detect = async () => [box(10), box(110), box(210)];
+  pipeline.classify = async (crops) => crops;
+  pipeline.recognize = async () => [
+    { text: "甲", score: 0.9 },
+    { text: "乙", score: 0.2 },
+    { text: "丙", score: 0.9 },
+  ];
+  const { lines } = await pipeline.recognizeImage({ data, w, h });
+  assert.deepEqual(lines.map((line) => [line.text, line.tone]), [["甲", [198, 178, 120]], ["丙", [0, 251, 0]]]);
 });

@@ -17,7 +17,7 @@ const tables = indexTables({
     { name: "Harlequin Crest", slug: "harlequin-crest", category: "uniques" },
     { name: "Ring", slug: "ring", category: "base" },
   ],
-  zh: {},
+  zh: { 哈勒昆之冠: "Harlequin Crest", 戒指: "Ring", 大型護身符: "Grand Charm" },
   bases: ["Ring", "Grand Charm"],
   game_only: [],
 });
@@ -177,4 +177,68 @@ test("a table landing whose page never settles is a miss and search takes over",
   assert.deepEqual(tableStats, { jumps: 1, misses: 1 });
   assert.match(args.market.lookup.notes.join(" "), /商品頁沒有載入完成/u);
   assert.equal(calls.tab.visited.at(-1), ROOT);
+});
+
+// --- Traderie is always queried in English, whatever the name field shows -------------------------------------------
+
+test("a Chinese name in the field reaches the backend, the product page and the search as its English name", async () => {
+  const { args, calls, session } = setup({
+    landing: { url: `${ROOT}/product/harlequin-crest`, title: CREST_TITLE },
+    agents: [done],
+  });
+  const asked = [];
+  args.startRun = async ({ itemName }) => {
+    asked.push(itemName);
+    return { run_token: "t0", item_name: itemName, load_more: 0 };
+  };
+  args.rawItem = "哈勒昆之冠";
+  assert.equal(await findAndRead(args), "ran");
+  assert.deepEqual(asked, ["Harlequin Crest"], "the backend is told the English name");
+  assert.deepEqual(calls.opened, [`${ROOT}/product/harlequin-crest`], "the table jump uses the product slug");
+  assert.equal(session.itemName, "Harlequin Crest", "and the name the search types is English");
+  assert.equal(args.market.lookup.requested, "Harlequin Crest");
+  assert.equal(args.market.lookup.used, "Harlequin Crest");
+});
+
+test("a Chinese name whose product page misses is searched in English, never in Chinese", async () => {
+  const { args, session } = setup({
+    landing: { url: `${ROOT}/product/harlequin-crest`, title: SHAKO_TITLE },
+    agents: [done],
+  });
+  args.rawItem = "哈勒昆之冠";
+  assert.equal(await findAndRead(args), "ran");
+  assert.equal(args.market.lookup.layer, "search");
+  assert.equal(session.itemName, "Harlequin Crest");
+  assert.doesNotMatch(session.itemName, /[\u3400-\u9fff]/u);
+});
+
+test("a Chinese base name is queried as the English base, also through the base layer", async () => {
+  const { args, calls, session } = setup({ landing: { url: ROOT, title: "t" }, agents: [noResults, done] });
+  const asked = [];
+  args.startRun = async ({ itemName }) => {
+    asked.push(itemName);
+    return { run_token: "t0", item_name: itemName, load_more: 0 };
+  };
+  args.rawItem = "大型護身符";
+  calls.base = { base: "Grand Charm", run_token: "t1" };
+  assert.equal(await findAndRead(args), "ran");
+  assert.deepEqual(asked, ["Grand Charm"]);
+  assert.deepEqual(calls.pickArgs.options, tables.bases);
+  assert.equal(session.itemName, "Grand Charm");
+});
+
+test("a Chinese name that is not in the table stops before the backend or the browser is touched", async () => {
+  const { args, calls } = setup({ landing: { url: ROOT, title: "t" }, agents: [] });
+  let started = 0;
+  args.startRun = async () => {
+    started += 1;
+    return { run_token: "t0", item_name: "x", load_more: 0 };
+  };
+  for (const rawItem of ["不存在的裝備", "Ring 戒指", "稀有戒指"]) {
+    args.rawItem = rawItem;
+    await assert.rejects(findAndRead(args), /對照表裡沒有「.+」的英文名稱/u);
+  }
+  assert.equal(started, 0, "no run was started, so no quota was used");
+  assert.deepEqual(calls.opened, [], "and no tab was opened");
+  assert.equal(calls.picked, 0);
 });

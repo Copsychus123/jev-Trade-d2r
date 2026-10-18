@@ -237,8 +237,12 @@ function darkBounds(img, x0, y0, x1, y1) {
   let minY = Infinity;
   let maxX = -1;
   let maxY = -1;
-  for (let y = y0; y < y1; y++) {
-    for (let x = x0; x < x1; x++) {
+  const ix0 = Math.max(0, Math.min(img.width, Math.round(x0)));
+  const iy0 = Math.max(0, Math.min(img.height, Math.round(y0)));
+  const ix1 = Math.max(ix0, Math.min(img.width, Math.round(x1)));
+  const iy1 = Math.max(iy0, Math.min(img.height, Math.round(y1)));
+  for (let y = iy0; y < iy1; y++) {
+    for (let x = ix0; x < ix1; x++) {
       if (maxChannel(img.data, (y * img.width + x) * 4) <= DARK_MAX) {
         if (x < minX) minX = x;
         if (y < minY) minY = y;
@@ -256,32 +260,40 @@ function darkBounds(img, x0, y0, x1, y1) {
  * moves a pixel or two with the backdrop, and more than that after the capture encoder -- and a sampling grid tied
  * to it drifts with it (measured: a 3 px box shift moved 7..15 of 64 cells, a 1 px shift 3..7). Anchored on the dark
  * structure, the same panel gives the same grid wherever the box lands (0 cells for shifts up to 15 px).
- * Falls back to the box itself when there is nothing dark there, or only a speck.
+ * Falls back to the box itself (rounded to integral pixels) when there is nothing dark there, or only a speck.
  */
 function panelRegion(img, box) {
-  const ex = Math.round(KEY_EXPAND * box.width);
-  const ey = Math.round(KEY_EXPAND * box.height);
+  const rx = Math.round(box.x);
+  const ry = Math.round(box.y);
+  const rw = Math.round(box.width);
+  const rh = Math.round(box.height);
+  const ex = Math.round(KEY_EXPAND * rw);
+  const ey = Math.round(KEY_EXPAND * rh);
   const { minX, minY, maxX, maxY } = darkBounds(
     img,
-    Math.max(0, box.x - ex),
-    Math.max(0, box.y - ey),
-    Math.min(img.width, box.x + box.width + ex),
-    Math.min(img.height, box.y + box.height + ey),
+    Math.max(0, rx - ex),
+    Math.max(0, ry - ey),
+    Math.min(img.width, rx + rw + ex),
+    Math.min(img.height, ry + rh + ey),
   );
   const width = maxX - minX + 1;
   const height = maxY - minY + 1;
-  if (maxX < 0 || width < 0.5 * box.width || height < 0.5 * box.height) return box;
+  if (maxX < 0 || width < 0.5 * rw || height < 0.5 * rh) return { x: rx, y: ry, width: rw, height: rh };
   return { x: minX, y: minY, width, height };
 }
 
 /** Mean grey (0..255) of the rectangle [x0,x1) x [y0,y1) of `img`, clipped to the picture; 0 when it holds no pixel. */
 function cellMean(img, x0, x1, y0, y1) {
-  const { width, data } = img;
+  const { width, height, data } = img;
+  const ix0 = Math.max(0, Math.min(width, Math.round(x0)));
+  const ix1 = Math.max(ix0, Math.min(width, Math.round(x1)));
+  const iy0 = Math.max(0, Math.min(height, Math.round(y0)));
+  const iy1 = Math.max(iy0, Math.min(height, Math.round(y1)));
   let sum = 0;
   let n = 0;
-  for (let y = y0; y < y1 && y < img.height; y++) {
-    let p = (y * width + x0) * 4;
-    for (let x = x0; x < x1 && x < width; x++, p += 4) {
+  for (let y = iy0; y < iy1; y++) {
+    let p = (y * width + ix0) * 4;
+    for (let x = ix0; x < ix1; x++, p += 4) {
       sum += (data[p] + data[p + 1] + data[p + 2]) / 3;
       n += 1;
     }
@@ -291,13 +303,17 @@ function cellMean(img, x0, x1, y0, y1) {
 
 /** The mean grey of each cell of an `n`×`n` grid over [x0,x0+w) x [y0,y0+h), row-major. */
 function gridCells(img, x0, y0, w, h, n) {
+  const rx0 = Math.round(x0);
+  const ry0 = Math.round(y0);
+  const rw = Math.round(w);
+  const rh = Math.round(h);
   const cells = [];
   for (let j = 0; j < n; j++) {
-    const cy0 = y0 + Math.floor((j * h) / n);
-    const cy1 = y0 + Math.floor(((j + 1) * h) / n);
+    const cy0 = ry0 + Math.floor((j * rh) / n);
+    const cy1 = ry0 + Math.floor(((j + 1) * rh) / n);
     for (let i = 0; i < n; i++) {
-      const cx0 = x0 + Math.floor((i * w) / n);
-      const cx1 = x0 + Math.floor(((i + 1) * w) / n);
+      const cx0 = rx0 + Math.floor((i * rw) / n);
+      const cx1 = rx0 + Math.floor(((i + 1) * rw) / n);
       cells.push(cellMean(img, cx0, cx1, cy0, cy1));
     }
   }
@@ -306,13 +322,17 @@ function gridCells(img, x0, y0, w, h, n) {
 
 /** The region a content key samples: the panel's top square (KEY_ASPECT of its width), inset by KEY_INSET a side. */
 function sampleRegion(region) {
-  const height = Math.max(1, Math.min(region.height, Math.round(KEY_ASPECT * region.width)));
-  const insetX = Math.round(KEY_INSET * region.width);
+  const rx = Math.round(region.x);
+  const ry = Math.round(region.y);
+  const rw = Math.round(region.width);
+  const rh = Math.round(region.height);
+  const height = Math.max(1, Math.min(rh, Math.round(KEY_ASPECT * rw)));
+  const insetX = Math.round(KEY_INSET * rw);
   const insetY = Math.round(KEY_INSET * height);
   return {
-    x: region.x + insetX,
-    y: region.y + insetY,
-    width: Math.max(1, region.width - 2 * insetX),
+    x: rx + insetX,
+    y: ry + insetY,
+    width: Math.max(1, rw - 2 * insetX),
     height: Math.max(1, height - 2 * insetY),
   };
 }
@@ -335,9 +355,9 @@ function greyLevel(grey) {
  *   rows), which moved 15 of 64 cells; over the top square it is 2 cells;
  * - the wide grey levels tolerate the encoder's noise: a cell's mean moves a little, its level rarely.
  *
- * Measured on the four screenshots in scripts/data, each shown twice over different backdrops, through modelled
- * capture round trips and on the real live frames: the same panel differs in 0..2 of the 64 cells, two different
- * panels in 24..45. 64 digits.
+ * Measured across the 35 truth screenshots and diagnostic frames: the same panel differs in 0..4 of the 64 cells
+ * across positions and 0..10 under glyph slide/noise (up to 31 with dark neighbour interference), two different
+ * panels in 6..47 (median 24..26). 64 digits.
  */
 export function boxKey(img, box) {
   const region = panelRegion(img, box);

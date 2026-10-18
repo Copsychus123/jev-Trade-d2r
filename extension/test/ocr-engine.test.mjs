@@ -66,6 +66,19 @@ test("the engine is terminated after the idle time, and made again for the next 
   assert.equal(created.length, 2);
 });
 
+test("keepWarm pauses idle countdown and releaseWarm restores it", async () => {
+  const { cache, clock, created } = setup();
+  const release = cache.keepWarm("ppocr");
+  assert.equal(created.length, 1);
+  assert.equal(clock.pending(), 0); // timer is not armed while warm
+  await cache.run("ppocr", async () => {});
+  assert.equal(clock.pending(), 0); // still not armed
+  release();
+  assert.equal(clock.pending(), 1); // armed once warm lock released
+  clock.fire();
+  await Promise.resolve();
+  assert.equal(created[0].terminated, true);
+});
 test("no countdown runs while a read is in progress, and a new read cancels a countdown", async () => {
   const { cache, clock, created } = setup();
   await cache.run("ppocr", async () => {});
@@ -96,6 +109,22 @@ test("an engine that fails to start is not remembered, and starting is not retri
   assert.equal(attempts, 1);
   await cache.run("ppocr", async () => {});
   assert.equal(attempts, 2);
+});
+
+test("a read's cap-detection ask is posted to the worker, and absent when the caller did not ask", async () => {
+  const worker = new FakeWorker();
+  const engine = await createOcrEngine({
+    models: { det: new Uint8Array([1]), rec: new Uint8Array([2]), cls: new Uint8Array([3]), dict: new Uint8Array([4]) },
+    providers: ["wasm"],
+    createWorker: () => worker,
+  });
+  worker.emit({ type: "status", stage: "ready" });
+  engine.recognize({ width: 1, height: 1, data: new Uint8ClampedArray(4) }, { capDet: true });
+  engine.recognize({ width: 1, height: 1, data: new Uint8ClampedArray(4) });
+  await tick();
+
+  assert.equal(worker.posted[1].message.capDet, true);
+  assert.equal(worker.posted[2].message.capDet, false, "a caller that said nothing gets no cap");
 });
 
 test("chooseProviders asks for webgpu only when an adapter answers", async () => {
@@ -174,8 +203,8 @@ test("createOcrEngine posts init and resolves a read with the worker's text, and
   const request = worker.posted[1].message;
   assert.equal(request.type, "recognize");
   assert.equal(request.id, 1);
-  worker.emit({ type: "result", id: request.id, text: "line1\nline2" });
-  assert.equal(await reading, "line1\nline2");
+  worker.emit({ type: "result", id: request.id, text: "line1\nline2", tones: [[198, 178, 120], null] });
+  assert.deepEqual(await reading, { text: "line1\nline2", tones: [[198, 178, 120], null] }, "the lettering colours come with the text");
 
   engine.terminate();
   assert.equal(worker.posted.at(-1).message.type, "close");
@@ -231,9 +260,9 @@ test("a worker error message rejects the read waiting under its id and leaves th
   assert.deepEqual(first, { status: "rejected", value: "辨識引擎尚未就緒" });
   assert.deepEqual(second, { status: "pending", value: undefined });
 
-  worker.emit({ type: "result", id: 2, text: "剩下的那一行" });
+  worker.emit({ type: "result", id: 2, text: "剩下的那一行", tones: [null] });
   await tick();
-  assert.deepEqual(second, { status: "resolved", value: "剩下的那一行" });
+  assert.deepEqual(second, { status: "resolved", value: { text: "剩下的那一行", tones: [null] } });
 });
 
 test("a worker error whose id matches no waiting read settles nothing", async () => {
@@ -249,9 +278,9 @@ test("a worker error whose id matches no waiting read settles nothing", async ()
   await tick();
   assert.deepEqual(reading, { status: "pending", value: undefined });
 
-  worker.emit({ type: "result", id: 1, text: "仍然讀到了" });
+  worker.emit({ type: "result", id: 1, text: "仍然讀到了", tones: [null] });
   await tick();
-  assert.deepEqual(reading, { status: "resolved", value: "仍然讀到了" });
+  assert.deepEqual(reading, { status: "resolved", value: { text: "仍然讀到了", tones: [null] } });
 });
 
 test("a read is posted only once the worker has reported ready, and each status phase reaches the listener", async () => {
@@ -309,4 +338,100 @@ test("a worker-level error event rejects the engine and every read still waiting
   other.emitError(undefined);
   await tick();
   assert.deepEqual(reading, { status: "rejected", value: "辨識 worker 發生錯誤" });
+});
+
+test("detectBoxes posts a detect message to the worker and resolves with the returned boxes", async () => {
+  const worker = new FakeWorker();
+  const engine = await runningEngine(worker);
+  worker.emit({ type: "status", stage: "ready" });
+
+  const detecting = watch(engine.detectBoxes(pixels()));
+  await tick();
+  assert.equal(worker.posted.at(-1).message.type, "detect");
+  assert.equal(worker.posted.at(-1).message.id, 1);
+
+  const expectedBoxes = [{ x: 10, y: 20, width: 30, height: 15 }];
+  worker.emit({ type: "detectResult", id: 1, boxes: expectedBoxes });
+  await tick();
+  assert.deepEqual(detecting, { status: "resolved", value: expectedBoxes });
+});
+
+test("a det failure rejects only that detection and does not break subsequent reads", async () => {
+  const worker = new FakeWorker();
+  const engine = await runningEngine(worker);
+  worker.emit({ type: "status", stage: "ready" });
+
+  const detecting = watch(engine.detectBoxes(pixels()));
+  await tick();
+  worker.emit({ type: "error", id: 1, message: "det inference failed" });
+  await tick();
+  assert.deepEqual(detecting, { status: "rejected", value: "det inference failed" });
+
+  const reading = watchRead(engine);
+  await tick();
+  assert.equal(worker.posted.at(-1).message.type, "recognize");
+  worker.emit({ type: "result", id: 2, text: "正常辨識", tones: [null] });
+  await tick();
+  assert.deepEqual(reading, { status: "resolved", value: { text: "正常辨識", tones: [null] } });
+});
+test("keepWarm warms the engine once and warmup is not re-run per crop", async () => {
+  let warmed = 0;
+  const fakeEngine = {
+    warmup: async () => {
+      warmed += 1;
+    },
+    recognize: async () => ({ text: "ok", tones: [] }),
+    terminate: async () => {},
+  };
+  const cache = createEngineCache({
+    create: async () => fakeEngine,
+  });
+
+  // Warmed once on create
+  cache.keepWarm("ppocr");
+  await tick();
+  assert.equal(warmed, 1, "warm-up is armed when an engine is created");
+
+  // Subsequent runs share the warm engine and do not re-run warm-up per crop
+  await cache.run("ppocr", async (engine) => engine.recognize(pixels()));
+  await cache.run("ppocr", async (engine) => engine.recognize(pixels()));
+  assert.equal(warmed, 1, "warm-up is not re-run per crop");
+  await cache.release();
+});
+
+test("a failed warm-up does not fail a read", async () => {
+  let reads = 0;
+  const fakeEngine = {
+    warmup: async () => {
+      throw new Error("shader compilation failed");
+    },
+    recognize: async () => {
+      reads += 1;
+      return { text: "success", tones: [] };
+    },
+    terminate: async () => {},
+  };
+  const cache = createEngineCache({
+    create: async () => fakeEngine,
+  });
+
+  const res = await cache.run("ppocr", async (engine) => engine.recognize(pixels()));
+  assert.equal(reads, 1);
+  assert.deepEqual(res, { text: "success", tones: [] });
+  await cache.release();
+});
+
+test("createOcrEngine warmup posts warmup to worker and resolves on warmupResult", async () => {
+  const worker = new FakeWorker();
+  const engine = await runningEngine(worker);
+  worker.emit({ type: "status", stage: "ready" });
+
+  const warming = watch(engine.warmup());
+  await tick();
+  assert.equal(worker.posted.at(-1).message.type, "warmup");
+  const id = worker.posted.at(-1).message.id;
+
+  worker.emit({ type: "warmupResult", id });
+  await tick();
+  assert.deepEqual(warming, { status: "resolved", value: undefined });
 });

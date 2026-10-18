@@ -24,7 +24,9 @@ import { newMarket, verifyViews } from "./traderie/controller.js";
 import { findAndRead } from "./traderie/finder.js";
 import { baseOptions, indexTables, searchShowsItem } from "./traderie/lookup.js";
 import { priceSummary } from "./traderie/price-summary.js";
+import { initLearningPanel } from "./learning-panel.js";
 import { initNameSuggest } from "./name-suggest.js";
+import { chromeStorage, createCorrections } from "./ocr/corrections.js";
 import { initOcrPanel } from "./ocr/panel.js";
 import { initScanPanel } from "./scan/scan-panel.js";
 import { ensureProperties } from "./traderie/properties.js";
@@ -39,6 +41,9 @@ const MODE_TEXT = {
   name: { title: "精準搜尋", help: "輸入裝備名稱就能查（暗金、套裝等固定名稱）" },
   stats: { title: "模糊搜尋", help: "用底材、品質和詞綴條件找" },
 };
+
+// What the player chose for names the reader could not settle (ocr/corrections.js), on this computer only.
+const corrections = createCorrections({ storage: chromeStorage() });
 
 const pages = { trading: 1, recent_trades: 1 };
 let running = false;
@@ -61,6 +66,7 @@ let pendingInvite = ""; // typed but not accepted by the backend yet: kept in me
 let editingInvite = false;
 let filters = EMPTY_FILTERS; // display-time row filters, saved in chrome.storage.local
 let queryMode = null; // null: not chosen yet (the panel asks) | "name" | "stats" | "scan"
+let scanPanel = null; // the scan screen's handle ({ stop }), once it is up
 let modeFromPicture = false; // the mode was set by a picture, not by the player: the reading may still switch it
 let statsForm = null; // the second form (stats-form.js), made once the page is up
 let ocr = null; // the screenshot reader's shared API (models, engine, matcher); the scan screen reads through it
@@ -470,6 +476,7 @@ async function start() {
   const invite = currentInvite();
   const rawItem = $("item").value;
   beginQuery(rawItem.trim());
+  ocr?.noteQueryName(rawItem); // a name typed over a read picture is a correction of that read
   const callBudget = newCallBudget(); // Jev calls of the whole query: every Agent it builds counts against it
   const session = { tab: null, agent: null, run: null, itemName: "", outcome: null, timeline: newTimeline() };
   await runSession(session, async (session) => {
@@ -558,13 +565,23 @@ function chooseMode(mode) {
   focusEntry();
 }
 
+/**
+ * 返回: from either form or the scan screen to the first question, and nowhere else. Refused while a query runs. A
+ * running scan stops (its window is no longer shared), the list it recorded stays; what was typed stays in the forms.
+ */
+function backToChoose() {
+  if (running) return;
+  if (queryMode === "scan") scanPanel?.stop();
+  chooseMode(null);
+}
+
 /** The scan list's 精準搜尋: fills the name form in, it never starts a query. */
 function onSearchName(record) {
   if (!record.name) return; // the button is disabled without a name
   modeFromPicture = false;
   setMode("name");
   runSource = scanSource(record);
-  $("item").value = record.name;
+  $("item").value = record.zh || record.name; // shown Chinese-first; resolveInput gives Traderie the English name
   focusEntry();
 }
 
@@ -684,8 +701,8 @@ function registerListeners() {
     on("choose-name", () => chooseMode("name"));
     on("choose-stats", () => chooseMode("stats"));
     on("choose-scan", () => chooseMode("scan"));
-    on("mode-change", () => chooseMode(queryMode === "name" ? "stats" : "name"));
-    on("scan-change", () => chooseMode(null));
+    on("mode-change", backToChoose);
+    on("scan-change", backToChoose);
     on("stop", () => {
       stopRequested = true;
       setStatus("正在停止…");
@@ -728,6 +745,7 @@ function registerListeners() {
     window.addEventListener("pagehide", () => {
       stopRequested = true;
       abortCurrent();
+      corrections.flush().catch(() => {}); // what the player chose in the last seconds is still written
     });
   }
 
@@ -747,6 +765,7 @@ function registerListeners() {
       onChange: updateStart,
     });
     initNameSuggest({ input: $("item"), list: $("item-suggest"), getTables: () => tables });
+    initLearningPanel({ corrections, getTables: () => tables });
   }
 
   wireInvite();
@@ -765,15 +784,16 @@ function registerListeners() {
 async function startReader() {
   return initOcrPanel({
     tables: await loadTables(),
+    corrections,
     isBusy: () => running,
-    onPick: (name, kind) => {
+    onPick: (name, kind, shown = name) => {
       if (running) return false; // never change the name under a query that is already running
       // A unique or set item has its own name search, so a picture of one leaves the affix form for it.
       if (queryMode === "stats" && kind === "item") setMode("name");
       if (modeFromPicture && kind === "base") setMode("stats");
       backToForm();
       if (queryMode === "stats") statsForm.setBaseFromScreenshot(name);
-      else $("item").value = name; // the player reads it, then decides to press 開始查詢
+      else $("item").value = shown; // Chinese when the table has one; resolveInput turns it back into English before any query
       return true;
     },
     onText: (text) => {
@@ -781,17 +801,19 @@ async function startReader() {
       runSource = { kind: "picture" };
       // The reader ticks what it recognised and fills in the numbers it read, marked for confirmation; the player
       // still presses start.
-      if (queryMode === "stats") statsForm.fillFromText(text, { carryValues: true });
-      else statsForm.rememberScreenshot(text);
+      statsForm?.rememberScreenshot(text);
+      if (queryMode === "stats") statsForm?.fillFromText(text, { carryValues: true });
     },
     onImage: () => {
-      statsForm.forgetScreenshot();
+      statsForm?.forgetScreenshot();
       if (!running && !queryMode) {
         modeFromPicture = true;
         setMode("name");
       }
       if (!running) backToForm();
     },
+    // 「都不是，我自己輸入」: the player types the name (or the base, in the affix form); nothing is filled in for them.
+    onNone: () => $(queryMode === "stats" ? "stats-base" : "item").focus(),
   });
 }
 
@@ -818,6 +840,7 @@ async function init() {
     .catch(() => {});
   // The screenshot reader loads last: its table download must not hold the rest of the panel back.
   try {
+    await corrections.load(); // never rejects: a store that cannot be read is an empty memory
     ocr = await startReader();
   } catch (error) {
     showInitProblem("截圖辨識無法啟動，其他功能不受影響", error);
@@ -825,7 +848,7 @@ async function init() {
   // The scan screen works through that reader's models, engine and matcher: without it there is nothing to scan with.
   if (ocr) {
     try {
-      initScanPanel({ ocr, tables: await loadTables(), onSearchName, onSearchStats });
+      scanPanel = initScanPanel({ ocr, tables: await loadTables(), onSearchName, onSearchStats });
     } catch (error) {
       showInitProblem("裝備掃描無法啟動，其他功能不受影響", error);
     }

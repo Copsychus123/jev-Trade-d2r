@@ -182,6 +182,39 @@ test("boxKey separates panels whose content differs", () => {
   assert.ok(keyDistance(keyPlain, keyOther) > 8, `${keyDistance(keyPlain, keyOther)} of 64 cells differ`);
 });
 
+test("a fractional box gives a key with no NaN and the shipped 64-cell length", () => {
+  const img = composed(drawPanel);
+  const fractionalBox = { x: 150.333, y: 60.667, width: 100.25, height: 130.75 };
+  const key = boxKey(img, fractionalBox);
+  assert.equal(key.length, 64);
+  assert.equal(key.includes("NaN"), false);
+  assert.match(key, /^[0-5]{64}$/);
+});
+
+test("the same box rounded and unrounded give the same key", () => {
+  const img = composed(drawPanel);
+  const unrounded = { x: 150.333, y: 60.667, width: 100.25, height: 130.75 };
+  const rounded = {
+    x: Math.round(unrounded.x),
+    y: Math.round(unrounded.y),
+    width: Math.round(unrounded.width),
+    height: Math.round(unrounded.height),
+  };
+  assert.equal(boxKey(img, unrounded), boxKey(img, rounded));
+});
+
+test("two different items rescued by the fallback do not collide", () => {
+  const one = composed(drawPanel);
+  const other = composed(drawAntialiasedPanel);
+  const boxA = { x: 150.333, y: 60.667, width: 100.25, height: 130.75 };
+  const boxB = { x: 150.333, y: 60.667, width: 100.25, height: 130.75 };
+  const keyA = boxKey(one, boxA);
+  const keyB = boxKey(other, boxB);
+  assert.equal(keyA.includes("NaN"), false);
+  assert.equal(keyB.includes("NaN"), false);
+  assert.ok(keyDistance(keyA, keyB) > 8, "different items must not collide at distance 0");
+});
+
 test("boxHash is stable for identical frames and moves with the stripes", () => {
   const a = noise(960, 540);
   drawPanel(a, PANEL);

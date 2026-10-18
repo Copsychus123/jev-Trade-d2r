@@ -7,7 +7,7 @@
 // This drives the real module end to end against fakes only: a fake Chrome capture (getDisplayMedia +
 // MediaStreamTrackProcessor) feeding synthetic frames, an OffscreenCanvas/createImageBitmap pair whose
 // drawImage/getImageData calls are recorded, one second of ticker fired by hand, and an OCR engine with the interface
-// ocr/panel.js exposes (missingModels / downloadWithNotice / recognize / match). No timer, socket, network or Chrome.
+// ocr/panel.js exposes (missingModels / downloadModels / recognize / match). No timer, socket, network or Chrome.
 
 // scan-panel.js imports "../csv.js", which ships only into extension/dist (extension/build.py copies it from
 // src/jev_ultrafast/static/csv.js, it is not in extension/src). A tiny resolve hook points that one specifier at the
@@ -20,11 +20,19 @@ import { installStubResolver } from "./support/stubs.mjs";
 
 installStubResolver();
 
+import { toneQuality } from "../src/ocr/tone.js";
 import { indexTables } from "../src/traderie/lookup.js";
 import { downscale } from "../src/scan/tooltip.js";
 import { fill, noise } from "./support/images.mjs";
 
 const { initScanPanel } = await import("../src/scan/scan-panel.js");
+
+/** `img` with a bright patch in the top-left corner: something else in the game moving, far from any tooltip panel. */
+function cornerPatch(img, step) {
+  const copy = { width: img.width, height: img.height, data: new Uint8ClampedArray(img.data) };
+  fill(copy, 8 + step * 40, 8, 30, 30, 250);
+  return copy;
+}
 
 // --- the pictures these tests scan ---------------------------------------------------------------------------------
 
@@ -37,8 +45,8 @@ const HEIGHT = 540;
  * text lines are, so two calls build two different panels — the session keys a crop by the panel's own content, so
  * the same drawing at another place is one crop while a differently drawn one is a second.
  */
-function panelFrame(box, { stripes = 0.6 } = {}) {
-  const img = noise(WIDTH, HEIGHT);
+function panelFrame(box, { stripes = 0.6, seed = 12345 } = {}) {
+  const img = noise(WIDTH, HEIGHT, { seed });
   const { x, y, width, height } = box;
   fill(img, x, y, width, height, 20);
   const span = Math.round(width * stripes);
@@ -64,14 +72,23 @@ const PANEL_C = { x: 100, y: 120, width: 200, height: 260 }; // a third one, nar
 
 const NAME_TEXT = "Arachnid Mesh";
 const AFFIX_TEXT = "+27 力量 (STN)";
+const UNSURE_TEXT = "Arachnid Mesh Ring"; // read as an item with its type line under it: not sure which of the two
 const UNREADABLE_TEXT = ""; // no name and no affix line: the session refuses it and counts 略過
 
 // The two contingency messages scan-panel.js puts in front of the live status.
 const BLACK_ADVICE = "擷取到的是黑畫面：請把遊戲改成「視窗化全螢幕」。";
-const SLOW_ADVICE = "遊戲蓋住 Chrome 時畫面會變慢：請把遊戲設為視窗模式並與 Chrome 並排，或用第二個螢幕。";
+const HIDDEN_ADVICE = "遊戲視窗蓋住了這個面板，掃描會變慢、快速掠過的裝備可能漏掉。建議把遊戲改成視窗模式、和 Chrome 並排。";
+const SLOW_ADVICE = "畫面更新偏慢，快速掠過的裝備可能漏掉。建議把遊戲改成視窗模式、和 Chrome 並排，並關掉其他吃資源的程式。";
 
 /** The candidates the shipped matcher answers for the texts these tests read (the shape matchOcrText returns). */
-function candidateFor(text) {
+function candidateFor(text, tones = []) {
+  if (text.startsWith(UNSURE_TEXT)) {
+    return [
+      // The name is on line 0; matchOcrText gives it the quality its line's lettering colour says.
+      { kind: "item", name: NAME_TEXT, distance: 0, matched: NAME_TEXT, size: 4, at: 0, quality: toneQuality(tones[0]) },
+      { kind: "base", name: "Ring", distance: 0, matched: "Ring", size: 2, at: 1 },
+    ];
+  }
   return text === NAME_TEXT ? [{ name: NAME_TEXT, kind: "item", matched: NAME_TEXT }] : [];
 }
 
@@ -115,6 +132,7 @@ class FakeNode {
     this.disabled = false;
     this._text = "";
     this.listeners = {};
+    this.classList = { add: (name) => (this.className = [this.className, name].filter(Boolean).join(" ")) };
   }
 
   get textContent() {
@@ -142,6 +160,18 @@ class FakeNode {
     (this.listeners[type] ??= []).push(handler);
   }
 
+  setAttribute(name, value) {
+    (this.attributes ??= {})[name] = String(value);
+  }
+
+  getAttribute(name) {
+    return this.attributes?.[name] ?? null;
+  }
+
+  removeAttribute(name) {
+    delete this.attributes?.[name];
+  }
+
   /** Dispatch `type` and wait for every listener (the panel's are async) to finish. */
   async fire(type, event = {}) {
     await Promise.all((this.listeners[type] ?? []).map((handler) => handler(event)));
@@ -166,6 +196,9 @@ function makeDocument(ids) {
 let env; // what every stub below reads; setup() replaces it
 
 globalThis.document = {
+  get visibilityState() {
+    return env.visibility; // "hidden" while the game covers the side panel
+  },
   createElement: (tagName) => {
     const node = new FakeNode(tagName);
     if (tagName === "a") {
@@ -251,6 +284,14 @@ function fakeReader() {
     drained: false, // set once the loop has asked for a frame and been told there are none: the capture is over
     async read() {
       await env.gate; // frames only start arriving once the capture is wired: the real dialog takes seconds
+      // A live capture keeps waiting for the next second's frames; otherwise it ends once the frames are out.
+      while (!env.frames.length && env.live) {
+        reader.idle = true;
+        await new Promise((resolve) => {
+          env.wake = resolve;
+        });
+      }
+      reader.idle = false;
       if (!env.frames.length) {
         reader.drained = true;
         return { done: true, value: undefined };
@@ -311,6 +352,10 @@ function setup({ pick, missing = { names: [], bytes: 0 }, download = async () =>
     stops: 0,
     tickers: [],
     times: [],
+    visibility: "visible",
+    live: false, // a capture that goes on waiting for frames (liveSecond) instead of ending when they are out
+    wake: null,
+    stamp: 0,
     clock: 0,
     fetches: [],
     saved: [], // one entry per download.js click, with the Blob handed to URL.createObjectURL
@@ -328,7 +373,7 @@ function setup({ pick, missing = { names: [], bytes: 0 }, download = async () =>
     env.openGate = resolve;
   });
   env.ocr = makeOcr();
-  initScanPanel({
+  env.scan = initScanPanel({
     ocr: env.ocr,
     tables,
     onSearchName: (record) => env.handlers.name.push(record),
@@ -364,12 +409,13 @@ function makeOcr() {
     matches: [], // the texts the panel asked to match
     pending: [], // one deferred per read
     missingModels: async () => ({ ...env.missing }),
-    downloadWithNotice: async (args) => {
+    downloadModels: async (args) => {
       env.downloads.push(args);
       return env.download();
     },
-    recognize(blob) {
+    recognize(blob, options = {}) {
       api.reads.push(blob);
+      api.readOptions.push(options);
       let resolve;
       let reject;
       const promise = new Promise((r, j) => {
@@ -379,10 +425,33 @@ function makeOcr() {
       api.pending.push({ blob, resolve, reject });
       return promise;
     },
-    match(text) {
+    match(text, tones) {
       api.matches.push(text);
-      return candidateFor(text);
+      return candidateFor(text, tones);
     },
+    // The possible names of an unsure read: the shipped extendCandidates needs the real name index, so the tests that
+    // want more than the matcher's own candidates set `extra`.
+    possible(candidates, text) {
+      api.possibles.push(text);
+      return [...candidates, ...(api.extra ?? [])];
+    },
+    firstKey: (text) => (api.firstKeys ? api.firstKeys[text] ?? "" : ""),
+    learn(key, name) {
+      api.learned.push([key, name]);
+      return true;
+    },
+    async detectBoxes(img) {
+      api.detectCalls.push(img);
+      return api.detBoxes ? api.detBoxes(img) : (api.boxes ?? []);
+    },
+    detectCalls: [],
+    boxes: null,
+    detBoxes: null,
+    readOptions: [], // what each read was asked for (the scan never caps detection: its crops are small)
+    possibles: [], // the texts the panel asked possible names for
+    learned: [], // what the panel asked the correction memory to remember: [key, name]
+    extra: null, // names appended to the candidates of an unsure read
+    firstKeys: null, // text -> the read's first name line
   };
   return api;
 }
@@ -455,6 +524,18 @@ async function feedFrames(frames) {
   await drained();
 }
 
+/**
+ * Pushes frames into a capture that stays open (the reader idles between them, like a real share): `feedFrames`
+ * above ends the reader once its frames are out, so a second batch pushed that way would never be read at all.
+ */
+async function feedLive(frames) {
+  env.live = true;
+  env.frames.push(...frames);
+  openGate();
+  env.wake?.();
+  await settle(() => env.frames.length === 0 && env.readers[0].idle, "the pushed frames to be processed");
+}
+
 /** Waits until the panel has handed `n` crops to the OCR engine (every read is held until a test answers it). */
 const settleReads = (n) => settle(() => env.ocr.reads.length === n, `${n} crops at the engine`);
 
@@ -471,9 +552,9 @@ function releaseFrame() {
  * Answers crop `i` with `text` and waits until the panel has taken the answer (match() ran for it), rather than
  * assuming the product's exact number of awaits: any extra await in scan-panel.js still settles here.
  */
-async function answer(i, text) {
+async function answer(i, text, tones = []) {
   await settle(() => env.ocr.pending.length > i, `crop ${i} to reach the engine`);
-  env.ocr.pending[i].resolve(text);
+  env.ocr.pending[i].resolve({ text, tones });
   await settle(() => env.ocr.matches.length > i, `the panel to take crop ${i}'s answer`);
 }
 
@@ -487,13 +568,29 @@ function fireTicks(count) {
   for (let i = 0; i < count; i += 1) fireTick();
 }
 
+/**
+ * One second of a live capture: `count` frames (all stamped alike, so the panel counts them but processes only the
+ * first, like frames that arrive inside its 66 ms throttle), then the second's tick. The capture stays open between
+ * seconds, which the frames-then-end harness above cannot do.
+ */
+async function liveSecond(count) {
+  env.live = true;
+  const stamp = (env.stamp += 1_000_000);
+  env.frames.push(...Array.from({ length: count }, () => darkFrame(stamp)));
+  openGate();
+  env.wake?.();
+  await settle(() => env.frames.length === 0 && env.readers[0].idle, `${count} frames of one second`);
+  fireTick();
+}
+
 /** Runs the screen up to `texts.length` records on the list, without stopping the capture. */
-async function scanPanels(panels, texts) {
+async function scanPanels(panels, texts, tonesOf = [], configure = () => {}) {
   setup();
+  configure(env.ocr); // what the stand-in matcher and memory answer for this scan
   await startScan();
   deliver(panels);
   await settleCrops(texts.length);
-  for (let i = 0; i < texts.length; i++) await answer(i, texts[i]);
+  for (let i = 0; i < texts.length; i++) await answer(i, texts[i], tonesOf[i]);
 }
 
 /** A fresh screen fed `frames`, one tick blown after them: the status line those frames produce. */
@@ -553,7 +650,7 @@ test("a stable panel is cut out of the full-resolution frame: the detected box s
 test("a frame closer than 66 ms to the last one is counted in the rate but never read", async () => {
   setup();
   await startScan();
-  env.times = [0, 1000]; // one read of one second
+  env.times = [0, 0, 1000]; // accept at 0, one read from 0 to 1 s
   const img = panelFrame(PANEL_A);
   // 40 ms after the first frame (closer than the panel's 66 ms) and 70 ms after that one.
   const [first, skipped, third] = [fakeFrame(img, 10000), fakeFrame(img, 50000), fakeFrame(img, 120000)];
@@ -597,7 +694,12 @@ function assertNamedItem(named) {
   const [line1, line2, actions] = named.children;
   assert.equal(line1.className, "line1");
   assert.deepEqual(line1.children.map((child) => [child.tagName, child.textContent]), [
-    ["strong", "Arachnid Mesh（蛛網紋束帶）"],
+    ["strong", "蛛網紋束帶（Arachnid Mesh）"],
+    ["button", "✕"],
+  ]);
+  assert.deepEqual([line1.children[1].type, line1.children[1].getAttribute("aria-label")], [
+    "button",
+    "刪除這一筆：Arachnid Mesh",
   ]);
   assert.equal(line2.className, "line2");
   assert.equal(line2.textContent, "12:34:56 · 暗金/套裝/符文之語");
@@ -619,9 +721,11 @@ function assertUnnamedItem(unnamed) {
   });
   assert.equal(unnamed.children[0].children[0].textContent, "沒認出名稱");
   assert.equal(unnamed.children[1].textContent, "12:34:56 · — · 力量");
-  assert.deepEqual(unnamed.children[2].children.map((button) => button.dataset.index), ["1", "1"]);
-  assert.equal(unnamed.children[2].children[0].disabled, true); // no name: 精準搜尋 cannot look anything up
-  assert.equal(unnamed.children[2].children[1].disabled, false);
+  const actions = unnamed.children.at(-1); // after the 「輸入名稱」 box every record without a name has
+  assert.equal(unnamed.children.length, 4, "name line, type line, the box to type a name, the search buttons");
+  assert.deepEqual(actions.children.map((button) => button.dataset.index), ["1", "1"]);
+  assert.equal(actions.children[0].disabled, true); // no name: 精準搜尋 cannot look anything up
+  assert.equal(actions.children[1].disabled, false);
 }
 
 // --- 匯出 CSV --------------------------------------------------------------------------------------------------------
@@ -654,6 +758,75 @@ test("匯出 CSV on an empty list saves nothing", async () => {
   await node("scan-csv").fire("click");
 
   assert.deepEqual(env.saved, [], "no file is offered for an empty list");
+});
+
+// --- ✕ on one row ----------------------------------------------------------------------------------------------------
+
+const removeButton = (item) => item.children[0].children[1];
+
+test("the ✕ of a row deletes that record only, and the status, the list and the CSV follow", async () => {
+  await scanPanels([{ box: PANEL_B, stripes: 0.3 }, { box: PANEL_A }], [AFFIX_TEXT, NAME_TEXT]);
+  assert.equal(removeButton(listEl().children[1]).getAttribute("aria-label"), "刪除這一筆：沒認出名稱");
+
+  await removeButton(listEl().children[0]).fire("click"); // the named record on top
+
+  assert.equal(listEl().children.length, 1);
+  const [left] = listEl().children;
+  assert.deepEqual([left.dataset.name, left.children[0].children[0].textContent], ["", "沒認出名稱"]);
+  assert.equal(statusText(), "掃描中：已記錄 1 件，待辨識 0 件");
+  assert.equal(node("scan-csv").disabled, false);
+  await node("scan-csv").fire("click");
+  const csv = Buffer.from(await env.saved[0].blob.arrayBuffer()).toString("utf8");
+  assert.equal(csv.includes("Arachnid Mesh"), false, "the deleted record is not in the file");
+  assert.equal(csv.includes("力量"), true);
+  assert.deepEqual(env.handlers.name, []);
+  assert.deepEqual(env.fetches, [], "deleting starts no query");
+});
+
+test("deleting the last record hides the list and disables 下載 CSV and 清除紀錄", async () => {
+  await scanPanels([{ box: PANEL_A }], [NAME_TEXT]);
+
+  await removeButton(listEl().children[0]).fire("click");
+
+  assert.equal(listEl().hidden, true);
+  assert.equal(node("scan-csv").disabled, true);
+  assert.equal(node("scan-clear").disabled, true);
+  assert.equal(statusText(), "掃描中：已記錄 0 件，待辨識 0 件");
+});
+
+test("a row can be deleted after the scan stopped, without touching the capture", async () => {
+  await scanPanels([{ box: PANEL_A }], [NAME_TEXT]);
+  await node("scan-stop").fire("click");
+  const stops = env.stops;
+
+  await removeButton(listEl().children[0]).fire("click");
+
+  assert.equal(listEl().children.length, 0);
+  assert.equal(statusText(), "已停止，共記錄 0 件");
+  assert.equal(env.stops, stops);
+});
+
+test("a deleted item is recorded again when the same tooltip is hovered again", async () => {
+  setup();
+  await startScan();
+  // The tooltip, then a frame with none (the decoder holds it), then the same tooltip again: the capture is still
+  // feeding frames when the player deletes the first record.
+  env.holdFrames.add(300000);
+  const img = panelFrame(PANEL_A, { stripes: 0.6 });
+  env.frames.push(fakeFrame(img, 100000), fakeFrame(img, 200000), darkFrame(300000));
+  env.frames.push(fakeFrame(img, 400000), fakeFrame(img, 500000));
+  openGate();
+  await settleCrops(1);
+  await answer(0, NAME_TEXT);
+  await removeButton(listEl().children[0]).fire("click");
+  assert.equal(listEl().children.length, 0);
+
+  releaseFrame();
+  await settleCrops(2);
+  await answer(1, NAME_TEXT);
+
+  assert.equal(listEl().children.length, 1);
+  assert.equal(listEl().children[0].dataset.name, NAME_TEXT);
 });
 
 // --- 清除紀錄 --------------------------------------------------------------------------------------------------------
@@ -749,24 +922,8 @@ test("a cancelled model download never opens the picker and says why nothing sta
   });
   await startScan();
 
-  assert.deepEqual(env.downloads.map((args) => ({
-    noticeId: args.noticeId,
-    textId: args.textId,
-    progressId: args.progressId,
-    cancelId: args.cancelId,
-    tail: args.tail,
-    names: args.names,
-    bytes: args.bytes,
-    say: typeof args.say,
-  })), [{
-    noticeId: "scan-download",
-    textId: "scan-download-text",
-    progressId: "scan-progress",
-    cancelId: "scan-cancel",
-    tail: "之後可離線使用",
+  assert.deepEqual(env.downloads.map((args) => ({ names: args.names })), [{
     names: ["det.onnx"],
-    bytes: 4096,
-    say: "function",
   }]);
   assert.equal(statusText(), "已取消下載辨識模型，掃描沒有開始。");
   assert.deepEqual(env.picks, []); // the share dialog was never opened
@@ -781,12 +938,34 @@ test("while sharing, the status counts the records and the crops still waiting f
   fireTick();
   assert.equal(statusText(), "掃描中：已記錄 0 件，待辨識 1 件"); // one read in flight, one crop behind it
 
+  env.times = [2000]; // the first read, started at 0, ends at 2 s
   await answer(0, NAME_TEXT);
-  assert.equal(statusText(), "掃描中：已記錄 1 件，待辨識 1 件"); // the record landed, the next crop still waited
+  assert.equal(statusText(), "掃描中：已記錄 1 件，待辨識 1 件，約 2 秒"); // the record landed, the next crop still waited
 
   await answer(1, AFFIX_TEXT);
   assert.equal(statusText(), "掃描中：已記錄 2 件，待辨識 0 件");
   assert.deepEqual(listEl().children.map((item) => item.dataset.index), ["0", "1"]);
+});
+
+test("the waiting line estimates the queue as its length times the average read, and only once a read has landed", async () => {
+  setup();
+  await startScan();
+  deliver([{ box: PANEL_A }, { box: PANEL_B, stripes: 0.3 }, { box: PANEL_C, stripes: 0.2 }]);
+  await settleReads(1);
+  await drained();
+  fireTick();
+  assert.equal(statusText(), "掃描中：已記錄 0 件，待辨識 2 件"); // no read has finished: no number to multiply
+
+  env.times = [3000, 3000, 7000, 7000, 7000]; // read 1 ends at 3 s, read 2 runs 3 s -> 7 s: the average is 3.5 s
+  await answer(0, NAME_TEXT);
+  assert.equal(statusText(), "掃描中：已記錄 1 件，待辨識 2 件，約 6 秒"); // 2 x 3.0 s
+
+  await answer(1, AFFIX_TEXT);
+  assert.equal(statusText(), "掃描中：已記錄 2 件，待辨識 1 件，約 4 秒"); // 1 x 3.5 s, rounded
+
+  await answer(2, UNSURE_TEXT);
+  await settle(() => listEl().children.length === 3, "the third record to land");
+  assert.equal(statusText(), "掃描中：已記錄 3 件，待辨識 0 件"); // an empty queue has no estimate
 });
 
 test("停止掃描 releases the share, drops the ticker and states the final count", async () => {
@@ -802,6 +981,19 @@ test("停止掃描 releases the share, drops the ticker and states the final cou
   const stopped = statsText();
   fireTick(); // a stopped panel has no ticker left
   assert.equal(statsText(), stopped);
+});
+
+test("the stop the panel hands back ends a running share like 停止掃描, and does nothing when no scan runs", async () => {
+  await scanPanels([{ box: PANEL_A }], [NAME_TEXT]);
+
+  env.scan.stop();
+
+  assert.equal(statusText(), "已停止，共記錄 1 件");
+  assert.equal(node("scan-stop").hidden, true);
+  assert.equal(node("scan-start").disabled, false);
+  assert.equal(env.stops, 1);
+  env.scan.stop(); // already stopped: no second release
+  assert.equal(env.stops, 1);
 });
 
 test("the player's own 停止分享 ends the run the same way, with no error in front of the count", async () => {
@@ -855,7 +1047,7 @@ test("a read the engine refused shows 辨識失敗 in front of the live status, 
   assert.equal(statusText(), "辨識失敗：engine exploded 掃描中：已記錄 0 件，待辨識 0 件");
 
   // The read that works is what retires the failure: it clears at the point the panel learns a later read landed.
-  env.ocr.pending[1].resolve(AFFIX_TEXT);
+  env.ocr.pending[1].resolve({ text: AFFIX_TEXT, tones: [] });
   await settle(() => listEl().children.length === 1, "the record of crop 1 to land");
   assert.equal(statusText(), "掃描中：已記錄 1 件，待辨識 0 件");
   assert.equal(listEl().children[0].dataset.name, "");
@@ -879,24 +1071,71 @@ test("a long run of dark frames warns about a black capture, and a picture comin
   assert.equal(await statusAfterFrames([...dark(30), ...bright]), "掃描中：已記錄 0 件，待辨識 0 件");
 });
 
-test("a run of slow seconds advises moving the game beside Chrome, and a fast one drops it", async () => {
+test("a covered side panel says so, and the advice goes when the panel is visible again or the scan stops", async () => {
   setup();
   await startScan();
-  fireTicks(2);
-  // Two seconds below SLOW_FPS = 5 are not enough ...
+  fireTick();
+  assert.equal(statusText(), "掃描中：已記錄 0 件，待辨識 0 件"); // visible: nothing to say
+
+  env.visibility = "hidden"; // the game now covers Chrome
+  fireTick();
+  assert.equal(statusText(), `${HIDDEN_ADVICE} 掃描中：已記錄 0 件，待辨識 0 件`);
+
+  env.visibility = "visible";
+  fireTick();
   assert.equal(statusText(), "掃描中：已記錄 0 件，待辨識 0 件");
 
+  env.visibility = "hidden";
   fireTick();
+  await node("scan-stop").fire("click");
+  assert.equal(statusText(), "已停止，共記錄 0 件"); // nothing is being scanned any more, so nothing is slow
+});
+
+test("a covered panel is told once, and the black-picture advice still comes first", async () => {
+  setup();
+  await startScan();
+  env.visibility = "hidden";
+  await liveSecond(2); // slow as well: the cause (covered) is named, not both
+  await liveSecond(2);
+  await liveSecond(2);
+  assert.equal(statusText(), `${HIDDEN_ADVICE} 掃描中：已記錄 0 件，待辨識 0 件`);
+
+  const dark = Array.from({ length: 30 }, () => darkFrame((env.stamp += 1_000_000)));
+  env.frames.push(...dark);
+  env.wake();
+  await settle(() => env.frames.length === 0 && env.readers[0].idle, "30 dark frames");
+  fireTick();
+  assert.equal(statusText(), `${BLACK_ADVICE} 掃描中：已記錄 0 件，待辨識 0 件`);
+});
+
+test("a rate that bounces around under five frames a second still advises the game beside Chrome, and a fast one drops it", async () => {
+  setup();
+  await startScan();
+  const seconds = [7, 2, 1, 6, 4, 3, 8]; // the rate measured while the game covered Chrome
+  for (const count of seconds.slice(0, 2)) await liveSecond(count);
+  assert.equal(statusText(), "掃描中：已記錄 0 件，待辨識 0 件", "two seconds are not a pattern");
+
+  for (const count of seconds.slice(2)) await liveSecond(count);
+  assert.equal(statusText(), `${SLOW_ADVICE} 掃描中：已記錄 0 件，待辨識 0 件`); // the last six average 4.0
+
+  for (let i = 0; i < 3; i++) await liveSecond(12); // the picture recovered
+  assert.equal(statusText(), "掃描中：已記錄 0 件，待辨識 0 件");
+});
+
+test("seconds without a frame are a still picture: they never raise the slow advice and do not hide a slow stretch", async () => {
+  setup();
+  await startScan();
+  fireTicks(10); // nothing moves on the shared window from the start
+  assert.equal(statusText(), "掃描中：已記錄 0 件，待辨識 0 件");
+
+  await liveSecond(12);
+  await liveSecond(12);
+  await liveSecond(12); // a sweep at a healthy rate ...
+  fireTicks(10); // ... and then the picture stays still while the last tooltip is read
+  assert.equal(statusText(), "掃描中：已記錄 0 件，待辨識 0 件");
+
+  for (const count of [2, 0, 0, 1, 0, 3]) await liveSecond(count); // slow seconds with idle ones between them
   assert.equal(statusText(), `${SLOW_ADVICE} 掃描中：已記錄 0 件，待辨識 0 件`);
-
-  // ... and a second that carries frames (at least SLOW_FPS = 5 of them) recovers it.
-  await feedFrames(
-    Array.from({ length: 6 }, (_, i) => fakeFrame(panelFrame(PANEL_A), (i + 1) * 100000)),
-  );
-  fireTick();
-  assert.equal(statusText(), "掃描中：已記錄 0 件，待辨識 0 件");
-  await answer(0, NAME_TEXT);
-  assert.equal(statusText(), "掃描中：已記錄 1 件，待辨識 0 件");
 });
 
 // --- the stats line --------------------------------------------------------------------------------------------------
@@ -915,6 +1154,22 @@ test("the stats line counts frames, detections, refusals and the run's average r
   assert.equal(statsText(), "每秒畫面 6、偵測 6、略過 1、丟棄 0、平均辨識 1.0 秒");
   assert.equal(listEl().children.length, 2);
   assert.equal(env.ocr.matches.length, 3);
+});
+
+test("the stats line counts a panel hovered again and a read with the same text as 略過, and none of them as a record", async () => {
+  setup();
+  await startScan();
+  // B's drawing again at another place is the same panel (one crop: refused, 略過 1); a read of the same text as
+  // the first record is refused on its text (略過 2).
+  deliver([{ box: PANEL_A }, { box: PANEL_B, stripes: 0.3 }, { box: PANEL_C, stripes: 0.3 }]);
+  await settleCrops(3); // the panel cuts every stable box; the session then refuses the repeat
+  await answer(0, NAME_TEXT);
+  await answer(1, NAME_TEXT);
+
+  fireTick();
+  assert.equal(statsText(), "每秒畫面 6、偵測 6、略過 2、丟棄 0、平均辨識 0.0 秒");
+  assert.equal(listEl().children.length, 1);
+  assert.equal(env.ocr.reads.length, 2); // the third panel never reached the engine
 });
 
 // --- the two search buttons ------------------------------------------------------------------------------------------
@@ -937,7 +1192,7 @@ test("the search buttons hand the live record to the injected handlers and start
   assert.equal(env.handlers.name.length, 1);
   assert.equal(env.handlers.stats[0], record); // the same object both times: a copy would fail this
 
-  const [unnamedPrecise, unnamedFuzzy] = unnamed.children[2].children;
+  const [unnamedPrecise, unnamedFuzzy] = unnamed.children.at(-1).children; // after the 「輸入名稱」 box
   assert.equal(unnamedPrecise.disabled, true);
   await unnamedFuzzy.fire("click");
   assert.equal(env.handlers.stats.length, 2);
@@ -964,3 +1219,467 @@ function assertAffixSearchRecord(record) {
     { name: null, text: AFFIX_TEXT, labels: ["力量"] },
   );
 }
+
+// --- a read that is not sure: the player picks --------------------------------------------------------------------------
+
+/** The `li` children of an unsure row: the name line, the 類型/詞綴 line, the names to pick, the two search buttons. */
+const optionButtons = (item) => item.children[2].children;
+const searchButtons = (item) => item.children.at(-1).children;
+
+test("a read that is not sure is listed as 不確定 with its names as buttons and both searches disabled", async () => {
+  await scanPanels([{ box: PANEL_A }], [UNSURE_TEXT]);
+
+  const [item] = listEl().children;
+  assert.deepEqual({ name: item.dataset.name, kind: item.dataset.kind, unsure: item.dataset.unsure }, {
+    name: "",
+    kind: "",
+    unsure: "true",
+  });
+  assert.equal(item.children[0].children[0].textContent, "不確定");
+  assert.equal(removeButton(item).getAttribute("aria-label"), "刪除這一筆：不確定");
+  assert.deepEqual(optionButtons(item).map((b) => [b.textContent, b.dataset.kind, b.dataset.name]), [
+    ["蛛網紋束帶（Arachnid Mesh）", "item", NAME_TEXT],
+    ["Ring", "base", "Ring"],
+  ]);
+  assert.deepEqual(searchButtons(item).map((b) => [b.textContent, b.disabled]), [["精準搜尋", true], ["模糊搜尋", true]]);
+  assert.equal(statusText(), "掃描中：已記錄 1 件，待辨識 0 件", "it counts as a record: the player still has to decide");
+  assert.equal(node("scan-csv").disabled, false);
+});
+
+test("the same read is named by itself when its name line is printed in unique gold, and still asks when it is rare yellow", async () => {
+  // The lettering colour of line 0 (the name line) comes from the engine with the text; a type line under a gold name
+  // is a real unique, under a yellow one it may be a rare item whose random name is spelled like a catalogue name.
+  await scanPanels([{ box: PANEL_A }], [UNSURE_TEXT], [[[198, 178, 120]]]);
+  assert.deepEqual(
+    { name: listEl().children[0].dataset.name, unsure: listEl().children[0].dataset.unsure },
+    { name: NAME_TEXT, unsure: undefined },
+  );
+  await scanPanels([{ box: PANEL_A }], [UNSURE_TEXT], [[[248, 248, 100]]]);
+  assert.deepEqual(
+    { name: listEl().children[0].dataset.name, unsure: listEl().children[0].dataset.unsure },
+    { name: "", unsure: "true" },
+  );
+});
+
+test("an unsure record exports with an empty name and its text, until a name is picked", async () => {
+  await scanPanels([{ box: PANEL_A }], [UNSURE_TEXT]);
+
+  await node("scan-csv").fire("click");
+  const csv = Buffer.from(await env.saved[0].blob.arrayBuffer()).toString("utf8");
+  assert.equal(
+    csv,
+    "\uFEFF時間,名稱,中文名稱,類型,詞綴,辨識文字\r\n2026-10-12 12:34:56,,,—,,Arachnid Mesh Ring\r\n",
+  );
+});
+
+test("picking a name names the record like an auto-picked one: searches enabled, the CSV exports the pick", async () => {
+  await scanPanels([{ box: PANEL_A }], [UNSURE_TEXT]);
+  assert.equal(listEl().children[0].dataset.name, "", "before the pick the record has no name");
+
+  await optionButtons(listEl().children[0])[0].fire("click");
+
+  const [item] = listEl().children;
+  assert.deepEqual({ name: item.dataset.name, kind: item.dataset.kind, unsure: item.dataset.unsure }, {
+    name: NAME_TEXT,
+    kind: "item",
+    unsure: undefined,
+  });
+  assert.equal(item.children[0].children[0].textContent, "蛛網紋束帶（Arachnid Mesh）");
+  assert.equal(item.children[1].textContent, "12:34:56 · 暗金/套裝/符文之語");
+  assert.equal(item.children.length, 3, "the names to pick are gone: name line, type line and the search buttons");
+  assert.deepEqual(searchButtons(item).map((b) => b.disabled), [false, false]);
+  assert.equal(removeButton(item).getAttribute("aria-label"), "刪除這一筆：Arachnid Mesh");
+
+  await searchButtons(item)[0].fire("click");
+  const record = env.handlers.name[0];
+  assert.deepEqual(
+    { name: record.name, zh: record.zh, kind: record.kind, base: record.base, text: record.text },
+    { name: NAME_TEXT, zh: "蛛網紋束帶", kind: "item", base: "Ring", text: UNSURE_TEXT },
+    "the same fields an auto-picked record has; its base is the read's own type line",
+  );
+
+  await node("scan-csv").fire("click");
+  const csv = Buffer.from(await env.saved[0].blob.arrayBuffer()).toString("utf8");
+  assert.equal(csv.split("\r\n")[1], "2026-10-12 12:34:56,Arachnid Mesh,蛛網紋束帶,暗金/套裝/符文之語,,Arachnid Mesh Ring");
+});
+
+test("picking the type name instead names the record as a base", async () => {
+  await scanPanels([{ box: PANEL_A }], [UNSURE_TEXT]);
+
+  await optionButtons(listEl().children[0])[1].fire("click");
+
+  const [item] = listEl().children;
+  assert.deepEqual({ name: item.dataset.name, kind: item.dataset.kind }, { name: "Ring", kind: "base" });
+  assert.equal(item.children[1].textContent, "12:34:56 · 底材");
+  assert.deepEqual(searchButtons(item).map((b) => b.disabled), [false, false]);
+});
+
+test("an unsure row can be deleted with its ✕, and nothing is exported for it afterwards", async () => {
+  await scanPanels([{ box: PANEL_A }], [UNSURE_TEXT]);
+  assert.equal(listEl().children[0].dataset.unsure, "true");
+
+  await removeButton(listEl().children[0]).fire("click");
+
+  assert.equal(listEl().children.length, 0);
+  assert.equal(statusText(), "掃描中：已記錄 0 件，待辨識 0 件");
+  assert.equal(node("scan-csv").disabled, true);
+});
+
+test("two unsure rows pick independently, each by its own record", async () => {
+  await scanPanels([{ box: PANEL_B, stripes: 0.3 }, { box: PANEL_A }], [UNSURE_TEXT, `${UNSURE_TEXT} 2`]);
+  const [newest, older] = listEl().children;
+  assert.equal(newest.dataset.unsure, "true");
+  assert.equal(older.dataset.unsure, "true");
+
+  await optionButtons(older)[1].fire("click"); // the older row, picked while the newer one waits
+
+  const [stillNewest, nowOlder] = listEl().children;
+  assert.equal(stillNewest.dataset.unsure, "true", "the other row is still asking");
+  assert.deepEqual([nowOlder.dataset.name, nowOlder.dataset.kind], ["Ring", "base"]);
+});
+
+// --- possible names and the 「輸入名稱」 box ---------------------------------------------------------------------------------
+
+const NAME_ZH = "蛛網紋束帶";
+const nameBoxOf = (item) => item.children.find((child) => child.className === "name-box");
+const inputOf = (item) => nameBoxOf(item).children[0];
+const confirmOf = (item) => nameBoxOf(item).children[1];
+const noteOf = (item) => nameBoxOf(item).children.find((child) => child.className === "muted small");
+
+/** An unresolved row with no names to pick: the affix-only read of the other tests, in a fresh panel. */
+async function unresolvedRow(configure = () => {}) {
+  await scanPanels([{ box: PANEL_A }], [AFFIX_TEXT], [], configure);
+  return listEl().children[0];
+}
+
+test("an unsure read offers the possible names the reader found, beyond its own candidates, each Chinese first", async () => {
+  await scanPanels([{ box: PANEL_A }], [UNSURE_TEXT], [], (ocr) => {
+    ocr.extra = [{ kind: "item", name: NAME_TEXT, distance: 2, matched: "zz", size: 4, at: 2 }]; // a name the matcher alone missed
+    ocr.extra[0].name = "Arachnid Mesh";
+  });
+
+  const [item] = listEl().children;
+  assert.equal(env.ocr.possibles.length, 1, "the panel asked for the possible names of this read");
+  assert.equal(item.dataset.unsure, "true");
+  assert.deepEqual(optionButtons(item).map((b) => b.dataset.name), [NAME_TEXT, "Ring", NAME_TEXT]);
+  assert.equal(item.children.some((child) => child.className === "options" && child.getAttribute("aria-label") === "可能是"), true);
+});
+
+test("a sure read asks for no possible names and keeps no options", async () => {
+  await scanPanels([{ box: PANEL_A }], [NAME_TEXT]);
+  assert.deepEqual(env.ocr.possibles, []);
+  assert.equal(nameBoxOf(listEl().children[0]), undefined, "a named record has no box to type a name");
+});
+
+test("a record with no name shows the 「輸入名稱」 box under its type line, with the search buttons after it", async () => {
+  const item = await unresolvedRow();
+
+  assert.equal(item.dataset.unsure, undefined, "no names to pick: it is unresolved, not unsure");
+  assert.equal(item.children[0].children[0].textContent, "沒認出名稱");
+  assert.deepEqual(item.children.map((child) => child.className), ["line1", "line2", "name-box", "actions"]);
+  assert.equal(inputOf(item).getAttribute("aria-label"), "輸入名稱");
+  assert.equal(confirmOf(item).textContent, "確定");
+  assert.equal(removeButton(item).getAttribute("aria-label"), "刪除這一筆：沒認出名稱");
+});
+
+test("a typed table name names the record like an auto-picked one: Chinese or English, searches, CSV, and the memory hears it", async () => {
+  const item = await unresolvedRow((ocr) => {
+    ocr.firstKeys = { [AFFIX_TEXT]: "27力量stn" };
+  });
+
+  inputOf(item).value = NAME_ZH;
+  await inputOf(item).fire("input");
+  await confirmOf(item).fire("click");
+
+  const [named] = listEl().children;
+  assert.deepEqual({ name: named.dataset.name, kind: named.dataset.kind, unsure: named.dataset.unsure }, { name: NAME_TEXT, kind: "item", unsure: undefined });
+  assert.equal(named.children[0].children[0].textContent, `${NAME_ZH}（${NAME_TEXT}）`);
+  assert.equal(nameBoxOf(named), undefined, "the box goes away once the record has a name");
+  assert.deepEqual(named.children.at(-1).children.map((b) => b.disabled), [false, false]);
+  assert.deepEqual(env.ocr.learned, [["27力量stn", NAME_TEXT]], "the reader's memory is told the read's first name line and the name");
+
+  await named.children.at(-1).children[0].fire("click");
+  assert.deepEqual(
+    { name: env.handlers.name[0].name, zh: env.handlers.name[0].zh, kind: env.handlers.name[0].kind, conditions: env.handlers.name[0].conditions.map((c) => c.label) },
+    { name: NAME_TEXT, zh: NAME_ZH, kind: "item", conditions: ["力量"] },
+  );
+  await node("scan-csv").fire("click");
+  const csv = Buffer.from(await env.saved[0].blob.arrayBuffer()).toString("utf8");
+  assert.equal(csv.split("\r\n")[1], `2026-10-12 12:34:56,${NAME_TEXT},${NAME_ZH},暗金/套裝/符文之語,力量,'+27 力量 (STN)`);
+  assert.deepEqual(env.fetches, [], "and no query left the page");
+});
+
+test("a typed English name and Enter work too, and a base name makes a base record", async () => {
+  const item = await unresolvedRow();
+
+  inputOf(item).value = "ring";
+  await inputOf(item).fire("keydown", { key: "Enter", defaultPrevented: false, preventDefault() {} });
+
+  const [named] = listEl().children;
+  assert.deepEqual([named.dataset.name, named.dataset.kind], ["Ring", "base"]);
+});
+
+test("a name the tables do not list leaves the record as it was and says so in plain Chinese", async () => {
+  const item = await unresolvedRow();
+
+  inputOf(item).value = "沒有這個東西";
+  await confirmOf(item).fire("click");
+
+  const [still] = listEl().children;
+  assert.equal(still.dataset.name, "");
+  assert.equal(noteOf(still).textContent, "對照表裡找不到「沒有這個東西」，請從建議選一個，或換個寫法");
+  assert.deepEqual(env.ocr.learned, [], "nothing was remembered");
+  inputOf(still).value = "";
+  await confirmOf(still).fire("click");
+  assert.equal(noteOf(listEl().children[0]).textContent, "請先輸入名稱");
+});
+
+test("a half-typed name survives the list being drawn again (here: another row deleted)", async () => {
+  await scanPanels([{ box: PANEL_B, stripes: 0.3 }, { box: PANEL_A }], [AFFIX_TEXT, `${AFFIX_TEXT} 2`]);
+  const [newer, older] = listEl().children;
+  inputOf(older).value = "蛛網";
+  await inputOf(older).fire("input");
+
+  await removeButton(newer).fire("click"); // the list is drawn again without the newer row
+
+  const [remaining] = listEl().children;
+  assert.equal(inputOf(remaining).value, "蛛網", "what the player typed is still in the box");
+});
+
+test("the name suggestions of the name field are offered in the box too", async () => {
+  const item = await unresolvedRow();
+
+  inputOf(item).value = "arachnid";
+  await inputOf(item).fire("input");
+
+  const suggestions = nameBoxOf(item).children[2];
+  assert.equal(suggestions.hidden, false);
+  assert.equal(suggestions.children.length > 0, true);
+});
+
+test("picking a possible name tells the memory the text piece it matched, and the typed name of an unsure row uses the first option's piece", async () => {
+  await scanPanels([{ box: PANEL_A }], [UNSURE_TEXT], []);
+  await optionButtons(listEl().children[0])[1].fire("click"); // Ring, matched "Ring"
+  assert.deepEqual(env.ocr.learned, [["Ring", "Ring"]]);
+
+  await scanPanels([{ box: PANEL_A }], [UNSURE_TEXT], []);
+  const item = listEl().children[0];
+  inputOf(item).value = NAME_ZH; // none of the buttons: the player types
+  await confirmOf(item).fire("click");
+  assert.deepEqual(env.ocr.learned, [[NAME_TEXT, NAME_TEXT]], "keyed by the first possible name's text piece");
+  assert.equal(listEl().children[0].dataset.name, NAME_TEXT);
+});
+
+test("a name the reader's memory promoted is labelled as chosen before, and the label stays on the picked button's name", async () => {
+  await scanPanels([{ box: PANEL_A }], [UNSURE_TEXT], [], (ocr) => {
+    const original = ocr.match;
+    ocr.match = (text, tones) => original(text, tones).map((c, i) => (i === 0 ? { ...c, learned: 1 } : c));
+  });
+
+  const [first] = optionButtons(listEl().children[0]);
+  assert.equal(first.textContent, `${NAME_ZH}（${NAME_TEXT}） · 你上次選過這個`);
+  assert.equal(first.dataset.name, NAME_TEXT, "the value stays the English name");
+});
+
+test("the ✕ of an unresolved row deletes it with its half-typed name, and starts no query", async () => {
+  const item = await unresolvedRow();
+  inputOf(item).value = "半截";
+  await inputOf(item).fire("input");
+
+  await removeButton(item).fire("click");
+
+  assert.equal(listEl().children.length, 0);
+  assert.deepEqual(env.handlers, { name: [], stats: [] });
+  assert.deepEqual(env.fetches, []);
+});
+
+test("typing a name into an unresolved row never starts a search by itself", async () => {
+  const item = await unresolvedRow();
+  inputOf(item).value = NAME_ZH;
+  await confirmOf(item).fire("click");
+
+  assert.deepEqual(env.handlers, { name: [], stats: [] }, "the player presses 精準搜尋 or 模糊搜尋 on their own");
+  assert.deepEqual(env.fetches, []);
+});
+
+test("a held tooltip is cut out and read once however long it is held, while its frames keep changing", async () => {
+  setup();
+  await startScan();
+  // The game keeps rendering under the tooltip: every frame is a little different, so the streak restarts over and
+  // over. Before the held rule each restart cleared the "already cropped" flag, and the same hover became a crop,
+  // a read and a record again.
+  const frames = Array.from({ length: 24 }, (_, i) => fakeFrame(panelFrame(PANEL_A, { seed: 5000 + i }), (i + 1) * 100000));
+  await feedLive(frames);
+
+  await settleCrops(1);
+  assert.equal(cropCanvas().calls.length, 1, "one crop for one held tooltip");
+  await settleReads(1);
+  await answer(0, NAME_TEXT);
+  await settle(() => listEl().children.length === 1, "one record");
+  assert.equal(env.ocr.reads.length, 1, "one read for one held tooltip");
+  assert.equal(listEl().children.length, 1);
+});
+
+test("a different tooltip hovered right after a held one is still cut out and read", async () => {
+  setup();
+  await startScan();
+  const held = Array.from({ length: 12 }, (_, i) => fakeFrame(panelFrame(PANEL_A, { seed: 5000 + i }), (i + 1) * 100000));
+  await feedLive(held);
+  await settleCrops(1);
+  await settleReads(1);
+  await answer(0, NAME_TEXT);
+  await settle(() => listEl().children.length === 1, "the first record");
+
+  const other = panelFrame(PANEL_B, { stripes: 0.3 });
+  await feedLive([fakeFrame(other, 5_000_000), fakeFrame(other, 5_100_000)]);
+  await settleCrops(2);
+  await settleReads(2);
+  await answer(1, AFFIX_TEXT);
+  await settle(() => listEl().children.length === 2, "the second record");
+  assert.equal(env.ocr.reads.length, 2);
+});
+
+test("a tooltip crop keeps the detection policy the model was tuned with: the scan never caps it", async () => {
+  setup();
+  await startScan();
+  deliver([{ box: PANEL_A }]);
+  await settleReads(1);
+
+  assert.equal(env.ocr.readOptions[0].capDet, undefined, "no cap is asked for on a tooltip crop");
+});
+
+test("when findTooltip returns null on stable frames, fallback detection runs and rescues the tooltip into a record", async () => {
+  setup();
+  await startScan();
+  // Frame with no dark panel (findTooltip returns null), but text boxes provided by det
+  const nonPanelImg = noise(WIDTH, HEIGHT);
+  env.ocr.boxes = [
+    { x: 120, y: 80, width: 90, height: 16 },
+    { x: 122, y: 104, width: 85, height: 16 },
+    { x: 118, y: 128, width: 92, height: 16 },
+    { x: 125, y: 152, width: 70, height: 16 },
+  ];
+
+  // Deliver 3 stable frames so frameStreak >= 2
+  const frames = [
+    fakeFrame(nonPanelImg, 100000),
+    fakeFrame(nonPanelImg, 200000),
+    fakeFrame(nonPanelImg, 300000),
+  ];
+  await feedFrames(frames);
+  await settleReads(1);
+
+  // The detector works in the frame it ran on: the box it hands over is scaled, and a pixel rectangle stays whole.
+  const cropArgs = cropCanvas().calls[0];
+  assert.ok(
+    cropArgs.every((value) => Number.isInteger(value)),
+    `a crop is a whole-pixel rectangle: ${cropArgs}`,
+  );
+  assert.equal(env.ocr.detectCalls.length, 1, "detectBoxes must be called once on stable frame");
+  assert.equal(env.ocr.reads.length, 1, "the clustered box must be cropped and handed to OCR");
+
+  await answer(0, NAME_TEXT);
+  fireTick();
+
+  assert.equal(listEl().children.length, 1);
+  assert.ok(statsText().includes("、備援偵測 1 次、救回 1 件"), `stats line must show fallback stats: ${statsText()}`);
+});
+
+test("fallback detection respects the three-second rate limit and does not trigger repeatedly on continuous still frames", async () => {
+  setup();
+  await startScan();
+  const nonPanelImg = noise(WIDTH, HEIGHT);
+  env.ocr.boxes = [
+    { x: 120, y: 80, width: 90, height: 16 },
+    { x: 122, y: 104, width: 85, height: 16 },
+    { x: 118, y: 128, width: 92, height: 16 },
+    { x: 125, y: 152, width: 70, height: 16 },
+  ];
+
+  // Deliver frames: first fallback runs
+  const batch1 = [fakeFrame(nonPanelImg, 100000), fakeFrame(nonPanelImg, 200000)];
+  await feedFrames(batch1);
+  await settleReads(1);
+  assert.equal(env.ocr.detectCalls.length, 1);
+  await answer(0, NAME_TEXT);
+
+  // Deliver more frames immediately (within 3 seconds)
+  const batch2 = [fakeFrame(nonPanelImg, 300000), fakeFrame(nonPanelImg, 400000)];
+  await feedFrames(batch2);
+  assert.equal(env.ocr.detectCalls.length, 1, "fallback must not run a second time within 3 seconds");
+});
+
+test("a fallback-only tooltip runs the fallback once per held picture, even while its frames keep changing", async () => {
+  setup();
+  await startScan();
+  const base = noise(WIDTH, HEIGHT);
+  env.ocr.boxes = [
+    { x: 120, y: 80, width: 90, height: 16 },
+    { x: 122, y: 104, width: 85, height: 16 },
+    { x: 118, y: 128, width: 92, height: 16 },
+    { x: 125, y: 152, width: 70, height: 16 },
+  ];
+  await feedLive([fakeFrame(base, 100000), fakeFrame(base, 200000)]);
+  await settleReads(1);
+  assert.equal(env.ocr.detectCalls.length, 1);
+  await answer(0, NAME_TEXT);
+  await settle(() => listEl().children.length === 1, "the rescued record");
+
+  // 3.4 s later something else in the game has moved, far from the tooltip: the frame changed, the tooltip did not.
+  const moved = cornerPatch(base, 1);
+  await feedLive([fakeFrame(moved, 3_500_000), fakeFrame(moved, 3_600_000)]);
+  assert.equal(env.ocr.detectCalls.length, 1, "the fallback is not run again for the same held tooltip");
+
+  // ... and not even after the long backoff either: the run rescued the item, so this picture has had its det call.
+  await feedLive([fakeFrame(moved, 21_100_000), fakeFrame(moved, 21_200_000)]);
+  assert.equal(env.ocr.detectCalls.length, 1, "a rescued held picture is never hunted again");
+});
+
+test("a fallback run that rescued nothing holds off for the long backoff, not the three-second one", async () => {
+  setup();
+  await startScan();
+  const base = noise(WIDTH, HEIGHT);
+  env.ocr.boxes = [
+    { x: 120, y: 80, width: 90, height: 16 },
+    { x: 122, y: 104, width: 85, height: 16 },
+    { x: 118, y: 128, width: 92, height: 16 },
+    { x: 125, y: 152, width: 70, height: 16 },
+  ];
+  await feedLive([fakeFrame(base, 100000), fakeFrame(base, 200000)]);
+  await settleReads(1);
+  assert.equal(env.ocr.detectCalls.length, 1);
+  await answer(0, UNREADABLE_TEXT);
+  await settle(() => statsText().includes("略過 1"), "the unreadable read to be counted as 略過");
+
+  // The same held picture 3.6 s later: the plain 3 s rule would run det again, and det cannot read an item it just
+  // failed to read, so the run waits for the long backoff instead.
+  await feedLive([fakeFrame(base, 3_700_000), fakeFrame(base, 3_800_000)]);
+  assert.equal(env.ocr.detectCalls.length, 1, "an unreadable item is not re-detected on the three-second rule");
+
+  // Past the long backoff it tries once more: the tooltip may only then have finished rendering.
+  await feedLive([fakeFrame(base, 21_100_000), fakeFrame(base, 21_200_000)]);
+  assert.equal(env.ocr.detectCalls.length, 2, "after the long backoff it tries again");
+});
+
+test("fallback detection does not run while a recognition is already in progress", async () => {
+  setup();
+  await startScan();
+  const nonPanelImg = noise(WIDTH, HEIGHT);
+  env.ocr.boxes = [
+    { x: 120, y: 80, width: 90, height: 16 },
+    { x: 122, y: 104, width: 85, height: 16 },
+    { x: 118, y: 128, width: 92, height: 16 },
+    { x: 125, y: 152, width: 70, height: 16 },
+  ];
+
+  // First deliver a normal panel so a read is pending/in progress
+  deliver([{ box: PANEL_A }]);
+  await settleReads(1);
+  assert.equal(env.ocr.pending.length, 1); // read is in flight
+
+  // While read is in flight, feed frames for which findTooltip returns null
+  const frames = [fakeFrame(nonPanelImg, 500000), fakeFrame(nonPanelImg, 600000)];
+  await feedFrames(frames);
+
+  assert.equal(env.ocr.detectCalls.length, 0, "fallback must not run while OCR is in flight");
+});

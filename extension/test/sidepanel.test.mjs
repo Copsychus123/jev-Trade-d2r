@@ -36,9 +36,21 @@ export const Agent = {
   create: (options) => (globalThis.__jevAgentCreates.push(options), real.Agent.create(options)),
 };`,
 )}`;
+// The scan screen needs a model download and IndexedDB before it can run a capture, so this file cannot start a real
+// scan. scan-panel.js's own test covers the capture; here the real panel is built and only the handle it hands back is
+// watched, to see that 返回 calls its stop.
+const scanUrl = new URL("../src/scan/scan-panel.js", import.meta.url).href;
+const scanSpy = `data:text/javascript,${encodeURIComponent(
+  `import * as real from ${JSON.stringify(scanUrl)};
+export const initScanPanel = (options) => {
+  const handle = real.initScanPanel(options);
+  return { stop: () => (globalThis.__jevScanStops.push(1), handle.stop()) };
+};`,
+)}`;
 installStubResolver([
   { specifier: "./config.js", parent: "/sidepanel.js", url: configUrl },
   { specifier: "./agent.js", parent: "/sidepanel.js", url: agentStandIn },
+  { specifier: "./scan/scan-panel.js", parent: "/sidepanel.js", url: scanSpy },
 ]);
 
 // --- the shipped markup, so the fake starts where a browser starts --------------------------------------------
@@ -269,6 +281,7 @@ async function boot({ storage = {}, fetchImpl = defaultFetch(), windowsCreate, d
   const listeners = {};
 
   globalThis.__jevAgentCreates = []; // the Agent stand-in appends here each time the panel builds one
+  globalThis.__jevScanStops = []; // the scan-panel spy appends here each time the panel asks the scan to stop
   globalThis.document = document;
   globalThis.window = { addEventListener: (type, handler) => (listeners[type] ??= []).push(handler) };
   globalThis.Option = FakeOption;
@@ -335,7 +348,7 @@ test("the fake DOM starts from the shipped markup: shipped-hidden nodes stay hid
 
   // Every one of these ships hidden in sidepanel.html and this boot never writes it, so it is still hidden: the seed
   // is what makes the `hidden === false` assertions elsewhere mean the module wrote something.
-  for (const id of ["banner-hint", "ocr-panel", "ocr-preview", "ocr-file", "ocr-dropzone", "ocr-hint", "scan-stop", "scan-download"]) {
+  for (const id of ["banner-hint", "ocr-panel", "ocr-preview", "ocr-file", "ocr-dropzone", "ocr-hint", "scan-stop"]) {
     assert.equal(panel.document.getElementById(id).hidden, true, id);
   }
   // The nodes the first render reveals shipped hidden too, so those assertions are the module's doing.
@@ -551,10 +564,117 @@ test("switching to the affix search swaps the form and offers the shipped base t
   await flush();
   assert.deepEqual(values(get("stats-base-options").children), ["Monarch", "Bone Wand"]);
 
-  // Back with the one button that switches between the two kinds.
+  // 返回 is not a switch to the other kind: it asks the first question again.
   await fire("mode-change", "click");
+  assert.equal(panel.document.body.dataset.mode, "");
+  assert.equal(panel.document.body.dataset.view, "choose");
+});
+
+// --- 返回: from every screen to the first question, and nowhere else -----------------------------------------------
+
+test("返回 on the name form shows the first question and hides the form, keeping what was typed", async () => {
+  const panel = await boot({ storage: { invite: "STORED" } });
+  const { get, fire } = panel;
+
+  await fire("choose-name", "click");
+  get("item").value = "Monarch";
+  await fire("mode-change", "click");
+
+  assert.equal(panel.document.body.dataset.view, "choose");
+  assert.equal(get("part-choose").hidden, false);
+  assert.equal(get("part-form").hidden, true);
+  assert.equal(get("part-scan").hidden, true);
+  assert.equal(get("choose-name").focused, true);
+  assert.equal(get("item").value, "Monarch");
+  assert.equal(panel.calls.windows.length, 0, "going back never starts a query");
+  assert.equal(panel.calls.fetch.some((call) => call.href.includes("/api/run/start")), false);
+});
+
+test("返回 on the fuzzy form shows the first question and hides the form, keeping the typed base", async () => {
+  const panel = await boot({ storage: { invite: "STORED" } });
+  const { get, fire } = panel;
+
+  await fire("choose-stats", "click");
+  get("stats-base").value = "Monarch";
+  await fire("mode-change", "click");
+
+  assert.equal(panel.document.body.dataset.view, "choose");
+  assert.equal(get("part-choose").hidden, false);
+  assert.equal(get("part-form").hidden, true);
+  assert.equal(get("stats-base").value, "Monarch");
+  assert.equal(panel.calls.windows.length, 0);
+});
+
+test("返回 on the scan screen shows the first question and hides the scan screen", async () => {
+  const panel = await boot({ storage: { invite: "STORED" } });
+  const { get, fire } = panel;
+
+  await fire("choose-scan", "click");
+  assert.equal(panel.document.body.dataset.view, "scan");
+  assert.equal(get("part-scan").hidden, false);
+
+  await fire("scan-change", "click");
+  assert.equal(panel.document.body.dataset.view, "choose");
+  assert.equal(get("part-choose").hidden, false);
+  assert.equal(get("part-scan").hidden, true);
+  assert.equal(get("choose-name").focused, true);
+});
+
+test("返回 is refused while a query runs: the screen stays on the running query", async () => {
+  const panel = await boot({ storage: { invite: "STORED-ABC" } });
+  const { get, fire } = panel;
+
+  await fire("choose-name", "click");
+  get("item").value = "Monarch";
+  const pending = fire("start", "click");
+  assert.equal(panel.document.body.dataset.view, "running");
+
+  await fire("mode-change", "click");
+  assert.equal(panel.document.body.dataset.view, "running");
   assert.equal(panel.document.body.dataset.mode, "name");
-  assert.equal(get("item-label").textContent, "裝備名稱");
+
+  for (const handler of panel.listeners.pagehide) handler({ type: "pagehide" });
+  await pending;
+  assert.equal(panel.document.body.dataset.view, "stopped");
+});
+
+test("返回 on the scan screen asks the scan panel to stop, but 返回 from a form does not", async () => {
+  const panel = await boot({ storage: { invite: "STORED" } });
+  const { fire } = panel;
+  globalThis.__jevScanStops = [];
+
+  await fire("choose-scan", "click");
+  await fire("scan-change", "click");
+  assert.equal(panel.document.body.dataset.view, "choose");
+  assert.equal(globalThis.__jevScanStops.length, 1, "a scan running behind the screen would keep the game window shared");
+
+  await fire("choose-name", "click");
+  await fire("mode-change", "click");
+  assert.equal(globalThis.__jevScanStops.length, 1, "a form has no scan to stop");
+});
+
+test("after 返回 each kind opens its own screen again", async () => {
+  const panel = await boot({ storage: { invite: "STORED" } });
+  const { get, fire } = panel;
+
+  await fire("choose-name", "click");
+  await fire("mode-change", "click");
+  await fire("choose-stats", "click");
+  assert.equal(panel.document.body.dataset.mode, "stats");
+  assert.equal(get("part-form").hidden, false);
+  assert.equal(get("part-stats").hidden, false);
+
+  await fire("mode-change", "click");
+  await fire("choose-scan", "click");
+  assert.equal(panel.document.body.dataset.view, "scan");
+  assert.equal(get("part-scan").hidden, false);
+
+  await fire("scan-change", "click");
+  await fire("choose-name", "click");
+  assert.equal(panel.document.body.dataset.mode, "name");
+  assert.equal(panel.document.body.dataset.view, "ready");
+  assert.equal(get("part-form").hidden, false);
+  assert.equal(get("part-stats").hidden, true);
 });
 
 // --- the property cache (read with a plain storage key) --------------------------------------------------------
@@ -1022,4 +1142,39 @@ test("the row drawing stays out of reach, as the design says", async () => {
   assert.equal(panel.get("trading-list").children.length, 0);
   assert.equal(panel.get("trading-count").textContent, "");
   assert.deepEqual(panel.calls.windows, [PRODUCT_WINDOW]);
+});
+
+// --- 學習紀錄 (the correction memory in the settings screen) ----------------------------------------------------------
+
+const learned = (entries) => ({ v: 1, e: entries.map(([key, n, c]) => [key, { n, k: "base", c, u: 5 }]) });
+
+test("the 學習紀錄 block counts what the store holds and drops a pair the tables no longer list", async () => {
+  const panel = await boot({
+    storage: { jevCorrections: learned([["君主盾x", "Monarch", 2], ["喬丹x", "Retired Name", 1]]) },
+  });
+
+  assert.equal(panel.get("learn-count").textContent, "已記住 1 筆更正（其中 1 筆選過 2 次以上，下次會自動填入）。");
+  assert.deepEqual(strings(panel.get("learn-list").children).map((text) => text.startsWith("讀到「君主盾x」→ 君主盾（Monarch）")), [true]);
+});
+
+test("清除學習紀錄 asks first, then empties the memory and writes the empty store when the panel closes", async () => {
+  const panel = await boot({ storage: { jevCorrections: learned([["君主盾x", "Monarch", 1]]) } });
+
+  panel.fire("learn-clear", "click");
+  assert.equal(panel.get("learn-confirm").hidden, false);
+  assert.equal(panel.calls.local.some((patch) => "jevCorrections" in patch), false, "asking changes nothing");
+
+  panel.fire("learn-clear-yes", "click");
+  assert.equal(panel.get("learn-count").textContent, "還沒有記住任何更正。");
+  for (const handler of panel.listeners.pagehide) handler(); // the panel closes: what is waiting is written now
+  await flush();
+
+  const writes = panel.calls.local.filter((patch) => "jevCorrections" in patch);
+  assert.deepEqual(writes.at(-1), { jevCorrections: { v: 1, e: [] } });
+});
+
+test("a memory that cannot be read leaves the settings block empty and the rest of the panel working", async () => {
+  const panel = await boot({ storage: { jevCorrections: "damaged" } });
+  assert.equal(panel.get("learn-count").textContent, "還沒有記住任何更正。");
+  assert.equal(panel.get("learn-clear").hidden, true);
 });

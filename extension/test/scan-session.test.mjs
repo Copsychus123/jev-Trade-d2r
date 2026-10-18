@@ -8,6 +8,7 @@ import {
   RECORD_HEAD,
   baseCandidate,
   createScanSession,
+  isUnsure,
   keyDistance,
   normalizeText,
   recordCells,
@@ -43,8 +44,8 @@ function frame(box, stripes = 0.6) {
 // like the panel does it, so both the noise and the text reach the detector at the same scale as the real thing.
 // `stripes` sets how wide the text lines are and `dashShift` slides the glyph dashes sideways, i.e. the same panel
 // rendered a few pixels off (the kind of shift an encoder leaves behind).
-function realisticFrame(box, { stripes = 0.6, dashShift = 0 } = {}) {
-  const img = noise(960, 540);
+function realisticFrame(box, { stripes = 0.6, dashShift = 0, seed = 12345 } = {}) {
+  const img = noise(960, 540, { seed });
   const { left, span } = panelBody(img, box, stripes);
   const { y, height } = box;
   for (let sy = y + 4; sy < y + height; sy += 28) {
@@ -187,7 +188,9 @@ test("accept tolerates a small drift of the same panel, but not a different one"
   assert.ok(keyDistance(keyDrifted, keyOther) > band, "the control must be outside the tolerance of the drifted key too");
 
   assert.equal(appearance(session, first), true);
-  assert.equal(appearance(session, drifted), false); // the same panel a few cells off: still one crop
+  // The same panel a few cells off is the picture already held, so it is not even offered a second time...
+  assert.equal(appearance(session, drifted), null);
+  assert.equal(session.accept(keyDrifted), false); // ... and accept would still refuse it
   assert.equal(appearance(session, other), true); // ... and the tolerance is not a free pass
   assert.equal(session.queue.length, 2);
 });
@@ -206,6 +209,161 @@ test("two panels whose content differs stay two crops", () => {
   assert.equal(session.queue.length, 2);
 });
 
+test("tooltips from the failures page are accepted rather than refused as duplicates", () => {
+  const session = createScanSession();
+  // Simulated fallback crops with fractional coordinates from 480/720 downscaling (image-13, 41, 43, 49):
+  const boxes = [
+    { x: 162.67, y: 9.33, width: 176, height: 159.33 },
+    { x: 41.33, y: 40.67, width: 72.67, height: 88 },
+    { x: 178, y: 34.67, width: 171.33, height: 165.33 },
+    { x: 72, y: 50, width: 213.33, height: 207.33 },
+  ];
+  const frames = [
+    realisticFrame({ x: 300, y: 120, width: 200, height: 260 }, { stripes: 0.2 }),
+    realisticFrame({ x: 300, y: 120, width: 200, height: 260 }, { stripes: 0.4 }),
+    realisticFrame({ x: 300, y: 120, width: 200, height: 260 }, { stripes: 0.6 }),
+    realisticFrame({ x: 300, y: 120, width: 200, height: 260 }, { stripes: 0.8 }),
+  ];
+  for (let i = 0; i < frames.length; i++) {
+    const key = boxKey(frames[i], boxes[i]);
+    assert.equal(key.includes("NaN"), false);
+    assert.equal(session.accept(key), true, `item ${i} must be accepted rather than refused as duplicate`);
+  }
+  assert.equal(session.stats.skipped, 0);
+});
+
+// --- one held picture is one crop, and one item is one record ---------------------------------------------------------
+
+test("a held tooltip is cropped once however long it is held, even while its frames keep changing", () => {
+  // The game keeps rendering behind the panel, so what the capture delivers changes from one frame to the next (here:
+  // the backdrop's own noise). Every change restarts the streak, and before the held rule that also cleared the
+  // "already handed out" flag, so one hover became a fresh crop every couple of frames.
+  const session = createScanSession();
+  const held = Array.from({ length: 40 }, (_, i) => realisticFrame(BOX_A, { seed: 8000 + (i >> 1) }));
+  const hits = held.map((img) => session.feed(img)).filter(Boolean);
+
+  assert.equal(hits.length, 1, `one crop for one held tooltip, got ${hits.length}`);
+  assert.ok(session.stats.detected > 30, "the tooltip must really be in most frames");
+  assert.equal(session.accept(hits[0].key), true); // and the crop it hands out is a new one the panel may queue
+  assert.equal(session.accept(hits[0].key), false); // ... exactly once
+});
+
+test("a tooltip that moved by a few pixels while it is held is still the same held picture", () => {
+  // A hand on the mouse is never perfectly still: the detector's box moves a pixel or two and the panel's pixels are
+  // re-encoded with it. That is one held picture, not a new one.
+  const session = createScanSession();
+  const held = Array.from({ length: 30 }, (_, i) => realisticFrame(BOX_A, { dashShift: i % 3, seed: 8000 + i }));
+  const hits = held.map((img) => session.feed(img)).filter(Boolean);
+
+  assert.equal(hits.length, 1, `one crop for one held tooltip, got ${hits.length}`);
+});
+
+test("a different tooltip hovered right after a held one is still cropped", () => {
+  const session = createScanSession();
+  for (let i = 0; i < 30; i++) session.feed(realisticFrame(BOX_A, { seed: 8000 + (i >> 1) }));
+  const other = realisticFrame(BOX_A, { stripes: 0.3 }); // a different panel where the first one was
+  assert.equal(session.feed(other), null);
+  const hit = session.feed(other);
+  assert.ok(hit, "a different tooltip must still be cropped");
+  assert.equal(session.accept(hit.key), true);
+});
+
+test("removing a record lets the same held tooltip be cropped and recorded again without the tooltip closing", () => {
+  const session = createScanSession();
+  const img = frame(BOX_A);
+  assert.equal(session.feed(img), null);
+  const hit = session.feed(img);
+  assert.ok(hit);
+  assert.equal(session.accept(hit.key), true);
+  session.queue.push({ img });
+  const job = session.take();
+  assert.equal(session.addRecord(record({ key: job.key }), job.generation), true);
+  for (let i = 0; i < 5; i++) assert.equal(session.feed(img), null, "held: no second crop");
+
+  assert.equal(session.removeRecord(session.records[0].id), true);
+  const again = session.feed(img); // the tooltip never closed: the player deleted the row and looked at it again
+  assert.ok(again, "the removed item must be croppable again");
+  assert.equal(session.accept(again.key), true);
+  assert.equal(session.addRecord(record({ key: again.key }), job.generation), true);
+});
+
+// Two reads of the SAME tooltip and the two DIFFERENT items whose reads look most alike, taken from the stored
+// evidence: artifacts/diag-scan/results/t1-sanity.json (the two jobs of image-18.png, which a real sweep recorded
+// twice: 0.689 alike) and artifacts/ocr-e2e/report.json (image-35.png against image-41.png, the closest pair of
+// different items in the 54-picture corpus: 0.449 alike).
+const REREAD_A = `維爾登戈的心結
+心結就是它物理系標配
+140€Def/40VIT/13RCP/120STA/15DR
+秘銀腰帶精
+防禦:139
+腰帶空間：+12格
+耐久度(DUR):12/16
+需要力量：106
+需要等級:63
++10%打攀恢復(FHR)`;
+const REREAD_B = `維爾登戈的心結
+心結就是它物理系標配
+140CDef/40VIT/13RCP/120STA/15DR
+秘銀腰帶精
+SES
+防禦:139
+腰帶空間:+12格
+耐久度(DUR):12/16
+需要力量:106
+需要等級:63
++10%打擊恢复(FHR)
++112%防禦強化(€Def)
++39體能(VIT)`;
+const OTHER_ITEM_A = `出售價格：8337
+兇殘之箍
+戒指[R]
+需要等級：65
++10%施法速度(FCR)
+擊中竊取8%生命(LL)
+冰寒抗性(CR)+26%
+火焰抗性(FR)+25%
+傷害降低(DR)1
+Shift +左鍵點擊以裝備
+Ctrl + 左键點擊以販售
+按住 Shift 鍵進行比較`;
+const OTHER_ITEM_B = `瘟疫之圈
+戒指[R]
+需要等級：60
++10% 施法速度(FCR)
++111 準確率(AR)
++36 生命(Life)
+冰寒抗性(CR)+11%
+電擊抗性(LR)+17%
+火焰抗性(FR)+11%
+毒素抗性(PR)+11%
+Shift+左鍵點擊以裝備
+Ctrl+左键點擊以丢下
+按住Shift 鍵進行比較`;
+
+test("the same item read again from a second place is one record, not two", () => {
+  const session = createScanSession();
+  assert.equal(session.addRecord(record({ text: REREAD_A })), true);
+  assert.equal(session.addRecord(record({ text: REREAD_B })), false, "the same tooltip, read a second time");
+  assert.equal(session.records.length, 1);
+  assert.equal(session.stats.skipped, 1);
+  assert.equal(session.stats.read, 2); // it was still read: only the record is refused
+});
+
+test("two different items whose reads look most alike stay two records", () => {
+  const session = createScanSession();
+  assert.equal(session.addRecord(record({ name: "Ring", zh: "戒指", text: OTHER_ITEM_A })), true);
+  assert.equal(session.addRecord(record({ name: "Ring", zh: "戒指", text: OTHER_ITEM_B })), true);
+  assert.equal(session.records.length, 2);
+});
+
+test("a read that is too short to compare is judged by its own text, not by similarity", () => {
+  const session = createScanSession();
+  assert.equal(session.addRecord(record({ text: "Ring" })), true);
+  assert.equal(session.addRecord(record({ text: "Ring" })), false, "an identical short read is still the same read");
+  assert.equal(session.addRecord(record({ text: "Coronet" })), true, "a different short read is its own item");
+  assert.equal(session.records.length, 2);
+});
+
 test("accept refuses once the queue is full and counts the drop", () => {
   const session = createScanSession();
   for (let i = 0; i < MAX_QUEUE; i++) session.queue.push({ blob: i });
@@ -215,6 +373,52 @@ test("accept refuses once the queue is full and counts the drop", () => {
 
   session.queue.pop();
   assert.equal(session.accept("fresh"), true);
+});
+
+test("a panel seen again is refused by its key and counted as 略過, not as 丟棄", () => {
+  const session = createScanSession();
+  assert.equal(session.accept("A".repeat(64)), true);
+  assert.equal(session.accept("A".repeat(64)), false);
+  assert.equal(session.accept("A".repeat(60) + "BBBB"), false); // 4 of 64 cells off: still the same panel
+  assert.equal(session.stats.skipped, 2);
+  assert.equal(session.stats.dropped, 0);
+  assert.equal(session.queue.length, 0); // accept only decides: the panel queues the crop itself
+});
+
+test("a full queue counts a panel it already knows as 略過 and a new one as 丟棄", () => {
+  const session = createScanSession();
+  assert.equal(session.accept("A".repeat(64)), true);
+  for (let i = 0; i < MAX_QUEUE; i++) session.queue.push({ blob: i });
+  assert.equal(session.accept("A".repeat(64)), false); // a duplicate stays a duplicate even when the queue is full
+  assert.equal(session.accept("Z".repeat(64)), false); // a new panel the full queue could not take
+  assert.deepEqual([session.stats.skipped, session.stats.dropped], [1, 1]);
+});
+test("accept refuses a key that matches an already-recorded record key and skips it", () => {
+  const session = createScanSession();
+  const keyA = "B".repeat(64);
+  assert.equal(session.accept(keyA), true);
+  session.queue.push({ blob: 1 });
+  const job = session.take();
+  session.addRecord({ ...record(), key: job.key });
+  assert.equal(session.accept(keyA), false, "refuses re-queueing an already recorded crop key");
+  assert.equal(session.stats.skipped, 1);
+});
+test("a read whose text was already recorded is counted as 略過 and makes no second record", () => {
+  const session = createScanSession();
+  assert.equal(session.addRecord(record()), true);
+  assert.equal(session.addRecord(record()), false);
+  assert.equal(session.addRecord(record({ text: "  Spiderweb \t Sash \n" })), false);
+  assert.equal(session.stats.skipped, 2);
+  assert.equal(session.stats.read, 3);
+  assert.equal(session.records.length, 1);
+});
+
+test("a read from a cleared run is neither a record nor counted as 略過", () => {
+  const session = createScanSession();
+  const { generation } = (session.queue.push({ blob: 1 }), session.take());
+  session.clear();
+  assert.equal(session.addRecord(record(), generation), false);
+  assert.deepEqual([session.stats.skipped, session.stats.read], [0, 0]);
 });
 
 test("addRecord refuses the same text differing only in whitespace", () => {
@@ -325,4 +529,248 @@ test("a crop taken before clear does not come back as a record", () => {
   const fresh = session.take(); // a crop captured after the clear is a record like any other
   assert.equal(session.addRecord(record(), fresh.generation), true);
   assert.equal(session.records.length, 1);
+});
+
+// --- removeRecord: the ✕ on one row ---------------------------------------------------------------------------------
+
+const three = () => {
+  const session = createScanSession();
+  for (const name of ["First", "Second", "Third"]) session.addRecord(record({ name, text: `text of ${name}` }));
+  return session; // newest first: Third, Second, First
+};
+
+test("removing one of three records keeps the other two in their order", () => {
+  const session = three();
+  const second = session.records.find((r) => r.name === "Second");
+
+  assert.equal(session.removeRecord(second.id), true);
+
+  assert.deepEqual(session.records.map((r) => r.name), ["Third", "First"]);
+});
+
+test("removing the last record leaves an empty list", () => {
+  const session = createScanSession();
+  session.addRecord(record());
+
+  assert.equal(session.removeRecord(session.records[0].id), true);
+
+  assert.deepEqual(session.records, []);
+});
+
+test("an id that is not in the list is a no-op", () => {
+  const session = three();
+  const [{ id }] = session.records;
+  session.removeRecord(id);
+
+  assert.equal(session.removeRecord(id), false); // already gone
+  assert.equal(session.removeRecord(9999), false);
+  assert.equal(session.removeRecord(undefined), false);
+  assert.equal(session.records.length, 2);
+});
+
+test("a removed item is recorded again when its text is read again, and one still on the list is not", () => {
+  const session = three();
+  const first = session.records.find((r) => r.name === "First");
+  session.removeRecord(first.id);
+
+  assert.equal(session.addRecord(record({ name: "First", text: "text of First" })), true); // hidden memory forgotten
+  assert.equal(session.addRecord(record({ name: "Second", text: "text of Second" })), false); // still listed
+  assert.deepEqual(session.records.map((r) => r.name), ["First", "Third", "Second"]);
+});
+
+test("a removed item's panel is cropped again when hovered again, through the crop key", () => {
+  const session = createScanSession();
+  const img = frame(BOX_A);
+  assert.equal(appearance(session, img), true);
+  const job = session.take();
+  session.addRecord(record({ key: job.key }), job.generation);
+  session.feed(frame(null)); // the tooltip goes away, as it does between two hovers
+  assert.equal(appearance(session, img), false); // while the record is listed the same panel is refused
+
+  session.removeRecord(session.records[0].id);
+  session.feed(frame(null));
+
+  assert.equal(appearance(session, img), true); // the memory of the crop went with the record
+});
+
+test("an id is never reused, so a stale row cannot delete a newer record after 清除紀錄", () => {
+  const session = createScanSession();
+  session.addRecord(record());
+  const oldId = session.records[0].id;
+  session.clear();
+  session.addRecord(record());
+
+  assert.notEqual(session.records[0].id, oldId);
+  assert.equal(session.removeRecord(oldId), false);
+  assert.equal(session.records.length, 1);
+});
+
+// --- a record whose read was not sure: it keeps its candidates until the player picks one -------------------------
+
+const unsure = (over = {}) =>
+  record({
+    name: null,
+    zh: "",
+    kind: null,
+    base: "Ring",
+    options: [
+      { kind: "item", name: "Arachnid Mesh", zh: "蛛網紋束帶", label: "蛛網紋束帶（Arachnid Mesh）" },
+      { kind: "base", name: "Ring", zh: "戒指", label: "戒指（Ring）" },
+    ],
+    text: "Arachnid Mesh Ring",
+    ...over,
+  });
+
+test("an unsure record is kept without a name or an affix line, and exports an empty name and its text", () => {
+  const session = createScanSession();
+  assert.equal(session.addRecord(unsure()), true);
+
+  const [kept] = session.records;
+  assert.equal(isUnsure(kept), true);
+  assert.equal(kept.options.length, 2);
+  assert.deepEqual(recordCells(kept).slice(1), ["", "", "—", "", "Arachnid Mesh Ring"]);
+  assert.equal(session.stats.skipped, 0, "it is not an unreadable panel");
+});
+
+test("a record with no name and no candidates to pick is still refused", () => {
+  const session = createScanSession();
+  assert.equal(session.addRecord(unsure({ options: [] })), false);
+  assert.equal(session.stats.skipped, 1);
+});
+
+test("resolveRecord names the record from the picked option and leaves the rest of the read as it was", () => {
+  const session = createScanSession();
+  session.addRecord(unsure({ conditions: [{ label: "+2 全技能" }] }));
+  const [{ id }] = session.records;
+
+  assert.equal(session.resolveRecord(id, 1), true);
+
+  const [done] = session.records;
+  assert.equal(isUnsure(done), false);
+  assert.deepEqual(
+    { name: done.name, zh: done.zh, kind: done.kind, base: done.base, options: done.options, text: done.text },
+    { name: "Ring", zh: "戒指", kind: "base", base: "Ring", options: [], text: "Arachnid Mesh Ring" },
+  );
+  assert.deepEqual(done.conditions.map((c) => c.label), ["+2 全技能"]);
+  assert.deepEqual(recordCells(done).slice(1, 4), ["Ring", "戒指", "底材"], "the CSV now carries the pick");
+});
+
+test("resolveRecord changes nothing for an unknown id, a bad index or a record that is already named", () => {
+  const session = createScanSession();
+  session.addRecord(unsure());
+  session.addRecord(record({ text: "a named one" }));
+  const [named, pending] = session.records;
+
+  assert.equal(session.resolveRecord(9999, 0), false);
+  assert.equal(session.resolveRecord(pending.id, 2), false);
+  assert.equal(session.resolveRecord(pending.id, -1), false);
+  assert.equal(session.resolveRecord(named.id, 0), false);
+  assert.deepEqual([named.name, pending.name, pending.options.length], ["Arachnid Mesh", null, 2]);
+
+  assert.equal(session.resolveRecord(pending.id, 0), true);
+  assert.equal(session.resolveRecord(pending.id, 1), false, "a second pick cannot rename it");
+  assert.equal(pending.name, "Arachnid Mesh");
+});
+
+test("an unsure record counts as one item: its text is not recorded twice, before or after the pick", () => {
+  const session = createScanSession();
+  assert.equal(session.addRecord(unsure()), true);
+  assert.equal(session.addRecord(unsure({ text: "  Arachnid Mesh \n Ring " })), false);
+
+  session.resolveRecord(session.records[0].id, 0);
+  assert.equal(session.addRecord(unsure()), false);
+  assert.equal(session.records.length, 1);
+});
+
+test("removing an unsure record forgets its text and crop key, like any record", () => {
+  const session = createScanSession();
+  const img = frame(BOX_A);
+  assert.equal(appearance(session, img), true);
+  const job = session.take();
+  session.addRecord(unsure({ key: job.key }), job.generation);
+  session.feed(frame(null));
+  assert.equal(appearance(session, img), false);
+
+  assert.equal(session.removeRecord(session.records[0].id), true);
+  session.feed(frame(null));
+
+  assert.equal(appearance(session, img), true);
+  assert.equal(session.addRecord(unsure()), true);
+});
+
+test("nameRecord names a record that nothing could name, from a typed table name, exactly as a picked option does", () => {
+  const session = createScanSession();
+  session.addRecord(record({ name: null, kind: null, zh: "", text: "no name here", conditions: [{ label: "+2 全技能" }] }));
+  const [{ id }] = session.records;
+  assert.equal(isUnsure(session.records[0]), false, "no options: it is unresolved, not unsure");
+
+  assert.equal(session.nameRecord(id, { name: "Arachnid Mesh", kind: "item", zh: "蜘蛛之網" }), true);
+
+  const [done] = session.records;
+  assert.deepEqual({ name: done.name, zh: done.zh, kind: done.kind, options: done.options }, { name: "Arachnid Mesh", zh: "蜘蛛之網", kind: "item", options: [] });
+  assert.deepEqual(recordCells(done).slice(1, 4), ["Arachnid Mesh", "蜘蛛之網", "暗金/套裝/符文之語"], "the CSV carries it");
+});
+
+test("nameRecord also names an unsure record without its options, and refuses a named record, an unknown id and an empty choice", () => {
+  const session = createScanSession();
+  session.addRecord(unsure());
+  session.addRecord(record({ text: "a named one" }));
+  const [named, pending] = session.records;
+
+  assert.equal(session.nameRecord(9999, { name: "Ring", kind: "base" }), false);
+  assert.equal(session.nameRecord(named.id, { name: "Ring", kind: "base" }), false, "a named record is never renamed");
+  assert.equal(session.nameRecord(pending.id, { name: "", kind: "base" }), false);
+  assert.equal(session.nameRecord(pending.id, { name: "Ring" }), false, "a name needs its kind");
+  assert.equal(session.nameRecord(pending.id), false);
+  assert.equal(pending.name, null);
+
+  assert.equal(session.nameRecord(pending.id, { name: "Ring", kind: "base", zh: "戒指" }), true);
+  assert.deepEqual([pending.name, pending.kind, pending.options], ["Ring", "base", []]);
+  assert.equal(session.nameRecord(pending.id, { name: "Arachnid Mesh", kind: "item" }), false, "a second naming cannot rename it");
+});
+
+test("a record keeps the first name line of its read, for the correction memory", () => {
+  const session = createScanSession();
+  session.addRecord(unsure({ firstKey: "arachnid mesh ring" }));
+  session.addRecord(record({ text: "another" }));
+
+  assert.deepEqual(session.records.map((r) => r.firstKey), ["", "arachnid mesh ring"]);
+});
+test("a job taken from the queue carries the stamp taken at accept time", () => {
+  const session = createScanSession();
+  const stamp = 12345.67;
+  assert.equal(session.accept("key1".padEnd(64, "0"), stamp), true);
+  session.queue.push({ blob: "blob1" });
+
+  const job = session.take();
+  assert.ok(job);
+  assert.equal(job.queuedAt, stamp);
+});
+
+test("two jobs queued back to back have waits that differ on a fake clock", () => {
+  const session = createScanSession();
+  let fakeNow = 1000;
+  // Job 1 accepted at t=1000
+  assert.equal(session.accept("key1".padEnd(64, "1"), fakeNow), true);
+  session.queue.push({ blob: "job1" });
+
+  // Clock advances to t=1050
+  fakeNow = 1050;
+  // Job 2 accepted at t=1050
+  assert.equal(session.accept("key2".padEnd(64, "2"), fakeNow), true);
+  session.queue.push({ blob: "job2" });
+
+  // Job 1 taken and processed at t=1200
+  fakeNow = 1200;
+  const job1 = session.take();
+  const wait1 = fakeNow - job1.queuedAt; // 1200 - 1000 = 200 ms
+
+  // Job 2 taken and processed after job 1 finishes at t=1900
+  fakeNow = 1900;
+  const job2 = session.take();
+  const wait2 = fakeNow - job2.queuedAt; // 1900 - 1050 = 850 ms
+
+  assert.equal(wait1, 200);
+  assert.equal(wait2, 850);
+  assert.ok(wait2 > wait1, "the second job's wait is larger because it waited behind the first");
 });

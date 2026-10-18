@@ -42,6 +42,8 @@ const CFG = {
   width_height_ratio: 8,
   det: {
     limit_side_len: 736,
+    large_picture_side: 1500, // over this many pixels a side, a read that asked for it detects on a capped copy
+    large_picture_limit: { limit_type: "max", limit_side_len: 736 },
     limit_type: "min",
     mean: 0.5,
     std: 0.5,
@@ -657,9 +659,18 @@ function applyVerticalPadding(img, widthHeightRatio, minHeight) {
   return { img, top: 0 };
 }
 
-// DetPreProcess.resize: limit_type "min", limit_side_len
-function detInputSize(h, w) {
-  const { limit_side_len, limit_type } = CFG.det;
+/**
+ * The detector's input policy for one read: the model's own, unless this read asked to cap it and the picture is a
+ * large one. Small pictures (screenshots, a cropped tooltip) are untouched -- they are what the accuracy sets measure.
+ */
+export function detLimitFor(h, w, capDet) {
+  if (!capDet || Math.max(h, w) <= CFG.det.large_picture_side) return null;
+  return CFG.det.large_picture_limit;
+}
+
+// DetPreProcess.resize: limit_type "min", limit_side_len. `limit` overrides the model's own policy for one read.
+export function detInputSize(h, w, limit = CFG.det) {
+  const { limit_side_len, limit_type } = limit;
   let ratio = 1;
   if (limit_type === "max") {
     if (Math.max(h, w) > limit_side_len) ratio = limit_side_len / Math.max(h, w);
@@ -701,13 +712,51 @@ function* batchRanges(count, batchNum) {
   for (let beg = 0; beg < count; beg += batchNum) yield [beg, Math.min(count, beg + batchNum)];
 }
 
-// build_final_output: drop blank texts, then filter_by_text_score
+/**
+ * The colour of a line's lettering as [r, g, b], or null for an empty crop. D2R prints an item's name in the colour of
+ * its quality (unique gold, set green, rare yellow, magic blue), so the matcher uses it as evidence (tone.js).
+ * Only the brightest pixels count (the top 5% by their strongest channel, and those within 15% of that level), so the
+ * dark tooltip background and the anti-aliased edges do not; only the left 40% of the line counts, because a name
+ * stands first and a tag in another colour ("[120ED]") follows it; and red pixels are left out unless they are all
+ * there is.
+ */
+export function inkTone(crop) {
+  const { data, w, h } = crop;
+  const width = Math.ceil(w * 0.4);
+  if (!w || !h) return null;
+  const histogram = new Uint32Array(256);
+  const strongest = (i) => Math.max(data[i * 3], data[i * 3 + 1], data[i * 3 + 2]);
+  for (let y = 0; y < h; y++) for (let x = 0; x < width; x++) histogram[strongest(y * w + x)]++;
+  let level = 255;
+  for (let seen = 0; level > 0; level--) {
+    seen += histogram[level];
+    if (seen >= width * h * 0.05) break;
+  }
+  const floor = level * 0.85;
+  const sums = { red: [0, 0, 0, 0], other: [0, 0, 0, 0] }; // r, g, b, count
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * w + x;
+      if (strongest(i) < floor) continue;
+      const [b, g, r] = [data[i * 3], data[i * 3 + 1], data[i * 3 + 2]];
+      const sum = g < r * 0.7 && b < r * 0.7 ? sums.red : sums.other;
+      sum[0] += r;
+      sum[1] += g;
+      sum[2] += b;
+      sum[3]++;
+    }
+  }
+  const chosen = sums.other[3] * 4 >= sums.red[3] + sums.other[3] ? sums.other : sums.red;
+  return chosen[3] ? chosen.slice(0, 3).map((v) => Math.round(v / chosen[3])) : null;
+}
+
+// build_final_output: drop blank texts, then filter_by_text_score. `tone` rides along (see inkTone).
 function finalLines(recOut) {
   const lines = [];
   for (const line of recOut) {
     const text = line?.text ?? "";
     if (!text.trim() || line.score < CFG.text_score) continue;
-    lines.push({ text, score: line.score });
+    lines.push({ text, score: line.score, tone: line.tone ?? null });
   }
   return lines;
 }
@@ -723,6 +772,54 @@ export class OcrPipeline {
     const name = session.inputNames[0];
     const out = await session.run({ [name]: tensor });
     return out[session.outputNames[0]];
+  }
+  /** Runs a minimal synthetic inference through det/cls/rec sessions so WebGPU shaders compile before real crops arrive. */
+  async warmup() {
+    const log = [];
+    if (!this.sessions) return log;
+    const t0 = performance.now();
+    try {
+      if (this.sessions.det) {
+        const td0 = performance.now();
+        try {
+          const detTensor = new this.ort.Tensor("float32", new Float32Array(1 * 3 * 736 * 960), [1, 3, 736, 960]);
+          await this.runSession(this.sessions.det, detTensor);
+          log.push(`det 736x960 ok: ${Math.round(performance.now() - td0)}ms`);
+        } catch (e1) {
+          log.push(`det 736x960 err: ${e1?.message}`);
+          const td1 = performance.now();
+          const detTensor = new this.ort.Tensor("float32", new Float32Array(1 * 3 * 64 * 64), [1, 3, 64, 64]);
+          await this.runSession(this.sessions.det, detTensor);
+          log.push(`det 64x64 ok: ${Math.round(performance.now() - td1)}ms`);
+        }
+      }
+    } catch (e) {
+      log.push(`det fatal: ${e?.message}`);
+    }
+    try {
+      if (this.sessions.cls) {
+        const tc0 = performance.now();
+        const [ic, ih, iw] = CFG.cls.shape;
+        const clsTensor = new this.ort.Tensor("float32", new Float32Array(1 * ic * ih * iw), [1, ic, ih, iw]);
+        await this.runSession(this.sessions.cls, clsTensor);
+        log.push(`cls ok: ${Math.round(performance.now() - tc0)}ms`);
+      }
+    } catch (e) {
+      log.push(`cls err: ${e?.message}`);
+    }
+    try {
+      if (this.sessions.rec) {
+        const tr0 = performance.now();
+        const [ic, ih, iw] = CFG.rec.shape;
+        const recTensor = new this.ort.Tensor("float32", new Float32Array(1 * ic * ih * iw), [1, ic, ih, iw]);
+        await this.runSession(this.sessions.rec, recTensor);
+        log.push(`rec ok: ${Math.round(performance.now() - tr0)}ms`);
+      }
+    } catch (e) {
+      log.push(`rec err: ${e?.message}`);
+    }
+    log.push(`total warmup: ${Math.round(performance.now() - t0)}ms`);
+    return log;
   }
 
   // [N, ic, ih, w] float tensor from the batch's padded planes, laid out contiguously.
@@ -740,8 +837,8 @@ export class OcrPipeline {
     return { batch, preds };
   }
 
-  async detect(img) {
-    const { rh, rw } = detInputSize(img.h, img.w);
+  async detect(img, limit = null) {
+    const { rh, rw } = detInputSize(img.h, img.w, limit ?? CFG.det);
     const resized = resizeLinear(img, rw, rh);
     const chw = toNormalizedCHW(resized, CFG.det.mean, CFG.det.std);
     const t = new this.ort.Tensor("float32", chw, [1, 3, rh, rw]);
@@ -814,7 +911,8 @@ export class OcrPipeline {
     return { text: chars.join(""), score: Math.round(mean * 1e5) / 1e5 };
   }
 
-  async recognizeImage(bgr) {
+  async recognizeImage(bgr, { nameRegionOnly = false, capDet = false } = {}) {
+    const t0 = performance.now();
     let img = resizeWithinBounds(bgr, CFG.min_side_len, CFG.max_side_len);
     let padTop = 0;
     if (CFG.use_vertical_padding) {
@@ -822,14 +920,62 @@ export class OcrPipeline {
       img = padded.img;
       padTop = padded.top;
     }
-    const boxes = await this.detect(img);
-    const crops = boxes.map((b) => getRotateCropImage(img, b));
-    const clsCrops = await this.classify(crops);
-    const recOut = await this.recognize(clsCrops);
+    const tResize = performance.now();
+    // A large picture (a phone photo: over 1500 px a side) is detected on a copy capped at the model's own side, so
+    // det costs about a sixth of what the full-size picture costs it. The boxes come back in this picture's own
+    // coordinates, so the crops the recogniser reads are still cut from the picture, at its own resolution.
+    const boxes = await this.detect(img, detLimitFor(img.h, img.w, capDet));
+    const tDet = performance.now();
+    const allCrops = boxes.map((b) => getRotateCropImage(img, b));
 
-    const lines = finalLines(recOut);
+    let crops = allCrops;
+    let recOut = [];
+    let tCls = tDet;
+    let tRec = tDet;
+
+    if (nameRegionOnly) {
+      // Progressively classify and recognize line by line until first real stat line
+      const STAT_LINE = /[%+:：]|[(（][A-Za-z]/u;
+      const isStatLine = (txt) => {
+        if (/出售[價价][格錢]/u.test(txt)) return false;
+        const untagged = txt.replace(/[[［].*$|【(?=精英|卓越|普通|[A-Za-z0-9]).*$/u, "");
+        const mark = untagged.search(STAT_LINE);
+        return mark !== -1 && /\d/u.test(untagged.slice(mark));
+      };
+
+      recOut = [];
+      crops = [];
+      for (let i = 0; i < allCrops.length; i++) {
+        const [classified] = await this.classify([allCrops[i]]);
+        const [recResult] = await this.recognize([classified]);
+        if (isStatLine(recResult?.text ?? "")) {
+          break;
+        }
+        crops.push(allCrops[i]);
+        recOut.push(recResult);
+      }
+      tCls = performance.now();
+      tRec = tCls;
+    } else {
+      const clsCrops = await this.classify(crops);
+      tCls = performance.now();
+      recOut = await this.recognize(clsCrops);
+      tRec = performance.now();
+    }
+
+    const lines = finalLines(recOut.map((line, i) => ({ ...line, tone: inkTone(crops[i]) })));
+    const tTotal = performance.now();
+    const stages = {
+      resize: Math.round(tResize - t0),
+      det: Math.round(tDet - tResize),
+      cls: Math.round(tCls - tDet),
+      rec: Math.round(tRec - tCls),
+      total: Math.round(tTotal - t0),
+      nameRegionOnly,
+    };
     return {
       lines,
+      stages,
       detBoxes: boxes.length,
       crops: crops.length,
       paddedTop: padTop,

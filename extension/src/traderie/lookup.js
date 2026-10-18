@@ -57,7 +57,7 @@ function indexProducts(products) {
 
 /**
  * The Chinese side of the table: the comparison key -> English name, the table's own names (for the suggestion list)
- * and English name -> Chinese name, for the "English（中文）" label of the screenshot reader.
+ * and English name -> Chinese name, for the Chinese-first label of the screenshot reader.
  */
 function indexChinese(source) {
   const zh = new Map();
@@ -179,8 +179,8 @@ export function resolveBase(raw, tables) {
  * is an exact table key for this same name, that is what the player sees and what the label shows. Anything else — an
  * English match, or a noisy glued run like 芭戒指天要等級 that is not a key — falls back to the reverse map.
  *
- * One source of truth: `labelWithChinese` builds "English（中文）" from this, and the gear scanner's CSV takes its
- * 中文名稱 column straight from here, so the two can never drift apart.
+ * One source of truth: `labelWithChinese` and `fieldName` build the Chinese-first label and the field text from this,
+ * and the gear scanner's CSV takes its 中文名稱 column straight from here, so they can never drift apart.
  */
 export function chineseName(name, tables, matched = "") {
   const fromPicture = hasChinese(matched)
@@ -194,13 +194,43 @@ export function chineseName(name, tables, matched = "") {
 }
 
 /**
- * The label of a name in the screenshot reader: the English name with its Traditional Chinese name in full-width
- * brackets, e.g. "Diadem（權冠）". A name with no Chinese (see chineseName) is shown plain, so no empty brackets appear.
+ * The label of a name in the screenshot reader: the Traditional Chinese name first, the English name in full-width
+ * brackets, e.g. "權冠（Diadem）". A name with no Chinese (see chineseName) is shown plain in English, so no empty
+ * brackets appear. Display only: the query value is always the English name (see resolveInput).
  * Used for base types and for items alike.
  */
 export function labelWithChinese(name, tables, matched = "") {
   const chinese = chineseName(name, tables, matched);
-  return chinese ? `${name}（${chinese}）` : name;
+  return chinese ? `${chinese}（${name}）` : name;
+}
+
+/**
+ * What the name field shows for a name read from a picture: its Chinese name when the table has one, otherwise the
+ * English name. Whatever it shows, resolveInput turns it back into the English query before Traderie is touched.
+ */
+export function fieldName(name, tables, matched = "") {
+  return chineseName(name, tables, matched) || name;
+}
+
+/**
+ * A name the item tables list, from what the player typed or picked (Chinese or English, any spelling the tables know):
+ * `{ name, kind, zh }` with the English name as the table spells it, `kind` "base" for a plain item type and "item" for
+ * everything else (the same split buildMatchIndex makes), and the Chinese name or "". Null when the tables do not list
+ * it: the gear scanner's typed-name box and the correction memory only ever hold names the tables know, so unlike
+ * resolveInput (which lets an unknown English name through to the search) this never invents one.
+ */
+export function tableEntry(raw, tables) {
+  const typed = cleanName(raw);
+  if (!typed || !tables) return null;
+  let english;
+  if (hasChinese(typed)) english = tables.zh.get(chineseKey(typed));
+  else {
+    const key = normalizeName(searchText(typed));
+    english = tables.byKey.get(key)?.name ?? tables.baseByKey.get(key);
+  }
+  if (!english) return null;
+  const kind = tables.baseByKey.has(normalizeName(english)) ? "base" : "item";
+  return { name: english, kind, zh: chineseName(english, tables, hasChinese(typed) ? typed : "") };
 }
 
 /** The product for a name, or null when the name is unknown or shared by several products (search then decides). */
