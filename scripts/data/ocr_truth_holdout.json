@@ -8,10 +8,11 @@
  },
  {
   "file": "image-32.png",
-  "kind": "base",
-  "expect": "Legend Sword",
+  "kind": "item",
+  "expect": "Dreadfang",
   "visible_zh": "懼牙／傳說劍【精英】",
-  "phone_photo": true
+  "phone_photo": true,
+  "note": "corrected 2026-10-13: Dreadfang is a real unique Legend Sword (Reign of the Warlock; d2emu.com/db/unique/dreadfang), the old label base:Legend Sword was wrong"
  },
  {
   "file": "image-33.png",
@@ -22,10 +23,11 @@
  },
  {
   "file": "image-34.png",
-  "kind": "base",
-  "expect": "Jewel",
+  "kind": "item",
+  "expect": "Defender's Fire",
   "visible_zh": "防禦者的火焰／珠寶",
-  "phone_photo": false
+  "phone_photo": false,
+  "note": "corrected 2026-10-13: Defender's Fire is a real unique jewel (Reign of the Warlock; diablo.fandom.com/wiki/Defender's_Fire, same stats as the picture), the old label base:Jewel was wrong"
  },
  {
   "file": "image-35.png",
@@ -106,10 +108,11 @@
  },
  {
   "file": "image-46.png",
-  "kind": "base",
-  "expect": "Ring",
+  "kind": "item",
+  "expect": "Opalvein",
   "visible_zh": "蛋白石脈／戒指 RING",
-  "phone_photo": true
+  "phone_photo": true,
+  "note": "corrected 2026-10-13: Opalvein is a real unique ring (Reign of the Warlock; d2rotw.org/items/opalvein, 2% level 15 Flame Wave on attack, +10% FCR as in the picture), the old label base:Ring was wrong"
  },
  {
   "file": "image-47.png",

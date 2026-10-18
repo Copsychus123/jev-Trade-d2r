@@ -162,9 +162,10 @@
  },
  {
   "file": "IMG_0401.jpg",
-  "kind": "base",
-  "expect": "Grand Crown",
-  "visible_zh": "莊嚴王冠",
-  "phone_photo": true
+  "kind": "item",
+  "expect": "Crown Of Thieves",
+  "visible_zh": "盜賊皇冠／莊嚴王冠【卓越】",
+  "phone_photo": true,
+  "note": "corrected 2026-10-13: the picture prints 盜賊皇冠 with a unique's [12LL|200ED|100EG] roll tag (Crown of Thieves, a unique Grand Crown); the old label base:Grand Crown named only the type line"
  }
 ]
