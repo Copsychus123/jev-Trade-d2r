@@ -207,8 +207,10 @@ def scan_report() -> dict:
         "records": records,
         "names": list(expects),
         "csv_enabled": True,
+        "visibility": "hidden",
+        "status": "遊戲視窗蓋住了這個面板，掃描會變慢。 掃描中：已記錄 4 件，待辨識 0 件",
         "exact_clicks": [
-            {"name": name, "outcome": "clicked", "mode": "name", "view": "ready", "item": name}
+            {"name": name, "outcome": "clicked", "mode": "name", "view": "ready", "item": name, "shown_field": name}
             for name in expects
         ],
         "fuzzy_item": {
@@ -228,6 +230,23 @@ def scan_report() -> dict:
             "ticks": 0,
             "statsBase": "Grand Charm",
         },
+        # Three of the four reads (an item with its type line under it) are not sure: they wait on the list with both
+        # searches disabled, the script picks the right name on each, and every row ends up named and searchable.
+        "unsure_before": [
+            {
+                "name": "",
+                "unsure": True,
+                "options": [name, "Sacred Rondache", "Rondache"],
+                "searchesDisabled": [True, True],
+            }
+            for name in ("Alma Negra", "Harlequin Crest", "Stormshield")
+        ],
+        "unsure_picks": [
+            {"name": name, "outcome": "picked"} for name in ("Alma Negra", "Harlequin Crest", "Stormshield")
+        ],
+        "unsure_after": [
+            {"name": name, "unsure": False, "options": [], "searchesDisabled": [False, False]} for name in expects
+        ],
         "banner": "",
         "views": [["scan", ""], ["stats", ""]],
         "clear": {"before": 4, "after": 0, "csv": False, "status": "已停止，待辨識 0 件"},
@@ -236,6 +255,45 @@ def scan_report() -> dict:
 
 def test_scan_verdict_accepts_a_report_that_matches_every_section_6_assertion():
     assert scan_e2e.verdict(scan_report()) == []
+
+
+def test_scan_verdict_accepts_a_run_where_every_read_was_sure_and_no_row_was_unsure():
+    report = scan_report()
+    report["unsure_before"] = []
+    report["unsure_picks"] = []
+    assert scan_e2e.verdict(report) == []
+
+def test_scan_verdict_accepts_failures_page_report():
+    report = {
+        "sim_page_type": "failures",
+        "record_count": 6,
+        "records": [
+            "杜墨菲斯托斯學術（Ars Dul'Mephistos） · 暗金 · 聖騎士技能",
+            "戒指（Ring） · 底材 · 施法速度",
+            "戒指（Ring） · 底材 · 所有抗性",
+            "權冠（Diadem） · 底材 · 防禦",
+            "猛狼頭盔（Alpha Helm） · 底材 · 防禦",
+            "戒指（Ring） · 底材 · 冰寒抗性",
+        ],
+        "csv_enabled": True,
+        "visibility": "hidden",
+        "status": "蓋住了這個面板 掃描中：已記錄 6 件，待辨識 0 件",
+        "banner": False,
+        "views": [["scan", ""], ["stats", ""]],
+        "clear": {"before": 6, "after": 0, "csv": False},
+        "exact_clicks": [
+            {"name": "Ring", "outcome": "clicked", "mode": "name", "view": "ready",
+             "item": "戒指", "shown_field": "戒指"},
+            {"name": "Alpha Helm", "outcome": "clicked", "mode": "name", "view": "ready",
+             "item": "猛狼頭盔", "shown_field": "猛狼頭盔"},
+            {"name": "Diadem", "outcome": "clicked", "mode": "name", "view": "ready",
+             "item": "權冠", "shown_field": "權冠"},
+            {"name": "Ars Dul'Mephistos", "outcome": "clicked", "mode": "name", "view": "ready",
+             "item": "杜墨菲斯托斯學術", "shown_field": "杜墨菲斯托斯學術"},
+        ],
+        "fuzzy_base": {"outcome": "clicked", "mode": "stats", "view": "ready"},
+    }
+    assert scan_e2e.verdict(report) == []
 
 
 def _count_wrong(report):
@@ -249,6 +307,14 @@ def _name_set_wrong(report):
 def _duplicate_name(report):
     report["expects"][1] = "Alma Negra"
     report["names"][1] = "Alma Negra"
+
+
+def _notice_missing_though_hidden(report):
+    report["status"] = "掃描中：已記錄 4 件，待辨識 0 件"
+
+
+def _notice_shown_though_visible(report):
+    report["visibility"] = "visible"
 
 
 def _csv_disabled(report):
@@ -331,6 +397,28 @@ def _view_ran_a_query(report):
     report["views"].append(["running", "stats"])
 
 
+def _row_unsure_after_though_none_was_before(report):
+    report["unsure_before"] = []
+    report["unsure_picks"] = []
+    report["unsure_after"][0].update(name="", unsure=True)
+
+
+def _unsure_row_could_search(report):
+    report["unsure_before"][1]["searchesDisabled"] = [True, False]
+
+
+def _unsure_option_not_found(report):
+    report["unsure_picks"][0]["outcome"] = "no-option"
+
+
+def _row_still_unsure_after_the_pick(report):
+    report["unsure_after"][2].update(name="", unsure=True)
+
+
+def _named_row_cannot_search(report):
+    report["unsure_after"][1]["searchesDisabled"] = [True, False]
+
+
 @pytest.mark.parametrize(
     ("mutate", "token"),
     [
@@ -338,6 +426,8 @@ def _view_ran_a_query(report):
         pytest.param(_name_set_wrong, "Something Else", id="name-set"),
         pytest.param(_duplicate_name, "Alma Negra", id="duplicate-name"),
         pytest.param(_csv_disabled, "scan-csv", id="csv-disabled"),
+        pytest.param(_notice_missing_though_hidden, "提醒和頁面可見狀態不一致", id="notice-missing-though-hidden"),
+        pytest.param(_notice_shown_though_visible, "提醒和頁面可見狀態不一致", id="notice-shown-though-visible"),
         pytest.param(_exact_outcome_wrong, "Grand Charm", id="exact-click-outcome"),
         pytest.param(_exact_mode_wrong, "Grand Charm", id="exact-click-mode"),
         pytest.param(_exact_view_wrong, "Grand Charm", id="exact-click-view"),
@@ -357,6 +447,11 @@ def _view_ran_a_query(report):
         pytest.param(_fuzzy_base_not_filled, "stats-base", id="fuzzy-base-not-filled"),
         pytest.param(_banner_shown, "橫幅", id="banner-shown"),
         pytest.param(_view_ran_a_query, "running", id="view-ran-a-query"),
+        pytest.param(_row_unsure_after_though_none_was_before, "仍有沒決定的紀錄", id="row-unsure-none-before"),
+        pytest.param(_unsure_row_could_search, "搜尋按鈕都應該停用", id="unsure-row-could-search"),
+        pytest.param(_unsure_option_not_found, "找不到要點的名稱", id="unsure-option-not-found"),
+        pytest.param(_row_still_unsure_after_the_pick, "仍有沒決定的紀錄", id="row-still-unsure-after-the-pick"),
+        pytest.param(_named_row_cannot_search, "仍是停用的", id="named-row-cannot-search"),
     ],
 )
 def test_scan_verdict_reports_exactly_the_single_broken_assertion(mutate, token):
@@ -373,21 +468,22 @@ def ocr_report() -> dict:
     return {
         "download": {
             "no_consent_element": True,
-            "notice_shown": True,
+            "no_download_ui": True,
             "requests_started_by_themselves": True,
-            "download_without_a_click": True,
-            "progress_bar_seen": True,
-            "cancel_stops_download": True,
-            "cancel_needs_no_retry": True,
             "only_fixed_urls": True,
             "second_run_no_download": True,
             "after_reload_no_download": True,
             "blocked_is_clear": True,
             "blocked_not_retried": True,
-            "progress_seen": [10, 90],
         },
-        "accuracy": {"scored": 22, "top1": 21, "top3": 22, "screenshots_top3": 18, "phone_top3": 4},
-        "accuracy_holdout": {"scored": 30, "top1": 22, "top3": 29, "screenshots_top3": 17, "phone_top3": 12},
+        "accuracy": {
+            "scored": 22, "top1": 21, "top3": 22, "screenshots_top3": 18, "phone_top3": 4,
+            "asked": 12, "auto_right": 10, "auto_wrong": 0,
+        },
+        "accuracy_holdout": {
+            "scored": 30, "top1": 22, "top3": 29, "screenshots_top3": 17, "phone_top3": 12,
+            "asked": 21, "auto_right": 9, "auto_wrong": 0,
+        },
         "auto": {
             "reads_by_itself_with_model": True,
             "did_not_start_a_query": True,
@@ -419,6 +515,95 @@ def ocr_failures(report) -> list[str]:
 
 def test_ocr_verdict_accepts_a_report_that_meets_every_floor_and_flag():
     assert ocr_failures(ocr_report()) == []
+
+
+@pytest.mark.parametrize("block", ["accuracy", "accuracy_holdout"])
+def test_ocr_verdict_rejects_a_name_the_panel_filled_in_by_itself_that_was_wrong(block):
+    report = ocr_report()
+    report[block]["auto_wrong"] = 1
+    failures = ocr_failures(report)
+    assert len(failures) == 1, failures
+    assert "自己填了錯的名稱" in failures[0]
+
+
+def test_ocr_verdict_accepts_a_report_from_before_the_panel_asked_anything():
+    report = ocr_report()
+    for block in ("accuracy", "accuracy_holdout"):
+        for key in ("asked", "auto_right", "auto_wrong"):
+            del report[block][key]
+    assert ocr_failures(report) == []
+
+
+def reader_state(**over) -> dict:
+    """The part of ocr_e2e.STATE the candidate order reads: status, the buttons, and what the panel exposes."""
+    return {
+        "status": "已辨識，並填入裝備名稱「蜘蛛之網（Arachnid Mesh）」。請確認後自己按「開始查詢」。",
+        "unsure": False,
+        "firstKind": "item",
+        "firstName": "Arachnid Mesh",
+        "candidates": [
+            {"kind": "item", "name": "Arachnid Mesh"},
+            {"kind": "base", "name": "Spiderweb Sash"},
+        ],
+        **over,
+    }
+
+
+def test_a_sure_read_lists_the_filled_name_first_and_then_the_other_buttons():
+    assert ocr_e2e.candidate_order(reader_state()) == ["item:Arachnid Mesh", "base:Spiderweb Sash"]
+
+
+def test_an_unsure_read_lists_every_decision_button_in_order_and_never_counts_the_way_out():
+    state = reader_state(
+        status="不確定是哪一件，請點選一個：",
+        unsure=True,
+        candidates=[
+            {"kind": "item", "name": "Opalvein"},
+            {"kind": "base", "name": "Ring"},
+            {"kind": "", "name": ""},  # 都不是，我自己輸入
+        ],
+    )
+    assert ocr_e2e.candidate_order(state) == ["item:Opalvein", "base:Ring"]
+
+
+def test_an_unsure_read_scores_the_matchers_three_and_keeps_the_extra_possible_names_apart():
+    state = reader_state(
+        status="不確定是哪一件，請點選一個：",
+        unsure=True,
+        candidates=[{"kind": "item", "name": f"Name {i}"} for i in range(5)] + [{"kind": "", "name": ""}],
+    )
+    assert ocr_e2e.candidate_order(state) == ["item:Name 0", "item:Name 1", "item:Name 2"]
+    assert ocr_e2e.possible_names(state) == [f"item:Name {i}" for i in range(5)]
+
+
+def test_accuracy_metrics_count_an_asked_read_whose_answer_is_only_among_the_extra_possible_names():
+    def row(ok, ok5):
+        return {"top1": False, "ok": ok, "ok5": ok5, "unsure": True, "skip": False, "phone": False, "seconds": 1.0}
+
+    metrics = ocr_e2e.accuracy_metrics([row(True, True), row(False, True), row(False, False)])
+    assert (metrics["asked"], metrics["asked_top3"], metrics["asked_top5"]) == (3, 1, 2)
+
+
+def test_ocr_verdict_fails_a_learning_step_that_did_not_hold():
+    report = ocr_report()
+    report["learning"] = {"file": "image-46.png", "first_asks": True, "third_fills_by_itself": False}
+    failures = ocr_e2e.verdict(report)
+    assert len(failures) == 1 and "third_fills_by_itself" in failures[0]
+
+
+def test_a_read_that_found_nothing_lists_no_candidates():
+    state = reader_state(status="認不出裝備名稱，請手動輸入英文名稱。", candidates=[], firstKind="", firstName="")
+    assert ocr_e2e.candidate_order(state) == []
+
+
+def test_accuracy_metrics_count_what_the_panel_asked_and_what_it_filled_in_by_itself():
+    def row(top1, unsure=False, skip=False):
+        return {"top1": top1, "ok": top1, "unsure": unsure, "skip": skip, "phone": False, "seconds": 1.0}
+
+    metrics = ocr_e2e.accuracy_metrics(
+        [row(True), row(False), row(False, unsure=True), row(True, unsure=True), row(False, skip=True)]
+    )
+    assert (metrics["scored"], metrics["asked"], metrics["auto_right"], metrics["auto_wrong"]) == (4, 2, 1, 1)
 
 
 def test_ocr_verdict_skips_the_floors_when_no_accepted_floor_is_given():
@@ -461,12 +646,8 @@ def test_ocr_verdict_accepts_the_first_holdout_run_with_no_floor():
     "key",
     [
         "no_consent_element",
-        "notice_shown",
+        "no_download_ui",
         "requests_started_by_themselves",
-        "download_without_a_click",
-        "progress_bar_seen",
-        "cancel_stops_download",
-        "cancel_needs_no_retry",
         "only_fixed_urls",
         "second_run_no_download",
         "after_reload_no_download",
@@ -478,12 +659,6 @@ def test_ocr_verdict_rejects_a_download_check_that_is_not_true(key):
     report = ocr_report()
     report["download"][key] = False
     assert key in only_failure(ocr_failures(report))
-
-
-def test_ocr_verdict_rejects_a_download_with_no_progress_seen():
-    report = ocr_report()
-    report["download"]["progress_seen"] = []
-    assert "進度" in only_failure(ocr_failures(report))
 
 
 @pytest.mark.parametrize(
@@ -830,3 +1005,12 @@ def test_the_real_twelve_pair_shape_is_inconclusive_and_needs_no_note():
     result, why = probe_blocking.verdict(_ab_pairs([(1700, 1700 + d) for d in deltas]))
     assert result == "inconclusive"
     assert "only" not in why
+
+
+def test_scan_verdict_fails_when_picked_names_were_not_remembered_by_the_settings_block():
+    report = scan_report()
+    report["learn_count"] = "還沒有記住任何更正。"
+    failures = scan_e2e.verdict(report)
+    assert len(failures) == 1 and "學習紀錄" in failures[0]
+    report["learn_count"] = "已記住 3 筆更正（其中 0 筆選過 2 次以上，下次會自動填入）。"
+    assert scan_e2e.verdict(report) == []

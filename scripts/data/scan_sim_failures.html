@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>D2R-SIM</title>
+<!--
+  Sim page cycling the 7 previously-missed tooltips (image-11, 13, 16, 20, 41, 43, 49)
+  to test rate-limited PP-OCR fallback detection end to end.
+-->
+<style>
+  html, body { margin: 0; padding: 0; background: #707070; overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="stage" width="1280" height="720"></canvas>
+<script>
+(() => {
+  "use strict";
+
+  const FILES = [
+    "image-11.png",
+    "image-13.png",
+    "image-16.png",
+    "image-20.png",
+    "image-41.png",
+    "image-43.png",
+    "image-49.png",
+  ];
+  const CYCLES = 1;
+  const SHOW_MS = 3500; // each tooltip shown long enough for the 3 s rate-limited fallback to run
+  const GAP_MS = 600;
+  const POSITIONS = [
+    [50, 50], [450, 50], [50, 150], [450, 150], [100, 100], [500, 100], [200, 50],
+  ];
+  const canvas = document.getElementById("stage");
+  const ctx = canvas.getContext("2d");
+
+  const background = document.createElement("canvas");
+  background.width = canvas.width;
+  background.height = canvas.height;
+  const bg = background.getContext("2d");
+  const noise = bg.createImageData(background.width, background.height);
+  let seed = 123456789 >>> 0;
+  for (let i = 0; i < noise.data.length; i += 4) {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    const value = 70 + (seed % 91);
+    noise.data[i] = value;
+    noise.data[i + 1] = value;
+    noise.data[i + 2] = value;
+    noise.data[i + 3] = 255;
+  }
+  bg.putImageData(noise, 0, 0);
+
+  const images = {};
+  const state = {
+    file: null,
+    step: 0,
+    total: FILES.length * CYCLES,
+    cycle: 0,
+    done: false,
+    error: null,
+    started: null,
+  };
+
+  function paint(file, position) {
+    ctx.drawImage(background, 0, 0);
+    const picture = file && images[file];
+    if (picture) ctx.drawImage(picture, position[0], position[1]);
+  }
+
+  const REPAINT_MS = 66;
+  let timer = null;
+  let repaint = null;
+
+  function clearTimer() {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    if (repaint !== null) {
+      clearInterval(repaint);
+      repaint = null;
+    }
+  }
+
+  function run() {
+    state.started = Date.now();
+    let step = 0;
+    let current = { file: null, position: null };
+    repaint = setInterval(() => paint(current.file, current.position), REPAINT_MS);
+    const tick = () => {
+      if (step >= state.total) {
+        state.file = null;
+        state.cycle = CYCLES;
+        state.done = true;
+        current = { file: null, position: null };
+        paint(null, null);
+        clearTimer();
+        document.title = "D2R-SIM-DONE";
+        return;
+      }
+      const file = FILES[step % FILES.length];
+      state.file = file;
+      state.step = step + 1;
+      state.cycle = Math.floor(step / FILES.length) + 1;
+      current = { file, position: POSITIONS[step] };
+      paint(file, POSITIONS[step]);
+      timer = setTimeout(() => {
+        state.file = null;
+        current = { file: null, position: null };
+        paint(null, null);
+        timer = setTimeout(() => { step += 1; tick(); }, GAP_MS);
+      }, SHOW_MS);
+    };
+    tick();
+  }
+
+  state.restart = () => {
+    clearTimer();
+    state.file = null;
+    state.step = 0;
+    state.cycle = 0;
+    state.done = false;
+    state.error = null;
+    state.started = null;
+    document.title = "D2R-SIM";
+    paint(null, null);
+    run();
+  };
+  window.D2R_SIM = state;
+
+  let pending = FILES.length;
+  FILES.forEach((file) => {
+    const picture = new Image();
+    picture.onload = () => {
+      images[file] = picture;
+      pending -= 1;
+      if (pending === 0) state.restart();
+    };
+    picture.onerror = () => {
+      state.error = file;
+      document.title = "D2R-SIM-ERROR";
+    };
+    picture.src = file;
+  });
+})();
+</script>
+</body>
+</html>

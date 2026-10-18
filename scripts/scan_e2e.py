@@ -14,6 +14,11 @@ Chrome, opens scripts/data/scan_sim.html as a tab and drives the side panel:
      automatically — the panel opens the share dialog itself, Chrome auto-selects the "D2R-SIM" tab;
   3. let the simulated sweep run twice (the same four tooltips) and wait until document.title is D2R-SIM-DONE,
      then until the OCR queue is empty (#scan-status says 待辨識 0 件);
+  3b. when the matcher was not sure about a read (an item with its type line under it, name not in a unique/set
+     colour) the row must sit on the list as 不確定 with both search buttons disabled; the script then picks the right
+     name on each, like the player, and the row must come out named with the buttons enabled. No unsure row is a pass
+     too (the name-colour rule makes all four sim items sure): the check is that the unsure path is consistent, and
+     every row is named in the end;
   4. assert what the capture plan's section 6 lists: exactly four records, the names equal the expect values of the
      four pictures in scripts/data/ocr_truth.json, no duplicates, #scan-csv enabled, and the two per-record buttons
      only pre-fill the existing name/stats forms (精準搜尋 leaves mode "name", 模糊搜尋 leaves mode "stats" with at
@@ -54,6 +59,7 @@ TRUTH = DATA / "ocr_truth.json"
 SIM = DATA / "scan_sim.html"
 OUT = ROOT / "artifacts" / "scan-e2e"
 INVITE = "dummy-invite"
+HIDDEN_NOTICE = "蓋住了這個面板"  # the words of the panel's covered-window notice (extension/src/scan/scan-panel.js)
 # The four pictures the sim loops over; their expect values in the truth file are the names the panel must show.
 SIM_FILES = ["image-14.png", "image-15.png", "image-17.png", "image-18.png"]
 ITEM_FILE = "image-17.png"  # a non-base record (Alma Negra): 模糊搜尋 must leave the base box alone
@@ -78,9 +84,8 @@ STATE = """(() => {
     view: document.body.dataset.view || '',
     mode: document.body.dataset.mode || '',
     status: $('scan-status')?.textContent || '',
+    visibility: document.visibilityState,
     stats: $('scan-stats')?.textContent || '',
-    downloadNotice: !!$('scan-download') && !$('scan-download').hidden,
-    progress: Number($('scan-progress')?.value || 0),
     csv: !!$('scan-csv') && !$('scan-csv').disabled,
     item: $('item')?.value || '',
     statsBase: $('stats-base')?.value || '',
@@ -90,6 +95,10 @@ STATE = """(() => {
     baseOptions: document.querySelectorAll('#stats-base-options option').length,
     ticks: [...document.querySelectorAll('#affix-list .affix-on')].filter((b) => b.checked).length,
     records: [...document.querySelectorAll('#scan-list li')].map((li) => li.textContent),
+    rows: [...document.querySelectorAll('#scan-list li')].map((li) => ({
+      name: li.dataset.name || '', unsure: li.dataset.unsure === 'true',
+      options: [...li.querySelectorAll('.options button')].map((b) => b.dataset.name),
+      searchesDisabled: [...li.querySelectorAll('.actions button')].map((b) => b.disabled) })),
     banner: !!$('banner') && !$('banner').hidden,
     views: window.__scanViews || []
   });
@@ -111,6 +120,15 @@ CLICK_RECORD = """(() => {
   if (button.disabled) return 'disabled';
   button.click();
   return 'clicked';
+})()"""
+
+# The player's pick on an unsure row: the button of the wanted name among the row's decision buttons.
+PICK_OPTION = """(() => {
+  const button = [...document.querySelectorAll('#scan-list li[data-unsure="true"] .options button')]
+    .find((b) => b.dataset.name === %s);
+  if (!button) return 'no-option';
+  button.click();
+  return 'picked';
 })()"""
 
 
@@ -157,25 +175,27 @@ async def ensure_scan(panel: Panel) -> dict:
     return state
 
 
+# What the name field must show after 精準搜尋 on the record named %s: the Chinese part of its 中文（English） label.
+SHOWN_NAME = """(() => {
+  const li = [...document.querySelectorAll('#scan-list li')].find((l) => l.dataset.name === %s);
+  const text = li?.querySelector('strong')?.textContent || '';
+  const m = /^(.+)（.+）$/u.exec(text);
+  return m ? m[1] : text;
+})()"""
+
+
 async def click_record(panel: Panel, name: str, label: str) -> str:
     """Clicks one record's 精準搜尋 / 模糊搜尋 button; returns 'clicked', 'no-record', 'no-button' or 'disabled'."""
     return await panel.evaluate(CLICK_RECORD % (json.dumps(name), json.dumps(label)))
 
 
 async def _run_scan(panel: Panel, sim: CdpPanel, report: dict) -> None:
-    """Start the scan, let the models download, restart the sim inside a live capture, then wait for it to drain."""
+    """Start the scan, let the models download by themselves, restart the sim inside a live capture, then drain it."""
     say("開始掃描（分享模擬視窗）…")
     await panel.evaluate("document.getElementById('scan-start').click()")
-    state = await panel.wait(lambda s: s["downloadNotice"] or "掃描中" in s["status"], 60)
-    if state["downloadNotice"]:
-        report["download_without_question"] = True
-        say("側邊欄正在下載辨識模型…")
-        state = await panel.wait(lambda s: s["progress"] > 0 or "掃描中" in s["status"], 60)
-        if state["progress"] > 0:
-            report["progress_seen"] = True
-        state = await panel.wait(lambda s: "掃描中" in s["status"], 300)
-        if state["progress"] > 0:
-            report["progress_seen"] = True
+    # The first-time model download is silent now: nothing on screen to watch but the scan itself starting, which
+    # happens only after the models are stored.
+    state = await panel.wait(lambda s: "掃描中" in s["status"], 300)
     report["capture_status"] = state["status"]
 
     # Frames really flow now; restart once more so the whole sweep is inside a live capture.
@@ -206,6 +226,37 @@ async def _run_scan(panel: Panel, sim: CdpPanel, report: dict) -> None:
     report["csv_enabled"] = state["csv"]
     report["status"] = state["status"]
     report["stats"] = state["stats"]
+    report["visibility"] = state["visibility"]
+    last_run = await panel.evaluate("window.__jevLastRun || {}")
+    crop_timings = last_run.get("scan", {}).get("cropTimings", [])
+    report["cropTimings"] = crop_timings
+    read_times = [c.get("readMs") for c in crop_timings]
+    wait_times = [c.get("waitMs") for c in crop_timings]
+    if wait_times:
+        waits_sorted = sorted(wait_times)
+        report["wait_median_ms"] = waits_sorted[len(waits_sorted) // 2]
+        report["wait_max_ms"] = max(wait_times)
+    say(f"  各筆辨識時間（readMs）：{read_times} ms")
+    say(f"  各筆等待時間（waitMs）：{wait_times} ms")
+
+
+async def _resolve_unsure(panel: Panel, expects: list[str], report: dict) -> None:
+    """The rows the matcher was not sure about: they are listed without a name and with both searches disabled; picking
+    the right name on each (the player's click) names the row and enables them. Rows that were sure are left alone."""
+    await ensure_scan(panel)
+    before = (await panel.state())["rows"]
+    report["unsure_before"] = [row for row in before if row["unsure"]]
+    picks = []
+    for name in expects:
+        if any(name in row["options"] for row in before if row["unsure"]):
+            picks.append({"name": name, "outcome": await panel.evaluate(PICK_OPTION % json.dumps(name))})
+    await asyncio.sleep(0.3)
+    report["unsure_picks"] = picks
+    report["unsure_after"] = (await panel.state())["rows"]
+    # Every pick is a decision the reader's memory keeps (the 學習紀錄 block of the settings screen counts them).
+    report["learn_count"] = await panel.evaluate("document.getElementById('learn-count').textContent")
+    names = [row["name"] for row in report["unsure_after"]]
+    say(f"  不確定的紀錄 {len(report['unsure_before'])} 筆，選完名稱後：{names}")
 
 
 async def _collect_record_clicks(
@@ -220,10 +271,14 @@ async def _collect_record_clicks(
         outcome = await click_record(panel, name, "精準搜尋")
         await asyncio.sleep(0.3)
         after = await panel.state()
+        # The record shows 中文（English） (plain English without a Chinese name) and the field gets the Chinese part;
+        # the English name stays in data-name, which is also what Traderie is queried with.
+        shown = await panel.evaluate(SHOWN_NAME % json.dumps(name))
         clicks.append(
-            {"name": name, "outcome": outcome, "mode": after["mode"], "view": after["view"], "item": after["item"]}
+            {"name": name, "outcome": outcome, "mode": after["mode"], "view": after["view"], "item": after["item"],
+             "shown_field": shown}
         )
-        names.append(after["item"])
+        names.append(name if after["item"] == shown else after["item"])
         say(f"  精準搜尋 {name!r} -> {outcome}，item={after['item']!r}")
     report["exact_clicks"] = clicks
     report["names"] = names
@@ -291,8 +346,13 @@ async def _minimize_window(panel: Panel) -> None:
 
 
 async def drive(panel_ws: str, sim_ws: str, expects: list[str], item_name: str, base_name: str,
-                minimize_after: float = 0.0) -> dict:
-    report: dict = {"started": time.strftime("%Y-%m-%d %H:%M:%S"), "expects": expects, "base_name": base_name}
+                minimize_after: float = 0.0, sim_page_type: str = "normal") -> dict:
+    report: dict = {
+        "started": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "expects": expects,
+        "base_name": base_name,
+        "sim_page_type": sim_page_type,
+    }
     async with attach(panel_ws, Panel, collect_events=False) as panel, attach(sim_ws) as sim:
         await panel.send("Page.enable")
         await panel.send("Runtime.enable")
@@ -301,9 +361,10 @@ async def drive(panel_ws: str, sim_ws: str, expects: list[str], item_name: str, 
         had_invite = await panel.evaluate("chrome.storage.local.get('invite').then((r) => Boolean(r.invite))")
         if not had_invite:
             await panel.evaluate(f"chrome.storage.local.set({{ invite: {json.dumps(INVITE)} }})")
+        # What the reader learned in an earlier run (jevCorrections) must not decide a read of this one: start empty.
+        await panel.evaluate("chrome.storage.local.remove('jevCorrections')")
         await panel.reload()
         await panel.evaluate(HOOK)
-
         await panel.evaluate("document.getElementById('choose-scan').click()")
         await panel.wait(lambda s: s["view"] == "scan", 30)
 
@@ -321,8 +382,11 @@ async def drive(panel_ws: str, sim_ws: str, expects: list[str], item_name: str, 
             await sweep
         else:
             await _run_scan(panel, sim, report)
-        await _collect_record_clicks(panel, expects, item_name, base_name, report)
+        await _resolve_unsure(panel, expects, report)
+        click_targets = list(dict.fromkeys(expects))
+        await _collect_record_clicks(panel, click_targets, item_name, base_name, report)
         await _clear_records(panel, report)
+        await panel.evaluate("chrome.storage.local.remove('jevCorrections')")  # leave nothing learned behind
     return report
 
 
@@ -360,8 +424,76 @@ def _fuzzy_item_failures(fuzzy: dict | None) -> list[str]:
     return failures
 
 
+def _unsure_failures(report: dict) -> list[str]:
+    """The decision flow, consistent whether or not there were unsure rows (the name-colour rule makes the four sim
+    items sure, so none is a pass): unsure rows wait with both searches disabled, every pick names its row and enables
+    them, and no row is left undecided."""
+    failures = []
+    before = report.get("unsure_before") or []
+    for row in before:
+        if not all(row["searchesDisabled"]):
+            failures.append(f"不確定的紀錄在選名稱之前，兩個搜尋按鈕都應該停用：{row}")
+    for pick in report.get("unsure_picks", []):
+        if pick["outcome"] != "picked":
+            failures.append(f"不確定的紀錄找不到要點的名稱「{pick['name']}」：{pick}")
+    picked = any(pick["outcome"] == "picked" for pick in report.get("unsure_picks", []))
+    if picked and "learn_count" in report and "已記住" not in report["learn_count"]:
+        failures.append(f"點選過名稱，但設定裡的學習紀錄沒有記住：{report.get('learn_count')!r}")
+    for row in report.get("unsure_after", []):
+        if row["unsure"] or not row["name"]:
+            failures.append(f"選完名稱後仍有沒決定的紀錄：{row}")
+        elif row["searchesDisabled"][0]:
+            failures.append(f"選完名稱後「精準搜尋」仍是停用的：{row}")
+    return failures
+
+
+def _verdict_failures(report: dict) -> list[str]:
+    failures = []
+    count = report.get("record_count", 0)
+    if count < 6:
+        failures.append(f"備援偵測救回件數不足，預期至少 6 筆，實際 {count} 筆：{report.get('records')}")
+    expected_names = {"Alpha Helm", "Diadem", "Ring", "Ars Dul'Mephistos"}
+    records_text = " ".join(report.get("records", []))
+    for name in expected_names:
+        if name not in records_text:
+            failures.append(f"未找到預期的救回紀錄：{name}")
+    report["known_gap"] = (
+        "image-43.png (Light Plated Boots): rare boots with Chinese base unmapped in Traderie products table"
+    )
+    if not report.get("csv_enabled"):
+        failures.append("#scan-csv 不是可用（下載 CSV 不需要先查詢）")
+    hidden = report.get("visibility") == "hidden"
+    if hidden != (HIDDEN_NOTICE in report.get("status", "")):
+        failures.append(f"蓋住面板的提醒和頁面可見狀態不一致（visibility={report.get('visibility')!r}）：{report.get('status')!r}")
+    for click in report.get("exact_clicks", []):
+        if (
+            click["outcome"] != "clicked"
+            or click["mode"] != "name"
+            or click["view"] != "ready"
+            or click["item"] != click["shown_field"]
+        ):
+            failures.append(f"「精準搜尋」（{click['name']}）沒有正確填入：{click}")
+    base = report.get("fuzzy_base")
+    if not base or base["outcome"] != "clicked" or base["mode"] != "stats" or base["view"] != "ready":
+        failures.append(f"底材紀錄的「模糊搜尋」沒有切到詞綴表單：{base}")
+    if report.get("banner"):
+        failures.append("查詢橫幅出現：掃描過程不該送出任何查詢")
+    if any(view == "running" for view, _ in report.get("views", [])):
+        failures.append("掃描過程中畫面變成 running：有查詢被送出")
+    cleared = report.get("clear")
+    if not cleared or cleared.get("before", 0) < 1:
+        failures.append(f"清除紀錄沒有在有紀錄時按下去：{cleared}")
+    elif cleared.get("after") != 0:
+        failures.append(f"清除紀錄之後仍有紀錄：{cleared}")
+    elif cleared.get("csv"):
+        failures.append(f"清除紀錄之後 #scan-csv 還可以用：{cleared}")
+    return failures
+
+
 def verdict(report: dict) -> list[str]:
     """The section-6 assertions; returns one Traditional Chinese message per failed one. Pure: no Chrome needed."""
+    if report.get("sim_page_type") == "failures":
+        return _verdict_failures(report)
     failures = []
     expects = report.get("expects", [])
     names = report.get("names", [])
@@ -373,14 +505,20 @@ def verdict(report: dict) -> list[str]:
         failures.append(f"名稱有重複：{names}")
     if not report.get("csv_enabled"):
         failures.append("#scan-csv 不是可用（下載 CSV 不需要先查詢）")
+    # The side panel's "game covers this panel" notice must show exactly while the page reports itself hidden (the sim
+    # tab is in front of the panel tab here, so the run is normally hidden; the anti-throttle flags keep it fast).
+    hidden = report.get("visibility") == "hidden"
+    if hidden != (HIDDEN_NOTICE in report.get("status", "")):
+        failures.append(f"蓋住面板的提醒和頁面可見狀態不一致（visibility={report.get('visibility')!r}）：{report.get('status')!r}")
     for click in report.get("exact_clicks", []):
         if (
             click["outcome"] != "clicked"
             or click["mode"] != "name"
             or click["view"] != "ready"
-            or click["item"] != click["name"]
+            or click["item"] != click["shown_field"]
         ):
             failures.append(f"「精準搜尋」（{click['name']}）沒有正確填入：{click}")
+    failures += _unsure_failures(report)
     failures += _fuzzy_item_failures(report.get("fuzzy_item"))
     base = report.get("fuzzy_base")
     if not base or base["outcome"] != "clicked" or base["mode"] != "stats" or base["view"] != "ready":
@@ -409,10 +547,24 @@ def main() -> int:
                         help="掃描開始後幾秒把瀏覽器視窗最小化（模擬遊戲蓋住 Chrome；預設 0 不最小化）")
     args = parser.parse_args()
     truth = json.loads(TRUTH.read_text(encoding="utf-8"))
+    if (DATA / "ocr_truth_holdout.json").exists():
+        truth += json.loads((DATA / "ocr_truth_holdout.json").read_text(encoding="utf-8"))
     by_file = {entry["file"]: entry for entry in truth}
-    expects = [by_file[name]["expect"] for name in SIM_FILES]
-    item_name = by_file[ITEM_FILE]["expect"]
-    base_name = by_file[BASE_FILE]["expect"]
+    sim_page = args.page or SIM
+    sim_page_type = "failures" if "failures" in str(sim_page) else "normal"
+    if sim_page_type == "failures":
+        sim_files = [
+            "image-11.png", "image-13.png", "image-16.png", "image-20.png",
+            "image-41.png", "image-43.png", "image-49.png",
+        ]
+        expects = ["Ring", "Alpha Helm", "Diadem", "Ring", "Ring", "Ars Dul'Mephistos"]
+        item_name = "Ars Dul'Mephistos"
+        base_name = "Diadem"
+    else:
+        sim_files = SIM_FILES
+        item_name = by_file[ITEM_FILE]["expect"]
+        base_name = by_file[BASE_FILE]["expect"]
+        expects = [by_file[name]["expect"] for name in sim_files]
     chrome = None
     try:
         build_extension(LOCAL_API)
@@ -420,8 +572,8 @@ def main() -> int:
         ext_id = load_extension()
         say(f"擴充功能已載入（{ext_id}）")
         report = asyncio.run(
-            drive(open_panel(ext_id), open_sim(args.page or SIM), expects, item_name, base_name,
-                  minimize_after=args.minimize_after)
+            drive(open_panel(ext_id), open_sim(sim_page), expects, item_name, base_name,
+                  minimize_after=args.minimize_after, sim_page_type=sim_page_type)
         )
     except (Environment, subprocess.CalledProcessError) as error:
         return environment_failure(error)

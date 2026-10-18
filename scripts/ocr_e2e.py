@@ -2,15 +2,18 @@
 
 Windows-only tool (Windows Chrome paths). Builds the extension into extension/dist-e2e, loads it into the dedicated
 Chrome, then in the side panel:
-  C  download group: first use asks before downloading, checks and stores the four PP-OCR assets, a second run and a
-     reload do not download again, a blocked download is reported (one attempt, not retried);
+  C  download group: first use asks nothing and downloads by itself, with no download UI on the page (no notice,
+     progress bar or cancel button), checks and stores the four PP-OCR assets, a second run and a reload do not
+     download again, a blocked download is reported (one attempt, not retried);
   A/B accuracy and speed group: every picture in scripts/data listed in the tuned truth file (default ocr_truth.json)
      and in the held-out truth file (scripts/data/ocr_truth_holdout.json) goes through the real panel and is compared
      with it; each group's numbers must not fall below the same group of the last accepted run
      (artifacts/ocr-e2e/report.json) or, without one, below FALLBACK_FLOORS. --only narrows the tuned list and skips
-     the held-out group;
+     the held-out group. A read the panel is not sure about fills nothing and shows its candidates as decision
+     buttons (`data-unsure`); it is scored on those buttons in the matcher's order (`candidate_order`), so top1/top3
+     keep their meaning, and `asked`/`auto_right`/`auto_wrong` count what the player met - any `auto_wrong` fails;
   D affix group: a base-kind picture read in the 模糊搜尋 form fills the base and every recognised affix condition by
-     itself, with the value boxes empty and the label in English（中文） form, without starting a query.
+     itself, with the value boxes empty and the label in 中文（English） form, without starting a query.
 It downloads the model files from www.modelscope.cn (the panel's auto-download flow) and closes the
 dedicated Chrome first. Writes artifacts/ocr-e2e/report.json only for a complete passing accuracy run (any other run
 goes to report-last.json, so the last accepted numbers survive). Exit 0 all good, 1 something failed, 2 environment.
@@ -68,7 +71,7 @@ MODELS = {
     "dict": f"{_MS}/paddle/PP-OCRv6/rec/PP-OCRv6_rec_small/ppocrv6_dict.txt",
 }
 # D group: the base-kind picture whose truth entry names a base the item table has a Chinese name for, so the
-# English（中文） label can be asserted (measured 2026-10: image-4.png reads as base "Small Charm" = 小型咒符, with one
+# 中文（English） label can be asserted (measured 2026-10: image-4.png reads as base "Small Charm" = 小型咒符, with one
 # affix condition and no value).
 AFFIX_PICTURE = "image-4.png"
 STATE = """JSON.stringify({
@@ -76,15 +79,15 @@ STATE = """JSON.stringify({
   kind: document.getElementById('ocr-status').dataset.kind || '',
   time: document.getElementById('ocr-time').textContent,
   text: document.getElementById('ocr-text').textContent,
-  downloadNotice: !document.getElementById('ocr-download').hidden,
-  downloadText: document.getElementById('ocr-download-text').textContent,
-  progress: Number(document.getElementById('ocr-progress').value),
+  tones: JSON.parse(document.getElementById('ocr-text').dataset.tones || 'null'),
   consentGone: document.getElementById('ocr-consent') === null,
   item: document.getElementById('item').value,
   go: !document.getElementById('ocr-go').disabled,
   candidates: [...document.querySelectorAll('#ocr-candidates button')].map((b) => ({
-    kind: b.dataset.kind || '', name: b.dataset.name || '' })),
+    kind: b.dataset.kind || '', name: b.dataset.name || '', learned: b.dataset.learned || '' })),
   firstKind: document.getElementById('ocr-candidates').dataset.firstKind || '',
+  firstName: document.getElementById('ocr-candidates').dataset.firstName || '',
+  unsure: document.getElementById('ocr-candidates').dataset.unsure === 'true',
   mode: document.body.dataset.mode || '',
   view: document.body.dataset.view || '',
   base: document.getElementById('stats-base').value,
@@ -158,60 +161,34 @@ async def download_group(panel: Panel, report: dict, first_image: Path) -> None:
     await panel.reload()
     await panel.load_picture(first_image)
 
-    await _install_progress_hooks(panel)
+    await _no_download_ui_checks(panel, checks)
     await _first_download_checks(panel, checks, first_image)
-    await _cancel_checks(panel, checks, first_image)
     await _blocked_download_checks(panel, checks, first_image)
 
     # The blocked-download test wiped the models; the reading groups below need them, so download them again.
     await _read_picture(panel, first_image)
 
 
-async def _install_progress_hooks(panel: Panel) -> None:
-    """Record every download notice, status line and progress value the panel shows, before anything is clicked."""
-    await panel.evaluate(
-        "window.__progress = new Set(); window.__progressValues = []; window.__downloadNoticeSeen = false;"
-        "new MutationObserver(() => {"
-        " const t = document.getElementById('ocr-status').textContent;"
-        " if (t.includes('下載辨識模型')) window.__progress.add(t.split('：')[0]); })"
-        ".observe(document.getElementById('ocr-status'), { childList: true, characterData: true, subtree: true });"
-        "const d = document.getElementById('ocr-download');"
-        "new MutationObserver(() => { if (d && !d.hidden) window.__downloadNoticeSeen = true; })"
-        ".observe(d, { attributes: true, attributeFilter: ['hidden'] });"
-        "const p = document.getElementById('ocr-progress');"
-        "const desc = Object.getOwnPropertyDescriptor(HTMLProgressElement.prototype, 'value');"
-        "if (desc) {"
-        "  Object.defineProperty(p, 'value', {"
-        "    set(v) { window.__progressValues.push(Number(v)); desc.set.call(this, v); },"
-        "    get() { return desc.get.call(this); }"
-        "  });"
-        "}"
-        "new MutationObserver(() => window.__progressValues.push(Number(p.value)))"
-        ".observe(p, { attributes: true, attributeFilter: ['value'] });"
-        "setInterval(() => { if (p && Number(p.value) > 0) window.__progressValues.push(Number(p.value)); }, 50);"
+async def _no_download_ui_checks(panel: Panel, checks: dict) -> None:
+    """The first-time download is silent: no notice, progress bar or cancel button is on the page at all."""
+    checks["no_download_ui"] = await panel.evaluate(
+        "document.getElementById('ocr-download') === null"
+        " && document.getElementById('ocr-progress') === null"
+        " && document.getElementById('ocr-cancel') === null"
     )
 
 
 async def _first_download_checks(panel: Panel, checks: dict, first_image: Path) -> None:
-    """First use: it asks nothing, downloads by itself, shows progress and a second read downloads nothing again."""
+    """First use: it asks nothing, downloads by itself from the fixed URLs; a second read downloads nothing."""
     await panel.evaluate("document.getElementById('ocr-go').click()")
-    state = await panel.wait(lambda s: s["downloadNotice"] or s["time"], 30)
-    notice_observed = await panel.evaluate("Boolean(window.__downloadNoticeSeen)")
-    checks["no_consent_element"] = state["consentGone"]
-    checks["notice_shown"] = state["downloadNotice"] or notice_observed
-    checks["download_without_a_click"] = True
-
     state = await _wait_read(panel, 180)
+    checks["no_consent_element"] = state["consentGone"]
     checks["requests_started_by_themselves"] = bool(model_requests(state))
-    progress = json.loads(await panel.evaluate("JSON.stringify([...window.__progress])"))
-    values = json.loads(await panel.evaluate("JSON.stringify(window.__progressValues)"))
-    checks["progress_seen"] = sorted(progress)
-    checks["progress_bar_seen"] = bool(values and max(values) > 0)
     checks["first_run_status"] = state["status"]
     checks["download_urls"] = sorted(set(model_requests(state)))
     checks["only_fixed_urls"] = set(checks["download_urls"]) <= set(MODELS.values())
 
-    # Second picture, same page: no question, no new download.
+    # Second picture, same page: no new download.
     await panel.load_picture(first_image)
     before = len(model_requests(await panel.state()))
     await panel.evaluate("document.getElementById('ocr-go').click()")
@@ -222,22 +199,6 @@ async def _first_download_checks(panel: Panel, checks: dict, first_image: Path) 
     await panel.reload()
     state = await _read_picture(panel, first_image, 180)
     checks["after_reload_no_download"] = not model_requests(state)
-
-
-async def _cancel_checks(panel: Panel, checks: dict, first_image: Path) -> None:
-    """Cancel: wipe models, reload, click go, wait for the notice, click cancel, and check nothing continues."""
-    await panel.wipe_models()
-    await panel.reload()
-    await panel.load_picture(first_image)
-    await panel.evaluate("document.getElementById('ocr-go').click()")
-    await panel.wait(lambda s: s["downloadNotice"], 30)
-    await panel.evaluate("document.getElementById('ocr-cancel').click()")
-    req_at_cancel = len(model_requests(await panel.state()))
-    await asyncio.sleep(3)
-    state = await panel.state()
-    checks["cancel_stops_download"] = len(model_requests(state)) == req_at_cancel
-    checks["cancel_message"] = "取消" in state["status"]
-    checks["cancel_needs_no_retry"] = len(model_requests(state)) <= req_at_cancel + 1
 
 
 async def _blocked_download_checks(panel: Panel, checks: dict, first_image: Path) -> None:
@@ -270,6 +231,7 @@ async def _blocked_download_checks(panel: Panel, checks: dict, first_image: Path
 def accuracy_metrics(rows: list[dict]) -> dict:
     """The scored hit counts and timings of one group of rows; both groups report the same keys."""
     scored = [r for r in rows if not r["skip"]]
+    asked = [r for r in scored if r.get("unsure")]
     small = [r["seconds"] for r in rows if not r["phone"] and r["seconds"]]
     phone = [r["seconds"] for r in rows if r["phone"] and r["seconds"]]
     return {
@@ -280,10 +242,41 @@ def accuracy_metrics(rows: list[dict]) -> dict:
         "screenshots_scored": sum(1 for r in scored if not r["phone"]),
         "phone_top3": sum(r["ok"] for r in scored if r["phone"]),
         "phone_scored": sum(1 for r in scored if r["phone"]),
+        # Reads that were not sure: how many had the right name among the three buttons the matcher gave, and among
+        # the up to five possible names the panel now lists (the extra ones are only ever offered, never filled in).
+        "asked_top3": sum(r["ok"] for r in asked),
+        "asked_top5": sum(r.get("ok5", r["ok"]) for r in asked),
+        # What the player met: reads the panel asked about (nothing filled in), and the names it filled in by itself,
+        # right or wrong. A wrong name filled in by itself is what the unsure rule exists to prevent.
+        "asked": len(asked),
+        "auto_right": sum(r["top1"] for r in scored if not r.get("unsure")),
+        "auto_wrong": sum(not r["top1"] for r in scored if not r.get("unsure")),
         "avg_seconds_screenshot": round(sum(small) / len(small), 1) if small else None,
         "avg_seconds_phone_photo": round(sum(phone) / len(phone), 1) if phone else None,
         "max_seconds": max((r["seconds"] for r in rows if r["seconds"]), default=None),
     }
+
+
+def possible_names(state: dict) -> list[str]:
+    """Every name button of an unsure read as `kind:name` (up to five: the matcher's three, then the next best table
+    names, `extendCandidates`); the same as the candidates of a sure read."""
+    return [f"{c['kind']}:{c['name']}" for c in state["candidates"] if c["name"]]
+
+
+def candidate_order(state: dict) -> list[str]:
+    """The candidates of one read as `kind:name`, the matcher's best first. A sure read fills its best name into the
+    field (the status says so) and shows the others as buttons; an unsure read fills nothing and every candidate is a
+    decision button (the 都不是 button names nothing and is not a candidate). A read that found nothing has none.
+    An unsure read may list up to five possible names; the matcher's own three come first and are the ones scored
+    here (`possible_names` has all of them), so top1/top3 keep their meaning."""
+    buttons = [(c["kind"], c["name"]) for c in state["candidates"] if c["name"]]
+    if state["unsure"]:
+        return [f"{kind}:{name}" for kind, name in buttons[:3]]
+    if "填入裝備名稱" not in state["status"]:
+        return []
+    first = state["firstName"]  # the English query value; the field shows Chinese
+    others = [(kind, name) for kind, name in buttons if name != first]
+    return [f"{state['firstKind'] or 'item'}:{first}"] + [f"{kind}:{name}" for kind, name in others]
 
 
 async def accuracy_speed_group(
@@ -300,11 +293,9 @@ async def accuracy_speed_group(
         seconds = float(state["time"].split()[1]) if state["time"] else None
         # The best result is written into the name field; the kinds and names of the other candidates come from the
         # data-kind/data-name attributes the panel sets (the label alone no longer says which is a base).
-        filled = "填入裝備名稱" in state["status"]
-        first = state["item"] if filled else None
-        first_kind = state["firstKind"] or "item"
-        others = [(c["kind"], c["name"]) for c in state["candidates"] if c["name"] != first]
-        top = ([f"{first_kind}:{first}"] if first else []) + [f"{k}:{n}" for k, n in others]
+        unsure = state["unsure"]
+        top = candidate_order(state)
+        possible = possible_names(state)
         want = f"{item['kind']}:{item['expect']}"
         rows.append(
             {
@@ -313,14 +304,19 @@ async def accuracy_speed_group(
                 "top": top,
                 "seconds": seconds,
                 "ok": item["kind"] != "skip" and want in top,
+                "ok5": item["kind"] != "skip" and want in possible,
+                "possible": possible,
                 "top1": bool(top) and top[0] == want,
                 "phone": item["phone_photo"],
                 "skip": item["kind"] == "skip",
+                "unsure": unsure,
+                "field": state["item"],
                 "status": state["status"],
-                "text": state["text"][:400],
+                "text": state["text"][:3000],
+                "tones": state["tones"],
             }
         )
-        say(f"  {item['file'][:14]:14s} {want:32s} -> {top} {seconds}s")
+        say(f"  {item['file'][:14]:14s} {want:32s} -> {'（問玩家）' if unsure else ''}{top} {seconds}s")
     report[key] = accuracy_metrics(rows)
     report[rows_key] = rows
 
@@ -356,7 +352,7 @@ async def _affix_start_gate(panel: Panel, checks: dict) -> None:
 async def affix_group(panel: Panel, report: dict, item: dict) -> None:
     """A base-kind picture read in the affix (模糊搜尋) form: the reading itself fills the base and every recognised
     condition — the attributes are ticked, and the numbers the reader read are filled in and marked as captured — the
-    status names the item as English（中文）, and no query is started. `item` is the truth entry of the picture."""
+    status names the item as 中文（English）, and no query is started. `item` is the truth entry of the picture."""
     checks = report.setdefault("affix", {})
     checks["file"] = item["file"]
     checks["expect"] = item["expect"]
@@ -371,9 +367,9 @@ async def affix_group(panel: Panel, report: dict, item: dict) -> None:
     )
     state = await _read_picture(panel, DATA / item["file"])
     status, rows = state["status"], state["affixRows"]
-    # (a) the status holds the recognised name as English（中文）: a Latin name, a full-width open bracket, some Chinese
+    # (a) the status holds the recognised name as 中文（English）: some Chinese, a full-width open bracket, a Latin name
     # and the closing bracket. The 「只認出底材（不會依品質篩選）」 prefix has no Latin name before its bracket.
-    label = re.search(r"[A-Za-z][A-Za-z0-9' \-]*（[^（）]*[\u3400-\u9fff][^（）]*）", status)
+    label = re.search(r"[\u3400-\u9fff][^（）]*（[A-Za-z][A-Za-z0-9' \-]*）", status)
     boxed = [r for r in rows if r["box"] and r["on"] and not r["unmapped"]]
     checks["status"] = status
     checks["label"] = label.group(0) if label else ""
@@ -413,6 +409,8 @@ async def drive(
         # Choices remembered by the panel (auto-recognise) must not leak between runs. The picture groups drive the
         # buttons themselves, so auto-recognise is off for them; auto_group turns it on.
         await panel.evaluate("chrome.storage.local.set({ ocrAuto: false })")
+        # What the reader learned from earlier choices (jevCorrections) must not decide a read of this run: start empty.
+        await panel.evaluate("chrome.storage.local.remove('jevCorrections')")
         # Without a saved invite code the panel shows the welcome screen, where "no query started" proves nothing:
         # a placeholder code puts it on the query form (it is never sent anywhere unless a query starts).
         had_invite = await panel.evaluate("chrome.storage.local.get('invite').then((r) => Boolean(r.invite))")
@@ -431,13 +429,65 @@ async def drive(
         if not skip_download and not skip_accuracy:
             say("自動辨識組：有模型時自動讀，沒模型時不自動下載…")
             await auto_group(panel, report)
+        if not skip_accuracy:
+            say("學習組：不確定的圖，選同一個名稱兩次後第三次自動填入…")
+            await learning_group(panel, report, [*report.get("rows", []), *report.get("rows_holdout", [])])
         if affix_item:
             say("詞綴組：讀一張底材圖，條件自動填入、值留空…")
             await affix_group(panel, report, affix_item)
         await panel.evaluate("chrome.storage.local.remove('ocrAuto')")  # leave nothing chosen behind
+        await panel.evaluate("chrome.storage.local.remove('jevCorrections')")
         if not had_invite:
             await panel.evaluate("chrome.storage.local.remove('invite')")
     return report
+
+
+PICK_CANDIDATE = """(() => {
+  const b = [...document.querySelectorAll('#ocr-candidates button')].find((x) => x.dataset.name === %s);
+  if (!b) return 'no-button';
+  b.click();
+  return 'clicked';
+})()"""
+
+
+async def _fresh_read(panel: Panel, picture: Path) -> dict:
+    """The panel restarted (what it stored is read again), the name form open, one picture read."""
+    await panel.reload()
+    await panel.evaluate("document.getElementById('choose-name').click()")
+    await panel.evaluate("document.getElementById('item').value = ''")
+    return await _read_picture(panel, picture)
+
+
+async def learning_group(panel: Panel, report: dict, rows: list[dict]) -> None:
+    """The correction memory in the real panel: a picture the reader is not sure about is read three times, each time
+    after a restart of the panel. The player picks the right name on the first two; the second read lists it first
+    with 「你上次選過這個」 and still asks, the third fills it by itself. The store is emptied before and after, so
+    nothing here depends on what an earlier run left. A run with no unsure picture in the accuracy groups skips it."""
+    checks = report.setdefault("learning", {})
+    row = next((r for r in rows if r.get("unsure") and r.get("ok")), None)
+    if not row:
+        checks["skipped"] = "沒有不確定的圖片可用"
+        say("  學習組：沒有不確定的圖片，略過")
+        return
+    name = row["want"].split(":", 1)[1]
+    checks["file"] = row["file"]
+    checks["expect"] = name
+    await panel.evaluate("chrome.storage.local.remove('jevCorrections')")
+    first = await _fresh_read(panel, DATA / row["file"])
+    checks["first_asks"] = first["unsure"] and not first["item"]
+    checks["first_pick"] = await panel.evaluate(PICK_CANDIDATE % json.dumps(name)) == "clicked"
+    await asyncio.sleep(3)  # the memory writes after a short delay
+    second = await _fresh_read(panel, DATA / row["file"])
+    top = second["candidates"][0] if second["candidates"] else {}
+    checks["second_lists_first"] = top.get("name") == name and top.get("learned") == "1"
+    checks["second_still_asks"] = second["unsure"] and not second["item"]
+    checks["second_pick"] = await panel.evaluate(PICK_CANDIDATE % json.dumps(name)) == "clicked"
+    await asyncio.sleep(3)
+    third = await _fresh_read(panel, DATA / row["file"])
+    checks["third_fills_by_itself"] = not third["unsure"] and bool(third["item"]) and third["firstName"] == name
+    checks["third_status"] = third["status"]
+    await panel.evaluate("chrome.storage.local.remove('jevCorrections')")
+    say(f"  學習組：{row['file']} {name}：{checks}")
 
 
 async def auto_group(panel: Panel, report: dict) -> None:
@@ -450,7 +500,7 @@ async def auto_group(panel: Panel, report: dict) -> None:
     await panel.evaluate("document.getElementById('item').value = ''")
     await panel.set_files("#ocr-file", [DATA / "image-4.png"])
     state = await _wait_read(panel, 120)
-    row["reads_by_itself_with_model"] = bool(state["time"]) and state["item"] == "Small Charm"
+    row["reads_by_itself_with_model"] = bool(state["time"]) and state["firstName"] == "Small Charm"
     row["did_not_start_a_query"] = await panel.evaluate(
         "document.body.dataset.view === 'ready' && document.getElementById('banner').hidden"
     )
@@ -513,6 +563,10 @@ def verdict(report: dict, floors: dict | None = None, holdout: dict | None = Non
     if accuracy and floors:
         failures += _floor_failures(accuracy, floors)
     accuracy_holdout = report.get("accuracy_holdout")
+    # A name the panel filled in by itself must be the right one: the unsure rule keeps the wrong ones off the field.
+    for label, block in (("調校組", accuracy), ("保留組", accuracy_holdout)):
+        if block and block.get("auto_wrong"):
+            failures.append(f"{label}有 {block['auto_wrong']} 張圖自己填了錯的名稱（這種讀法應該請玩家選）")
     if accuracy_holdout:
         if holdout is None:
             say("  保留組下限剛建立：這次的數字會成為下一次的保留組下限")
@@ -522,12 +576,8 @@ def verdict(report: dict, floors: dict | None = None, holdout: dict | None = Non
     if download:
         for key in (
             "no_consent_element",
-            "notice_shown",
+            "no_download_ui",
             "requests_started_by_themselves",
-            "download_without_a_click",
-            "progress_bar_seen",
-            "cancel_stops_download",
-            "cancel_needs_no_retry",
             "only_fixed_urls",
             "second_run_no_download",
             "after_reload_no_download",
@@ -536,11 +586,13 @@ def verdict(report: dict, floors: dict | None = None, holdout: dict | None = Non
         ):
             if not download.get(key):
                 failures.append(f"C 組：{key} 沒通過（{download.get(key)!r}）")
-        if not download.get("progress_seen"):
-            failures.append("C 組：沒看到下載進度")
     for key, value in (report.get("auto") or {}).items():
         if isinstance(value, bool) and not value:
             failures.append(f"自動辨識：{key} 沒通過（{report['auto']}）")
+    learning = report.get("learning") or {}
+    for key, value in learning.items():
+        if isinstance(value, bool) and not value:
+            failures.append(f"學習組：{key} 沒通過（{learning}）")
     affix = report.get("affix")
     if affix:
         for key in ("label_ok", "rows_present", "all_mapped_on", "values_filled", "values_marked", "no_query_started"):
