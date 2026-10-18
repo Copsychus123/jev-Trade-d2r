@@ -21,7 +21,7 @@
 //   equivalent for minAreaRect), cv2.minAreaRect, cv2.boxPoints,
 //   cv2.fillPoly, cv2.mean(mask), cv2.getPerspectiveTransform,
 //   cv2.warpPerspective(INTER_CUBIC, BORDER_REPLICATE), np.rot90,
-//   pyclipper round-offset of a rectangle (== inflate by d on both axes),
+//   pyclipper round-offset of an integer polygon (Clipper 6.4.2 arithmetic, clipperRoundOffset),
 //   shapely Polygon area/length.
 //
 // Config used (rapidocr config.yaml, PP-OCRv6 small det/rec + v2.0 mobile cls):
@@ -389,29 +389,80 @@ function dilate2x2(bin, w, h) {
   return mask;
 }
 
+const f32 = Math.fround;
+
+// Clipper's own Round (half away from zero), the integer snap of every offset vertex.
+const clipperRound = (x) => (x < 0 ? Math.ceil(x - 0.5) : Math.floor(x + 0.5));
+
+/**
+ * pyclipper's `PyclipperOffset(JT_ROUND, ET_CLOSEDPOLYGON).Execute(distance)` of an integer polygon, as the integer
+ * vertices of the offset outline (Clipper 6.4.2 DoOffset / OffsetPoint / DoRound with its default arc tolerance 0.25;
+ * the union pass that follows only merges points and cannot move the hull). Clipper works on integers: the rectangle
+ * goes in with its corners cut to whole pixels and every arc vertex comes out rounded to one, which is what the
+ * reference's boxes inherit; inflating the exact float rectangle instead (this port's first version) put 14 of the 21
+ * boxes of image-58 one or two pixels off the reference, on the very same probability map.
+ */
+function clipperRoundOffset(polygon, delta) {
+  let doubleArea = 0;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    doubleArea += (polygon[j][0] + polygon[i][0]) * (polygon[j][1] - polygon[i][1]);
+  }
+  const src = doubleArea > 0 ? polygon.slice().reverse() : polygon; // Clipper offsets outwards for a positive area
+  const n = src.length;
+  const normals = src.map(([x, y], i) => {
+    const [x2, y2] = src[(i + 1) % n];
+    const inverse = 1 / Math.sqrt((x2 - x) ** 2 + (y2 - y) ** 2);
+    return [(y2 - y) * inverse, -(x2 - x) * inverse];
+  });
+  const arcTolerance = 0.25;
+  const steps = Math.min(Math.PI / Math.acos(1 - arcTolerance / Math.abs(delta)), Math.abs(delta) * Math.PI);
+  const sin = Math.sin((2 * Math.PI) / steps);
+  const cos = Math.cos((2 * Math.PI) / steps);
+  const stepsPerRad = steps / (2 * Math.PI);
+  const out = [];
+  let k = n - 1;
+  for (let j = 0; j < n; j++) {
+    const [kx, ky] = normals[k];
+    const [jx, jy] = normals[j];
+    const at = (nx, ny) => [clipperRound(src[j][0] + nx * delta), clipperRound(src[j][1] + ny * delta)];
+    const sinA = Math.max(-1, Math.min(1, kx * jy - jx * ky));
+    if (Math.abs(sinA * delta) < 1 && kx * jx + jy * ky > 0) {
+      out.push(at(kx, ky)); // an angle of about 0 degrees: one point
+    } else if (sinA * delta < 0) {
+      out.push(at(kx, ky), src[j], at(jx, jy)); // a concave corner
+    } else {
+      const arc = Math.max(clipperRound(stepsPerRad * Math.abs(Math.atan2(sinA, kx * jx + ky * jy))), 1);
+      let [x, y] = [kx, ky];
+      for (let i = 0; i < arc; i++) {
+        out.push(at(x, y));
+        [x, y] = [x * cos - sin * y, x * sin + y * cos];
+      }
+      out.push(at(jx, jy));
+    }
+    k = j;
+  }
+  return out;
+}
+
 // One contour as a destination-space quad plus its score, or null when it fails a size/score test:
-// get_mini_boxes, box_score_fast, unclip, and the scaling back to the destination image.
+// get_mini_boxes, box_score_fast, unclip, and the scaling back to the destination image. cv2.boxPoints hands back
+// float32 corners, which pyclipper then cuts to integers, so the corners go through `fround` first.
 function detCandidateBox(contour, prob, mapW, mapH, destW, destH) {
   const cfg = CFG.det;
   const rect0 = minAreaRect(contour.pts);
   if (Math.min(rect0.w, rect0.h) < cfg.min_size) return null;
-  const quad0 = rectCorners(rect0);
+  const quad0 = rectCorners(rect0).map(([x, y]) => [f32(x), f32(y)]);
   // config.yaml sets score_mode: fast -> box_score_fast over the minAreaRect quad
   const score = boxScoreFast(prob, mapW, mapH, quad0);
   if (cfg.box_thresh > score) return null;
 
-  // unclip: pyclipper round offset of a rectangle by d == rect inflated by d
-  // on both axes (corners rounded, so minAreaRect == w+2d x h+2d, same centre).
-  const area = rect0.w * rect0.h;
-  const perim = 2 * (rect0.w + rect0.h);
-  const d = (area * cfg.unclip_ratio) / perim;
-  const w2 = rect0.w + 2 * d;
-  const h2 = rect0.h + 2 * d;
-  if (Math.min(w2, h2) < cfg.min_size + 2) return null;
+  const distance = (rect0.w * rect0.h * cfg.unclip_ratio) / (2 * (rect0.w + rect0.h)); // area * ratio / perimeter
+  const rect1 = minAreaRect(clipperRoundOffset(quad0.map(([x, y]) => [trunc(x), trunc(y)]), distance));
+  if (Math.min(rect1.w, rect1.h) < cfg.min_size + 2) return null;
 
-  const quad = rectCorners(rect0, w2, h2).map(([x, y]) => [
-    clamp(pyRound((x / mapW) * destW), 0, destW),
-    clamp(pyRound((y / mapH) * destH), 0, destH),
+  const quad = rectCorners(rect1).map(([x, y]) => [
+    clamp(pyRound(f32(f32(f32(x) / mapW) * destW)), 0, destW),
+    clamp(pyRound(f32(f32(f32(y) / mapH) * destH)), 0, destH),
   ]);
   return { quad, score };
 }
@@ -893,6 +944,26 @@ export class OcrPipeline {
     return results;
   }
 
+  /**
+   * The recogniser's reading of each crop, where `classified` is what the classifier returned for `original` (the same
+   * crop object when it said "upright", a turned copy when it said "upside down"). A turn is only a claim: the
+   * classifier squashes every crop to 192 x 48, so a very long line (ratio over 20) is no longer a shape it knows and it
+   * can call an upright line upside down (image-58's 692 x 29 name line: 0.93, past the 0.9 threshold, read as "0-"
+   * at 0.56 while the upright crop reads the whole line at 0.997). A turned crop is therefore also read upright and the
+   * higher score wins; a tie keeps the classifier's turn, so truly upside-down text still reads. The extra read costs
+   * nothing for the pictures this reader gets, where the classifier turns 5 crops of 914.
+   */
+  async recognizeChecked(original, classified) {
+    const out = await this.recognize(classified);
+    const turned = classified.map((_, i) => i).filter((i) => classified[i] !== original[i]);
+    if (!turned.length) return out;
+    const upright = await this.recognize(turned.map((i) => original[i]));
+    turned.forEach((i, k) => {
+      if (upright[k].score > out[i].score) out[i] = upright[k];
+    });
+    return out;
+  }
+
   ctcDecode(data, n, T, C) {
     const off = n * T * C;
     const chars = [];
@@ -947,7 +1018,7 @@ export class OcrPipeline {
       crops = [];
       for (let i = 0; i < allCrops.length; i++) {
         const [classified] = await this.classify([allCrops[i]]);
-        const [recResult] = await this.recognize([classified]);
+        const [recResult] = await this.recognizeChecked([allCrops[i]], [classified]);
         if (isStatLine(recResult?.text ?? "")) {
           break;
         }
@@ -959,7 +1030,7 @@ export class OcrPipeline {
     } else {
       const clsCrops = await this.classify(crops);
       tCls = performance.now();
-      recOut = await this.recognize(clsCrops);
+      recOut = await this.recognizeChecked(crops, clsCrops);
       tRec = performance.now();
     }
 

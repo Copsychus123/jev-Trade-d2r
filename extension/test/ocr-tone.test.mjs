@@ -24,6 +24,13 @@ test("rare yellow is not gold even when it is pale, and magic blue and white are
   assert.equal(toneQuality([242, 238, 222]), "white"); // image-46: a gold name washed out by a phone photo
 });
 
+test("the gold band edge separates a cream unique at saturation 0.27 from a rare yellow at 0.36, with the edge at 0.31", () => {
+  assert.equal(toneQuality([253, 248, 185]), "gold"); // 0.269
+  assert.equal(toneQuality([250, 250, 160]), "yellow"); // 0.360
+  assert.equal(toneQuality([253, 250, 177]), "gold"); // 0.300, just under the edge
+  assert.equal(toneQuality([253, 250, 172]), "yellow"); // 0.320, just over it
+});
+
 test("a missing, dark or broken tone is no quality", () => {
   assert.equal(toneQuality(null), null);
   assert.equal(toneQuality(undefined), null);

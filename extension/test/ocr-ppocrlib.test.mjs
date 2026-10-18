@@ -12,6 +12,7 @@ import {
   getRotateCropImage,
   inkTone,
 } from "../src/ocr/ppocrlib.js";
+import { toneQuality } from "../src/ocr/tone.js";
 
 test("buildCharacterList adds blank and space and drops one trailing newline", () => {
   const expected = ["blank", "a", "b", " "];
@@ -71,6 +72,28 @@ test("dbPostprocess returns one inflated box for a filled probability rectangle"
     assert.ok(Math.abs(x - expected[i][0]) <= 1, `corner ${i} x (${x} vs ${expected[i][0]})`);
     assert.ok(Math.abs(y - expected[i][1]) <= 1, `corner ${i} y (${y} vs ${expected[i][1]})`);
   });
+});
+
+test("dbPostprocess puts a bar's box where the reference puts it: the rectangle is cut to whole pixels and offset the way pyclipper does", () => {
+  // Three bars on a 96 x 320 map, scaled to a 192 x 640 picture. The expected boxes are what rapidocr 3.9.2's
+  // DBPostProcess (thresh 0.3, box_thresh 0.5, unclip 1.6, dilation) returns for the same maps; inflating the exact float
+  // rectangle instead (this port's first version) puts each of them one to three pixels off, which is enough to flip the
+  // classifier on a long line (image-58: 14 of its 21 boxes were off, its name line read as "0-").
+  const bars = [
+    { x0: 29, x1: 213, y0: 35, hgt: 13, skew: 0, ref: [[38, 50], [446, 50], [446, 116], [38, 116]] },
+    { x0: 24, x1: 161, y0: 27, hgt: 12, skew: 1, ref: [[30, 36], [340, 36], [340, 98], [30, 98]] },
+    { x0: 44, x1: 174, y0: 21, hgt: 9, skew: 3, ref: [[73, 26], [362, 32], [361, 80], [72, 74]] },
+  ];
+  for (const bar of bars) {
+    const [mapW, mapH] = [320, 96];
+    const prob = new Float32Array(mapW * mapH);
+    for (let x = bar.x0; x < bar.x1; x++) {
+      const drop = Math.round((bar.skew * (x - bar.x0)) / (bar.x1 - bar.x0)); // a line that sinks a few pixels along its length
+      for (let y = bar.y0 + drop; y < bar.y0 + drop + bar.hgt; y++) prob[y * mapW + x] = 0.9;
+    }
+    const { boxes } = dbPostprocess(prob, mapW, mapH, 640, 192);
+    assert.deepEqual(boxes, [bar.ref], `bar x ${bar.x0}-${bar.x1}, skew ${bar.skew}`);
+  }
 });
 
 test("sortedBoxes orders by y band then x", () => {
@@ -164,6 +187,105 @@ test("ctcDecode drops repeats and blanks and averages the kept probabilities", (
   assert.deepEqual(pipeline.ctcDecode(logits, 0, T, C), { text: "ab", score: 0.6 });
 });
 
+// --- the recogniser's input width, and the classifier's turn ------------------------------------------------------------
+
+const fakeOrt = {
+  Tensor: class {
+    constructor(type, data, dims) {
+      this.type = type;
+      this.data = data;
+      this.dims = dims;
+    }
+  },
+};
+
+/** The input dims every recogniser run was fed when `crops` are recognised (the session answers one blank step each). */
+async function recInputDims(crops) {
+  const fed = [];
+  const rec = {
+    inputNames: ["x"],
+    outputNames: ["y"],
+    run: async (feed) => {
+      fed.push(feed.x.dims);
+      return { y: { data: new Float32Array(feed.x.dims[0] * 2), dims: [feed.x.dims[0], 1, 2] } };
+    },
+  };
+  await new OcrPipeline(fakeOrt, { det: null, cls: null, rec }, ["blank", "a"]).recognize(crops);
+  return fed;
+}
+const blankCrop = (w, h) => ({ data: new Uint8Array(w * h * 3), w, h });
+
+test("a very wide box is read at its own dynamic width (48 times its ratio), the way the reference reads it, not squeezed to 320", async () => {
+  // image-58's name line is a 692 x 29 box: ratio 23.86, so the input is trunc(48 * 23.86) = 1145 wide.
+  assert.deepEqual(await recInputDims([blankCrop(692, 29)]), [[1, 3, 48, 1145]]);
+});
+
+test("a normal box keeps the 320-wide recogniser input, and the widest box of a batch sets the width of the whole batch", async () => {
+  assert.deepEqual(await recInputDims([blankCrop(174, 28)]), [[1, 3, 48, 320]]); // ratio 6.2 fits inside 320
+  assert.deepEqual(await recInputDims([blankCrop(692, 29), blankCrop(174, 28)]), [[2, 3, 48, 1145]]);
+});
+
+/** A pipeline whose recogniser answers by crop object, counting its calls; `turn` makes classify turn the crops it names. */
+function turnedPipeline(readings, turn = []) {
+  const calls = [];
+  const pipeline = new OcrPipeline(null, null, []);
+  pipeline.classify = async (crops) => crops.map((crop) => (turn.includes(crop) ? { ...crop, turned: true } : crop));
+  pipeline.recognize = async (crops) => {
+    calls.push(crops.length);
+    return crops.map((crop) => readings(crop));
+  };
+  return { pipeline, calls };
+}
+
+test("a crop the classifier turned that reads worse than its upright self keeps the upright reading", async () => {
+  // image-58 measured: turned "0-" at 0.56, upright the whole name line at 0.997.
+  const wide = blankCrop(692, 29);
+  const { pipeline, calls } = turnedPipeline(
+    (crop) => (crop.turned ? { text: "0-", score: 0.56 } : { text: "杜墨菲斯托斯", score: 0.997 }),
+    [wide],
+  );
+  const [original] = [wide];
+  const classified = await pipeline.classify([original]);
+  assert.deepEqual(await pipeline.recognizeChecked([original], classified), [{ text: "杜墨菲斯托斯", score: 0.997 }]);
+  assert.deepEqual(calls, [1, 1], "one read for the classified crop, one more for the turned one's upright self");
+});
+
+test("a crop that really is upside down keeps the turned reading, and crops the classifier left alone cost no second read", async () => {
+  const upsideDown = blankCrop(100, 30);
+  const fine = blankCrop(120, 30);
+  const { pipeline, calls } = turnedPipeline(
+    (crop) => (crop === fine ? { text: "好", score: 0.99 } : crop.turned ? { text: "正", score: 0.95 } : { text: "亂", score: 0.2 }),
+    [upsideDown],
+  );
+  const originals = [upsideDown, fine];
+  const classified = await pipeline.classify(originals);
+  assert.deepEqual(await pipeline.recognizeChecked(originals, classified), [
+    { text: "正", score: 0.95 },
+    { text: "好", score: 0.99 },
+  ]);
+  const none = turnedPipeline(() => ({ text: "好", score: 0.9 }));
+  await none.pipeline.recognizeChecked([fine], await none.pipeline.classify([fine]));
+  assert.deepEqual(none.calls, [1], "nothing was turned, so nothing is read twice");
+});
+
+test("a whole picture whose first line the classifier turns upside down still reads that line upright, in both reading modes", async () => {
+  const w = 300;
+  const h = 100;
+  const data = new Uint8Array(w * h * 3);
+  const box = (y0, high) => [[10, y0], [290, y0], [290, y0 + high], [10, y0 + high]];
+  for (const nameRegionOnly of [false, true]) {
+    const pipeline = new OcrPipeline(null, null, []);
+    pipeline.detect = async () => [box(10, 20), box(50, 30)];
+    // The classifier turns the first line (20 high: 14:1, the wide one) and leaves the second (30 high) alone.
+    pipeline.classify = async (crops) => crops.map((crop) => (crop.h === 20 ? { ...crop, turned: true } : crop));
+    pipeline.recognize = async (crops) =>
+      crops.map((crop) => (crop.turned ? { text: "0-", score: 0.56 } : { text: "名稱", score: 0.99 }));
+    const { lines } = await pipeline.recognizeImage({ data, w, h }, { nameRegionOnly });
+    assert.equal(lines[0].text, "名稱", `nameRegionOnly ${nameRegionOnly}`);
+  }
+});
+
+
 // --- the lettering colour of a line (inkTone), which the matcher reads as the item's quality ---------------------------
 
 /** A BGR crop of `w` x `h` whose pixel at column x is `colourAt(x)` ([r, g, b]) on every row, with a dark top row. */
@@ -226,4 +348,74 @@ test("each recognized line keeps the colour of its own crop, and a line dropped 
   ];
   const { lines } = await pipeline.recognizeImage({ data, w, h });
   assert.deepEqual(lines.map((line) => [line.text, line.tone]), [["甲", [198, 178, 120]], ["丙", [0, 251, 0]]]);
+});
+
+// --- the colour must not depend on where the crop window lands (1-2 px of detector jitter) -----------------------------
+
+// A tooltip is translucent over the game scene, so what lies behind the lettering is dark but not neutral: here bluish.
+const SCENE = [10, 40, 90];
+
+/**
+ * A 150 x 30 picture of one lettered line on that tooltip: glyph columns of the `core` colour (three of every four
+ * columns, rows 8-21), a column of anti-aliased pixels between the glyphs and a blended row above and below the
+ * lettering, the way a rendered line looks. Returns the BGR picture and a function cutting a window out of it.
+ */
+function letteredLine(core) {
+  const [W, H] = [150, 30];
+  const blend = (k) => core.map((v, i) => Math.round(v * k + SCENE[i] * (1 - k)));
+  const data = new Uint8Array(W * H * 3);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      let colour = SCENE;
+      if (x >= 10 && x < 140 && y >= 7 && y <= 22) {
+        const inRows = y >= 8 && y <= 21;
+        if (x % 4 === 3) colour = blend(0.5);
+        else colour = inRows ? core : blend(0.6);
+      }
+      data.set([colour[2], colour[1], colour[0]], (y * W + x) * 3);
+    }
+  }
+  const windowAt = (x0, y0, w, h) => {
+    const out = new Uint8Array(w * h * 3);
+    for (let y = 0; y < h; y++) out.set(data.subarray(((y0 + y) * W + x0) * 3, ((y0 + y) * W + x0 + w) * 3), y * w * 3);
+    return { data: out, w, h };
+  };
+  return { windowAt };
+}
+
+/** The tone of one lettered line seen through crop windows moved by -2..+2 px both ways (25 windows). */
+function shiftedTones(core) {
+  const { windowAt } = letteredLine(core);
+  const tones = [];
+  for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) tones.push(inkTone(windowAt(12 + dx, 5 + dy, 100, 20)));
+  return tones;
+}
+const saturationOf = ([r, g, b]) => (Math.max(r, g, b) - Math.min(r, g, b)) / Math.max(r, g, b);
+
+test("a gold line, a rare yellow line and a white line keep their colour class and saturation when the crop moves 1-2 px", () => {
+  const lines = [
+    ["gold", [253, 249, 187]], // saturation 0.26: the cream capture of a unique, the closest to the yellow band
+    ["yellow", [250, 250, 160]], // saturation 0.36: the palest rare of the corpus
+    ["white", [250, 250, 250]],
+  ];
+  for (const [quality, core] of lines) {
+    const tones = shiftedTones(core);
+    assert.deepEqual([...new Set(tones.map(toneQuality))], [quality], `${quality}: ${JSON.stringify(tones[0])}`);
+    const saturations = tones.map(saturationOf);
+    const spread = Math.max(...saturations) - Math.min(...saturations);
+    assert.ok(spread < 0.02, `${quality}: saturation moved by ${spread.toFixed(3)} across the 25 windows`);
+  }
+});
+
+test("the 0.27 and 0.36 saturations stay on their own side of the gold band edge in every shifted window", () => {
+  const gold = shiftedTones([253, 248, 185]).map(saturationOf); // 0.269
+  const yellow = shiftedTones([250, 250, 160]).map(saturationOf); // 0.360
+  assert.ok(Math.max(...gold) < 0.31, `the gold line reached ${Math.max(...gold).toFixed(3)}`);
+  assert.ok(Math.min(...yellow) >= 0.31, `the rare line fell to ${Math.min(...yellow).toFixed(3)}`);
+});
+
+test("a red line and a crafted-orange line are refused in every shifted window", () => {
+  for (const core of [[255, 100, 100], [192, 64, 32], [255, 168, 0]]) {
+    assert.deepEqual([...new Set(shiftedTones(core).map(toneQuality))], [null], JSON.stringify(core));
+  }
 });
