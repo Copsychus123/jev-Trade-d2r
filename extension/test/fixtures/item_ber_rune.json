@@ -1,0 +1,165 @@
+{
+ "items": [
+  {
+   "id": "4149485449",
+   "type": "runes",
+   "buy_price": 0,
+   "active": true,
+   "mode": null,
+   "unlocked_at": null,
+   "created_at": "2021-09-17T18:07:30.000Z",
+   "slug": "ber-rune",
+   "name": "Ber Rune",
+   "variants": null,
+   "tags": [
+    {
+     "tag_id": 219,
+     "tag": "rune",
+     "category": "Item Type",
+     "format": null
+    }
+   ],
+   "properties": [
+    {
+     "property_id": 798,
+     "name": "Platform",
+     "options": [
+      "PC",
+      "switch",
+      "playstation",
+      "xbox"
+     ],
+     "img": null,
+     "type": "string",
+     "id": 798,
+     "required": true,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": null,
+     "format": {
+      "values": {
+       "PC": {
+        "color": "#bababa"
+       },
+       "xbox": {
+        "img": "https://cdn.nookazon.com/icons/xbox.svg",
+        "color": "#117b11"
+       },
+       "switch": {
+        "img": "https://cdn.nookazon.com/icons/switch.svg",
+        "color": "#ff000a"
+       },
+       "playstation": {
+        "img": "https://cdn.nookazon.com/icons/playstation.svg",
+        "color": "#006cca"
+       }
+      },
+      "default": true,
+      "preferred": true,
+      "skipOffer": true,
+      "globalDefault": true,
+      "input_position": "right"
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 799,
+     "name": "Mode",
+     "options": [
+      "softcore",
+      "hardcore"
+     ],
+     "img": null,
+     "type": "string",
+     "id": 799,
+     "required": true,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": null,
+     "format": {
+      "values": {
+       "hardcore": {
+        "img": "https://cdn.nookazon.com/diablo2resurrected/properties/hardcore.png",
+        "color": "#ff7353"
+       }
+      },
+      "default": true,
+      "preferred": true,
+      "skipOffer": true,
+      "globalDefault": true,
+      "input_position": "right"
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 800,
+     "name": "Ladder",
+     "options": [
+      "Ladder",
+      "Non Ladder"
+     ],
+     "img": null,
+     "type": "bool",
+     "id": 800,
+     "required": true,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": null,
+     "format": {
+      "values": {
+       "Ladder": {
+        "color": "red"
+       },
+       "Non Ladder": {
+        "color": "#398bff"
+       }
+      },
+      "default": true,
+      "preferred": true,
+      "skipOffer": true,
+      "globalDefault": true
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 1854,
+     "name": "Game version",
+     "options": [
+      "classic (base game)",
+      "lord of destruction",
+      "reign of the warlock"
+     ],
+     "img": null,
+     "type": "string",
+     "id": 1854,
+     "required": true,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": null,
+     "format": {
+      "values": {
+       "classic (base game)": {
+        "color": ""
+       },
+       "lord of destruction": {
+        "color": "#E66220"
+       },
+       "reign of the warlock": {
+        "color": "#CC354B"
+       }
+      },
+      "default": true,
+      "preferred": true,
+      "skipOffer": true,
+      "globalDefault": true
+     },
+     "item_format": null
+    }
+   ]
+  }
+ ]
+}

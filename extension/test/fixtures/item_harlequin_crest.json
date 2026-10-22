@@ -1,0 +1,559 @@
+{
+ "items": [
+  {
+   "id": "2487112490",
+   "type": "uniques",
+   "buy_price": 0,
+   "active": true,
+   "mode": null,
+   "unlocked_at": null,
+   "created_at": "2021-09-17T18:07:04.753Z",
+   "slug": "harlequin-crest",
+   "name": "Harlequin Crest",
+   "variants": null,
+   "tags": [
+    {
+     "tag_id": 145,
+     "tag": "Helm",
+     "category": "Item Type",
+     "format": null
+    },
+    {
+     "tag_id": 184,
+     "tag": "Elite",
+     "category": "Tier",
+     "format": null
+    },
+    {
+     "tag_id": 237,
+     "tag": "Head",
+     "category": "Body Location",
+     "format": null
+    },
+    {
+     "tag_id": 289,
+     "tag": "Unique",
+     "category": "Item Type",
+     "format": null
+    }
+   ],
+   "properties": [
+    {
+     "property_id": 399,
+     "name": "+{{value}} Defense",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 399,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": null,
+     "format": {
+      "index": 71
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 412,
+     "name": "+{{value}} to Mana (Based on Character Level)",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 412,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": null,
+     "format": {
+      "index": 53,
+      "decimal": true,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 413,
+     "name": "Damage Reduced by {{value}}",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 413,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": null,
+     "format": {
+      "index": 22,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 421,
+     "name": "+{{value}} to Energy",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 421,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 2,
+     "format": {
+      "index": 61,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 429,
+     "name": "+{{value}} to Dexterity",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 429,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 2,
+     "format": {
+      "index": 65,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 437,
+     "name": "+{{value}} to Strength",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 437,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 2,
+     "format": {
+      "index": 67,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 438,
+     "name": "+{{value}} to Life (Based on Character Level)",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 438,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": null,
+     "format": {
+      "index": 57,
+      "decimal": true,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 461,
+     "name": "{{value}}% Better Chance of Getting Magic Items",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 461,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 50,
+     "format": {
+      "index": 8,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 582,
+     "name": "+{{value}} to Vitality",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 582,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 2,
+     "format": {
+      "index": 63,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 587,
+     "name": "+{{value}} to All Skills",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 587,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 2,
+     "format": {
+      "index": 156,
+      "default": false,
+      "globalDefault": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 738,
+     "name": "Ethereal",
+     "options": null,
+     "img": null,
+     "type": "bool",
+     "id": 738,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": null,
+     "format": {
+      "default": true,
+      "globalDefault": true,
+      "input_position": "right"
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 796,
+     "name": "Required Level {{value}}",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 796,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": null,
+     "format": {
+      "default": false,
+      "skipOffer": true,
+      "globalDefault": true,
+      "input_position": "right"
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 798,
+     "name": "Platform",
+     "options": [
+      "PC",
+      "switch",
+      "playstation",
+      "xbox"
+     ],
+     "img": null,
+     "type": "string",
+     "id": 798,
+     "required": true,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": null,
+     "format": {
+      "values": {
+       "PC": {
+        "color": "#bababa"
+       },
+       "xbox": {
+        "img": "https://cdn.nookazon.com/icons/xbox.svg",
+        "color": "#117b11"
+       },
+       "switch": {
+        "img": "https://cdn.nookazon.com/icons/switch.svg",
+        "color": "#ff000a"
+       },
+       "playstation": {
+        "img": "https://cdn.nookazon.com/icons/playstation.svg",
+        "color": "#006cca"
+       }
+      },
+      "default": true,
+      "preferred": true,
+      "skipOffer": true,
+      "globalDefault": true,
+      "input_position": "right"
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 799,
+     "name": "Mode",
+     "options": [
+      "softcore",
+      "hardcore"
+     ],
+     "img": null,
+     "type": "string",
+     "id": 799,
+     "required": true,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": null,
+     "format": {
+      "values": {
+       "hardcore": {
+        "img": "https://cdn.nookazon.com/diablo2resurrected/properties/hardcore.png",
+        "color": "#ff7353"
+       }
+      },
+      "default": true,
+      "preferred": true,
+      "skipOffer": true,
+      "globalDefault": true,
+      "input_position": "right"
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 800,
+     "name": "Ladder",
+     "options": [
+      "Ladder",
+      "Non Ladder"
+     ],
+     "img": null,
+     "type": "bool",
+     "id": 800,
+     "required": true,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": null,
+     "format": {
+      "values": {
+       "Ladder": {
+        "color": "red"
+       },
+       "Non Ladder": {
+        "color": "#398bff"
+       }
+      },
+      "default": true,
+      "preferred": true,
+      "skipOffer": true,
+      "globalDefault": true
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 932,
+     "name": "Unidentified",
+     "options": null,
+     "img": null,
+     "type": "bool",
+     "id": 932,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": null,
+     "format": {
+      "default": true,
+      "globalDefault": true
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 934,
+     "name": "Sockets",
+     "options": [
+      "Zod Rune",
+      "Cham Rune",
+      "Jah Rune",
+      "Ber Rune",
+      "Sur Rune",
+      "Lo Rune",
+      "Ohm Rune",
+      "Vex Rune",
+      "Gul Rune",
+      "Ist Rune",
+      "Mal Rune",
+      "Um Rune",
+      "Pul Rune",
+      "Lem Rune",
+      "Fal Rune",
+      "Ko Rune",
+      "Lum Rune",
+      "Io Rune",
+      "Hel Rune",
+      "Dol Rune",
+      "Shael Rune",
+      "Sol Rune",
+      "Amn Rune",
+      "Thul Rune",
+      "Ort Rune",
+      "Ral Rune",
+      "Tal Rune",
+      "Ith Rune",
+      "Eth Rune",
+      "Nef Rune",
+      "Tir Rune",
+      "Eld Rune",
+      "El Rune",
+      "Perfect Skull",
+      "Flawless Skull",
+      "Skull",
+      "Flawed Skull",
+      "Chipped Skull",
+      "Rainbow Facet: Cold Death",
+      "Rainbow Facet: Cold Level-Up",
+      "Rainbow Facet: Fire Death",
+      "Rainbow Facet: Fire Level-Up",
+      "Rainbow Facet: Lightning Death",
+      "Rainbow Facet: Lightning Level-Up",
+      "Rainbow Facet: Poison Death",
+      "Rainbow Facet: Poison Level-Up",
+      "Perfect Diamond",
+      "Flawless Diamond",
+      "Diamond",
+      "Flawed Diamond",
+      "Chipped Diamond",
+      "Perfect Ruby",
+      "Flawless Ruby",
+      "Ruby",
+      "Flawed Ruby",
+      "Chipped Ruby",
+      "Perfect Emerald",
+      "Flawless Emerald",
+      "Emerald",
+      "Flawed Emerald",
+      "Chipped Emerald",
+      "Perfect Sapphire",
+      "Flawless Sapphire",
+      "Sapphire",
+      "Flawed Sapphire",
+      "Chipped Sapphire",
+      "Perfect Topaz",
+      "Flawless Topaz",
+      "Topaz",
+      "Flawed Topaz",
+      "Chipped Topaz",
+      "Perfect Amethyst",
+      "Flawless Amethyst",
+      "Amethyst",
+      "Flawed Amethyst",
+      "Chipped Amethyst",
+      "Jewel",
+      "Defender’s Fire",
+      "Defender’s Bile",
+      "Protector’s Frost",
+      "Protector’s Stone",
+      "Guardian’s Thunder",
+      "Guardian’s Light"
+     ],
+     "img": null,
+     "type": "array",
+     "id": 934,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": null,
+     "format": {
+      "index": 197,
+      "allowMultiple": true
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 1854,
+     "name": "Game version",
+     "options": [
+      "classic (base game)",
+      "lord of destruction",
+      "reign of the warlock"
+     ],
+     "img": null,
+     "type": "string",
+     "id": 1854,
+     "required": true,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": null,
+     "format": {
+      "values": {
+       "classic (base game)": {
+        "color": ""
+       },
+       "lord of destruction": {
+        "color": "#E66220"
+       },
+       "reign of the warlock": {
+        "color": "#CC354B"
+       }
+      },
+      "default": true,
+      "preferred": true,
+      "skipOffer": true,
+      "globalDefault": true
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 1855,
+     "name": "Defense",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 1855,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 98,
+     "format": {
+      "index": 199,
+      "input_position": "right"
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 1865,
+     "name": "Physical Damage Received Reduced by {{value}}%",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 1865,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 10,
+     "format": {
+      "index": 22
+     },
+     "item_format": null
+    }
+   ]
+  }
+ ]
+}

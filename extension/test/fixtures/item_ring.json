@@ -1,0 +1,1299 @@
+{
+ "items": [
+  {
+   "id": "2390453209",
+   "type": "misc",
+   "buy_price": 0,
+   "active": true,
+   "mode": null,
+   "unlocked_at": null,
+   "created_at": "2021-09-23T02:48:51.215Z",
+   "slug": "ring",
+   "name": "Ring",
+   "variants": null,
+   "tags": [
+    {
+     "tag_id": 211,
+     "tag": "Ring",
+     "category": "Item Type",
+     "format": null
+    },
+    {
+     "tag_id": 287,
+     "tag": "Finger",
+     "category": "Body Location",
+     "format": null
+    }
+   ],
+   "properties": [
+    {
+     "property_id": 400,
+     "name": "+{{value}} to Mana",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 400,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 1,
+     "format": {
+      "index": 55,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 401,
+     "name": "Poison Resist +{{value}}%",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 401,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 5,
+     "format": {
+      "index": 34,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 413,
+     "name": "Damage Reduced by {{value}}",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 413,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 1,
+     "format": {
+      "index": 22,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 414,
+     "name": "Magic Damage Reduced by {{value}}",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 414,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 1,
+     "format": {
+      "index": 21,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 416,
+     "name": "+{{value}} to Minimum Damage",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 416,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 2,
+     "format": {
+      "index": 127,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 417,
+     "name": "Replenish Life +{{value}}",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 417,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 2,
+     "format": {
+      "index": 56,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 418,
+     "name": "+{{value}} to Life",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 418,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 1,
+     "format": {
+      "index": 59,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 419,
+     "name": "Poison Length Reduced by {{value}}%",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 419,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 25,
+     "format": {
+      "index": 18,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 421,
+     "name": "+{{value}} to Energy",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 421,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 1,
+     "format": {
+      "index": 61,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 422,
+     "name": "+{{value}} to Light Radius",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 422,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 1,
+     "format": {
+      "index": 6,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 423,
+     "name": "+{{value}} to Attack Rating",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 423,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 10,
+     "format": {
+      "index": 115,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 424,
+     "name": "{{value}}% Bonus to Attack Rating",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 424,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 5,
+     "format": {
+      "index": 117,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 426,
+     "name": "Cold Resist +{{value}}%",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 426,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 5,
+     "format": {
+      "index": 40,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 427,
+     "name": "Fire Resist +{{value}}%",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 427,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 5,
+     "format": {
+      "index": 36,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 428,
+     "name": "Lightning Resist +{{value}}%",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 428,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 5,
+     "format": {
+      "index": 38,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 429,
+     "name": "+{{value}} to Dexterity",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 429,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 1,
+     "format": {
+      "index": 65,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 433,
+     "name": "{{value}}% Chance to cast level {{level}} Charged Bolt when struck",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 433,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 10,
+     "format": {
+      "index": 158,
+      "default": false,
+      "template": {
+       "level": 3
+      }
+     },
+     "item_format": {
+      "template": {
+       "level": 3
+      }
+     }
+    },
+    {
+     "property_id": 434,
+     "name": "{{value}}% Chance to cast level {{level}} Frost Nova when struck",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 434,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": null,
+     "format": {
+      "index": 158,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 435,
+     "name": "{{value}}% Chance to cast level {{level}} Nova when struck",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 435,
+     "required": false,
+     "affected_properties": null,
+     "min": null,
+     "max": null,
+     "default_value": 10,
+     "format": {
+      "index": 158,
+      "default": false,
+      "template": {
+       "level": 3
+      }
+     },
+     "item_format": {
+      "template": {
+       "level": 3
+      }
+     }
+    },
+    {
+     "property_id": 437,
+     "name": "+{{value}} to Strength",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 437,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 1,
+     "format": {
+      "index": 67,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 441,
+     "name": "+{{value}} to All Resistances",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 441,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 3,
+     "format": {
+      "index": 36,
+      "default": false,
+      "globalDefault": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 447,
+     "name": "Half Freeze Duration",
+     "options": null,
+     "img": null,
+     "type": "bool",
+     "id": 447,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 1,
+     "format": {
+      "index": 19,
+      "default": false,
+      "globalDefault": false,
+      "input_position": "right"
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 448,
+     "name": "+{{value}} to Maximum Damage",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 448,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 1,
+     "format": {
+      "index": 126,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 452,
+     "name": "+{{value}} Maximum Stamina",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 452,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 5,
+     "format": {
+      "index": 51,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 458,
+     "name": "+{{value}} to Minimum Fire Damage",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 458,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 1,
+     "format": {
+      "index": 102,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 459,
+     "name": "+{{value}} to Maximum Fire Damage",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 459,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 2,
+     "format": {
+      "index": 101,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 460,
+     "name": "{{value}}% Extra Gold from Monsters",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 460,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 25,
+     "format": {
+      "index": 10,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 461,
+     "name": "{{value}}% Better Chance of Getting Magic Items",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 461,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 5,
+     "format": {
+      "index": 8,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 462,
+     "name": "{{value}}% Life stolen per hit",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 462,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 2,
+     "format": {
+      "index": 88,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 463,
+     "name": "{{value}}% Mana stolen per hit",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 463,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 2,
+     "format": {
+      "index": 89,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 475,
+     "name": "Level {{value}} Poison Dagger ({{charges}}/{{charges}} Charges)",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 475,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 5,
+     "format": {
+      "index": 1,
+      "default": false,
+      "template": {
+       "charges": 20
+      }
+     },
+     "item_format": {
+      "template": {
+       "charges": 20
+      }
+     }
+    },
+    {
+     "property_id": 478,
+     "name": "+{{value}} to Minimum Lightning Damage",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 478,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 1,
+     "format": {
+      "index": 99,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 479,
+     "name": "+{{value}} to Maximum Lightning Damage",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 479,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 8,
+     "format": {
+      "index": 98,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 503,
+     "name": "Level {{value}} Dim Vision ({{charges}}/{{charges}} Charges)",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 503,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 5,
+     "format": {
+      "index": 1,
+      "default": false,
+      "template": {
+       "charges": 20
+      }
+     },
+     "item_format": {
+      "template": {
+       "charges": 20
+      }
+     }
+    },
+    {
+     "property_id": 504,
+     "name": "Level {{value}} Confuse ({{charges}}/{{charges}} Charges)",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 504,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 3,
+     "format": {
+      "index": 1,
+      "default": false,
+      "template": {
+       "charges": 20
+      }
+     },
+     "item_format": {
+      "template": {
+       "charges": 20
+      }
+     }
+    },
+    {
+     "property_id": 507,
+     "name": "Level {{value}} Attract ({{charges}}/{{charges}} Charges)",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 507,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 2,
+     "format": {
+      "index": 1,
+      "default": false,
+      "template": {
+       "charges": 20
+      }
+     },
+     "item_format": {
+      "template": {
+       "charges": 20
+      }
+     }
+    },
+    {
+     "property_id": 511,
+     "name": "+{{value}} to Mana after each Kill",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 511,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 1,
+     "format": {
+      "index": 16,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 518,
+     "name": "+{{value}} poison damage over {{duration}} seconds",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 518,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 171,
+     "format": {
+      "index": 92,
+      "default": false,
+      "template": {
+       "duration": 3
+      }
+     },
+     "item_format": {
+      "template": {
+       "duration": 3
+      }
+     }
+    },
+    {
+     "property_id": 520,
+     "name": "+{{value}}% Faster Cast Rate",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 520,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 10,
+     "format": {
+      "index": 142,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 521,
+     "name": "Level {{value}} Fire Bolt ({{charges}}/{{charges}} Charges)",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 521,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 6,
+     "format": {
+      "index": 1,
+      "default": false,
+      "template": {
+       "charges": 20
+      }
+     },
+     "item_format": {
+      "template": {
+       "charges": 20
+      }
+     }
+    },
+    {
+     "property_id": 522,
+     "name": "Level {{value}} Charged Bolt ({{charges}}/{{charges}} Charges)",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 522,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 6,
+     "format": {
+      "index": 1,
+      "default": false,
+      "template": {
+       "charges": 20
+      }
+     },
+     "item_format": {
+      "template": {
+       "charges": 20
+      }
+     }
+    },
+    {
+     "property_id": 523,
+     "name": "Level {{value}} Telekinesis ({{charges}}/{{charges}} Charges)",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 523,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 5,
+     "format": {
+      "index": 1,
+      "default": false,
+      "template": {
+       "charges": 20
+      }
+     },
+     "item_format": {
+      "template": {
+       "charges": 20
+      }
+     }
+    },
+    {
+     "property_id": 525,
+     "name": "Level {{value}} Ice Blast ({{charges}}/{{charges}} Charges)",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 525,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 5,
+     "format": {
+      "index": 1,
+      "default": false,
+      "template": {
+       "charges": 20
+      }
+     },
+     "item_format": {
+      "template": {
+       "charges": 20
+      }
+     }
+    },
+    {
+     "property_id": 539,
+     "name": "+{{value}} to Minimum Poison Damage",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 539,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 8,
+     "format": {
+      "index": 92,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 540,
+     "name": "+{{value}} to Maximum Poison Damage",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 540,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 24,
+     "format": {
+      "index": 91,
+      "default": false
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 547,
+     "name": "{{value}}% Chance to cast level {{level}} Chain Lightning on attack",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 547,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 5,
+     "format": {
+      "index": 158,
+      "default": false,
+      "template": {
+       "level": 3
+      }
+     },
+     "item_format": {
+      "template": {
+       "level": 3
+      }
+     }
+    },
+    {
+     "property_id": 796,
+     "name": "Required Level {{value}}",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 796,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": null,
+     "format": {
+      "default": false,
+      "skipOffer": true,
+      "globalDefault": true,
+      "input_position": "right"
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 797,
+     "name": "Rarity",
+     "options": [
+      "rare",
+      "magic",
+      "superior",
+      "normal",
+      "low quality"
+     ],
+     "img": null,
+     "type": "string",
+     "id": 797,
+     "required": true,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": null,
+     "format": {
+      "default": true,
+      "globalDefault": true,
+      "input_position": "right"
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 798,
+     "name": "Platform",
+     "options": [
+      "PC",
+      "switch",
+      "playstation",
+      "xbox"
+     ],
+     "img": null,
+     "type": "string",
+     "id": 798,
+     "required": true,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": null,
+     "format": {
+      "values": {
+       "PC": {
+        "color": "#bababa"
+       },
+       "xbox": {
+        "img": "https://cdn.nookazon.com/icons/xbox.svg",
+        "color": "#117b11"
+       },
+       "switch": {
+        "img": "https://cdn.nookazon.com/icons/switch.svg",
+        "color": "#ff000a"
+       },
+       "playstation": {
+        "img": "https://cdn.nookazon.com/icons/playstation.svg",
+        "color": "#006cca"
+       }
+      },
+      "default": true,
+      "preferred": true,
+      "skipOffer": true,
+      "globalDefault": true,
+      "input_position": "right"
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 799,
+     "name": "Mode",
+     "options": [
+      "softcore",
+      "hardcore"
+     ],
+     "img": null,
+     "type": "string",
+     "id": 799,
+     "required": true,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": null,
+     "format": {
+      "values": {
+       "hardcore": {
+        "img": "https://cdn.nookazon.com/diablo2resurrected/properties/hardcore.png",
+        "color": "#ff7353"
+       }
+      },
+      "default": true,
+      "preferred": true,
+      "skipOffer": true,
+      "globalDefault": true,
+      "input_position": "right"
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 800,
+     "name": "Ladder",
+     "options": [
+      "Ladder",
+      "Non Ladder"
+     ],
+     "img": null,
+     "type": "bool",
+     "id": 800,
+     "required": true,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": null,
+     "format": {
+      "values": {
+       "Ladder": {
+        "color": "red"
+       },
+       "Non Ladder": {
+        "color": "#398bff"
+       }
+      },
+      "default": true,
+      "preferred": true,
+      "skipOffer": true,
+      "globalDefault": true
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 934,
+     "name": "Sockets",
+     "options": [
+      "Zod Rune",
+      "Cham Rune",
+      "Jah Rune",
+      "Ber Rune",
+      "Sur Rune",
+      "Lo Rune",
+      "Ohm Rune",
+      "Vex Rune",
+      "Gul Rune",
+      "Ist Rune",
+      "Mal Rune",
+      "Um Rune",
+      "Pul Rune",
+      "Lem Rune",
+      "Fal Rune",
+      "Ko Rune",
+      "Lum Rune",
+      "Io Rune",
+      "Hel Rune",
+      "Dol Rune",
+      "Shael Rune",
+      "Sol Rune",
+      "Amn Rune",
+      "Thul Rune",
+      "Ort Rune",
+      "Ral Rune",
+      "Tal Rune",
+      "Ith Rune",
+      "Eth Rune",
+      "Nef Rune",
+      "Tir Rune",
+      "Eld Rune",
+      "El Rune",
+      "Perfect Skull",
+      "Flawless Skull",
+      "Skull",
+      "Flawed Skull",
+      "Chipped Skull",
+      "Rainbow Facet: Cold Death",
+      "Rainbow Facet: Cold Level-Up",
+      "Rainbow Facet: Fire Death",
+      "Rainbow Facet: Fire Level-Up",
+      "Rainbow Facet: Lightning Death",
+      "Rainbow Facet: Lightning Level-Up",
+      "Rainbow Facet: Poison Death",
+      "Rainbow Facet: Poison Level-Up",
+      "Perfect Diamond",
+      "Flawless Diamond",
+      "Diamond",
+      "Flawed Diamond",
+      "Chipped Diamond",
+      "Perfect Ruby",
+      "Flawless Ruby",
+      "Ruby",
+      "Flawed Ruby",
+      "Chipped Ruby",
+      "Perfect Emerald",
+      "Flawless Emerald",
+      "Emerald",
+      "Flawed Emerald",
+      "Chipped Emerald",
+      "Perfect Sapphire",
+      "Flawless Sapphire",
+      "Sapphire",
+      "Flawed Sapphire",
+      "Chipped Sapphire",
+      "Perfect Topaz",
+      "Flawless Topaz",
+      "Topaz",
+      "Flawed Topaz",
+      "Chipped Topaz",
+      "Perfect Amethyst",
+      "Flawless Amethyst",
+      "Amethyst",
+      "Flawed Amethyst",
+      "Chipped Amethyst",
+      "Jewel",
+      "Defender’s Fire",
+      "Defender’s Bile",
+      "Protector’s Frost",
+      "Protector’s Stone",
+      "Guardian’s Thunder",
+      "Guardian’s Light"
+     ],
+     "img": null,
+     "type": "array",
+     "id": 934,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": null,
+     "format": {
+      "index": 197,
+      "allowMultiple": true
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 1264,
+     "name": "Ring Variant",
+     "options": [
+      "Big Blue",
+      "Orange",
+      "Crown",
+      "Coral",
+      "Small Blue"
+     ],
+     "img": null,
+     "type": "string",
+     "id": 1264,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": null,
+     "format": {
+      "values": {
+       "Coral": {
+        "img": "https://cdn.nookazon.com/diablo2resurrected/properties/feb15259af01dfab028ed59d02ac65d5.jpeg"
+       },
+       "Crown": {
+        "img": "https://cdn.nookazon.com/diablo2resurrected/properties/c51f8e854cff792fd83ee5ed731a9f58.jpeg"
+       },
+       "Orange": {
+        "img": "https://cdn.nookazon.com/diablo2resurrected/properties/44a7205b479a85ba2113d0aea8904a50.jpeg"
+       },
+       "Big Blue": {
+        "img": "https://cdn.nookazon.com/diablo2resurrected/properties/ec4ff6f167563ee75b3b4ec46e98e23e.jpeg"
+       },
+       "Small Blue": {
+        "img": "https://cdn.nookazon.com/diablo2resurrected/properties/824548d58548427c598763930d9a400e.jpeg"
+       }
+      },
+      "default": true,
+      "skipOffer": true,
+      "globalDefault": true
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 1854,
+     "name": "Game version",
+     "options": [
+      "classic (base game)",
+      "lord of destruction",
+      "reign of the warlock"
+     ],
+     "img": null,
+     "type": "string",
+     "id": 1854,
+     "required": true,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": null,
+     "format": {
+      "values": {
+       "classic (base game)": {
+        "color": ""
+       },
+       "lord of destruction": {
+        "color": "#E66220"
+       },
+       "reign of the warlock": {
+        "color": "#CC354B"
+       }
+      },
+      "default": true,
+      "preferred": true,
+      "skipOffer": true,
+      "globalDefault": true
+     },
+     "item_format": null
+    },
+    {
+     "property_id": 1861,
+     "name": "Level {{value}} Sigil: Lethargy ({{charges}}/{{charges}} Charges)",
+     "options": null,
+     "img": null,
+     "type": "number",
+     "id": 1861,
+     "required": false,
+     "affected_properties": null,
+     "min": 0,
+     "max": null,
+     "default_value": 5,
+     "format": {
+      "index": 1,
+      "template": {
+       "charges": 20
+      }
+     },
+     "item_format": {
+      "template": {
+       "charges": 20
+      }
+     }
+    }
+   ]
+  }
+ ]
+}
