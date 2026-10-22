@@ -220,6 +220,12 @@ function closest(pieces, entries, { cjk, wide, loose = false, suffix = false, al
   return [...found.values()];
 }
 
+/** `closest` over both scripts, Chinese pieces first; `cjkOnly` adds the options only the Chinese pass uses. */
+const closestBoth = ({ cjk, latin }, entries, options, cjkOnly = {}) => [
+  ...closest(cjk, entries, { ...options, ...cjkOnly, cjk: true }),
+  ...closest(latin, entries, { ...options, cjk: false }),
+];
+
 const rank = (list, cap = MAX_CANDIDATES) => {
   const unique = new Map();
   // Equal scores are broken by where the evidence sits in the text: the earliest matching line wins. Map insertion
@@ -244,12 +250,9 @@ export function matchOcrText(text, index, tones = null) {
 }
 
 function matchLines(text, index) {
-  const { cjk, latin } = textPieces(text);
+  const pieces = textPieces(text);
   const typeWords = new Set(index.bases.map((entry) => entry.key));
-  const asItems = [
-    ...closest(cjk, index.items, { cjk: true, wide: false, typeWords }),
-    ...closest(latin, index.items, { cjk: false, wide: false, typeWords }),
-  ];
+  const asItems = closestBoth(pieces, index.items, { wide: false, typeWords });
   // Strong items: Chinese names longer than WEAK_ITEM_MAX or English names (length >= MIN_LATIN_NAME).
   const strong = rank(asItems.filter((c) => c.size > WEAK_ITEM_MAX));
   // The plain-type pass runs even when items matched: a rare or magic item's random name can be spelled exactly like
@@ -259,10 +262,7 @@ function matchLines(text, index) {
   // sliced, so removing it cannot change a result.
   const asBases = strong.length >= MAX_CANDIDATES
     ? []
-    : rank([
-        ...closest(cjk, index.bases, { cjk: true, wide: true, suffix: true, allowStatPrefix: true }),
-        ...closest(latin, index.bases, { cjk: false, wide: true }),
-      ]);
+    : rank(closestBoth(pieces, index.bases, { wide: true }, { suffix: true, allowStatPrefix: true }));
   if (strong.length) {
     return [...tagged("item", strong), ...tagged("base", asBases)].slice(0, MAX_CANDIDATES);
   }
@@ -290,21 +290,15 @@ function matchLines(text, index) {
  */
 export function extendCandidates(first, text, index) {
   if (first.length >= MAX_POSSIBLE) return first;
-  const { cjk, latin } = textPieces(text);
+  const pieces = textPieces(text);
   const typeWords = new Set(index.bases.map((entry) => entry.key));
   const taken = new Set(first.map((c) => c.name));
   const more = [
+    ...tagged("item", closestBoth(pieces, index.items, { wide: true, loose: true, typeWords }).filter((c) => c.size > WEAK_ITEM_MAX)),
     ...tagged(
-      "item",
-      [
-        ...closest(cjk, index.items, { cjk: true, wide: true, loose: true, typeWords }),
-        ...closest(latin, index.items, { cjk: false, wide: true, loose: true, typeWords }),
-      ].filter((c) => c.size > WEAK_ITEM_MAX),
+      "base",
+      closestBoth(pieces, index.bases, { wide: true, loose: true }, { suffix: true, allowStatPrefix: true }),
     ),
-    ...tagged("base", [
-      ...closest(cjk, index.bases, { cjk: true, wide: true, loose: true, suffix: true, allowStatPrefix: true }),
-      ...closest(latin, index.bases, { cjk: false, wide: true, loose: true }),
-    ]),
   ].filter((c) => !taken.has(c.name));
   // One list, best match first (the same score the matcher ranks by), the earliest line first among equals.
   const extra = rank(more, MAX_POSSIBLE);
@@ -332,7 +326,7 @@ export function nameKeys(text) {
 }
 
 /**
- * Whether the best candidate may be filled in without asking. Measured on the 54 truth pictures (docs/design.md): a rare
+ * Whether the best candidate may be filled in without asking. Measured on the earlier 54-picture truth set (50 pictures now; docs/design.md): a rare
  * or magic item prints a random name that can be spelled like a catalogue name, so an item with a type line under it
  * (which is what every unique prints too) is only sure when its name line is printed in the colour of a unique, runeword
  * or set item (`quality` gold or green, see tone.js); a name of WEAK_ITEM_MAX characters or fewer collides with stat

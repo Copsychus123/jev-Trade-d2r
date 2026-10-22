@@ -167,3 +167,18 @@ test("the player can add a condition by hand, once, and remove it again", () => 
   assert.equal(removeCondition(form, "fcr").conditions.length, 0);
   assert.ok(availableToAdd(removeCondition(form, "fcr"), AFFIXES).some((a) => a.key === "fcr"));
 });
+
+test("a read number keeps what it was filled with, and a remembered one is not asked about", () => {
+  const form = fillFromScreenshot(
+    emptyStatsForm(),
+    { conditions: [row("fcr", { min: 8, learned: true }), row("life", { min: 5 })], unmapped: [] },
+    [],
+    { carryValues: true },
+  );
+  const [fcr, life] = form.conditions;
+  assert.deepEqual([fcr.min, fcr.readMin, fcr.learned, fcr.fromCapture], [8, 8, true, false]);
+  assert.deepEqual([life.min, life.readMin, life.learned, life.fromCapture], [5, 5, false, true]);
+
+  const typed = setLimit(form, "fcr", "min", "9");
+  assert.deepEqual([typed.conditions[0].min, typed.conditions[0].readMin, typed.conditions[0].learned], [9, 8, true], "typing keeps what the form started from");
+});

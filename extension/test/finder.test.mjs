@@ -240,5 +240,38 @@ test("a Chinese name that is not in the table stops before the backend or the br
   }
   assert.equal(started, 0, "no run was started, so no quota was used");
   assert.deepEqual(calls.opened, [], "and no tab was opened");
-  assert.equal(calls.picked, 0);
+  assert.equal(calls.picked, 0, "pick_base is never requested");
+  assert.equal(calls.pickArgs, undefined);
+  assert.equal(args.market.lookup, null, "no lookup record was created");
 });
+
+// The shipped table maps 上古斧 to the base "Ancient Axe" (bases and zh in items.json), whose last word is itself a
+// base: the program rule can drop "Ancient", so the base layer is decided without a model.
+const baseTables = indexTables({
+  generated_at: "2026-01-01T00:00:00+00:00",
+  products: [],
+  zh: { 上古斧: "Ancient Axe" },
+  bases: ["Ancient Axe", "Axe"],
+  game_only: [],
+});
+
+test("a Chinese base name is searched in English and the base layer uses the base the program matched", async () => {
+  const { args, calls, session } = setup({ landing: { url: ROOT, title: "t" }, agents: [noResults, done] });
+  args.tables = baseTables;
+  args.rawItem = "上古斧";
+  const asked = [];
+  args.startRun = async ({ itemName }) => {
+    asked.push(itemName);
+    return { run_token: "t0", item_name: itemName, load_more: 0 };
+  };
+  calls.base = { base: "Axe", run_token: "t1" };
+  assert.equal(await findAndRead(args), "ran");
+  assert.deepEqual(asked, ["Ancient Axe"], "the search layer is reached with the English base, never with Chinese");
+  assert.equal(args.market.lookup.requested, "Ancient Axe");
+  assert.equal(args.market.lookup.layer, "base");
+  assert.equal(session.itemName, "Axe");
+  assert.equal(calls.pickArgs.base, "Axe", "stripToBase matched the base, so no model choice is needed");
+  assert.deepEqual(calls.pickArgs.options, baseTables.bases, "the pick offers the shipped base list");
+  assert.deepEqual(calls.runTokens, ["t0", "t1"], "the base search runs under the new token the pick returned");
+});
+

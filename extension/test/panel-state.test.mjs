@@ -11,12 +11,13 @@ test("settings win over everything, then the missing invite, then a running quer
   assert.equal(deriveView({ ...base, running: true, after: "done" }), "running");
 });
 
-test("with no search kind chosen the idle panel asks first, but settings, welcome, running and a finished query win", () => {
-  assert.equal(deriveView({ ...base, mode: null }), "choose");
+test("with no screen asked for the idle panel is on the scan screen, but settings, welcome, running and a finished query win", () => {
+  assert.equal(deriveView({ ...base, mode: null }), "scan");
   assert.equal(deriveView({ ...base, mode: null, settingsOpen: true }), "settings");
   assert.equal(deriveView({ ...base, mode: null, hasInvite: false }), "welcome");
   assert.equal(deriveView({ ...base, mode: null, running: true }), "running");
   assert.equal(deriveView({ ...base, mode: null, after: "done" }), "done");
+  assert.equal(VIEWS.includes("choose"), false, "there is no first-choice screen any more");
 });
 
 test("the scan screen shows only itself and loses to settings, welcome, running and a finished query", () => {
@@ -28,10 +29,11 @@ test("the scan screen shows only itself and loses to settings, welcome, running 
   assert.deepEqual([...visibleSections("scan", true)], ["scan"]);
 });
 
-test("the choose screen shows itself and the results, but not the form or the run slot", () => {
-  assert.ok(visibleSections("choose", true).has("choose"));
-  assert.ok(!visibleSections("choose", true).has("form"));
-  assert.ok(!visibleSections("choose", true).has("run"));
+test("the listing screen shows only itself, like the scan screen", () => {
+  assert.equal(deriveView({ ...base, mode: "listing" }), "listing");
+  assert.equal(deriveView({ ...base, mode: "listing", settingsOpen: true }), "settings");
+  assert.equal(deriveView({ ...base, mode: "listing", running: true }), "running");
+  assert.deepEqual([...visibleSections("listing", true)], ["listing"]);
 });
 
 test("with nothing running the screen follows how the last query ended", () => {
@@ -64,16 +66,21 @@ test("the trust line belongs to the finished screen only", () => {
   );
 });
 
-test("the affix hand-off is offered only for a scan-sourced query that did not finish with an answer", () => {
+test("the affix hand-off says what it does: a way out of a failed name search, a way to narrow a finished affix search", () => {
   const scan = { kind: "scan", record: { name: "Alma Negra" } };
-  assert.equal(affixHandoff(visibleSections("problem", true), scan, "problem"), true);
-  assert.equal(affixHandoff(visibleSections("stopped", true), scan, "stopped"), true);
-  // A finished search already gave its answer, and the form screen has no query behind it.
-  assert.equal(affixHandoff(visibleSections("done", true), scan, "done"), false);
-  assert.equal(affixHandoff(visibleSections("ready", true), scan, null), false);
+  const handoff = (view, source, ended, mode) => affixHandoff(visibleSections(view, true), source, ended, mode);
+  assert.equal(handoff("problem", scan, "problem", "name"), "用詞綴找同類");
+  assert.equal(handoff("stopped", scan, "stopped", "name"), "用詞綴找同類");
+  // A finished name search already gave its answer, and the form screen has no query behind it.
+  assert.equal(handoff("done", scan, "done", "name"), "");
+  assert.equal(handoff("ready", scan, null, "name"), "");
+  // An affix search ran with the base only: the read lines can narrow it, finished or not.
+  assert.equal(handoff("done", scan, "done", "stats"), "加詞綴條件縮小範圍");
+  assert.equal(handoff("problem", scan, "problem", "stats"), "加詞綴條件縮小範圍");
   // Nothing to hand over when the player typed the name or read a picture.
-  assert.equal(affixHandoff(visibleSections("problem", true), { kind: "picture" }, "problem"), false);
-  assert.equal(affixHandoff(visibleSections("problem", true), null, "problem"), false);
+  assert.equal(handoff("problem", { kind: "picture" }, "problem", "name"), "");
+  assert.equal(handoff("done", { kind: "picture" }, "done", "stats"), "");
+  assert.equal(handoff("problem", null, "problem", "name"), "");
   // A scan source without the record itself cannot be re-entered.
-  assert.equal(affixHandoff(visibleSections("problem", true), { kind: "scan" }, "problem"), false);
+  assert.equal(handoff("problem", { kind: "scan" }, "problem", "name"), "");
 });

@@ -4,6 +4,9 @@
 /** A fresh timeline whose clock starts now (the start click). */
 export const newTimeline = (now = () => performance.now()) => ({ origin: now(), now, entries: [] });
 
+/** What Tab.open measured (navigate, settle, visibility), for the timeline entry of an open. */
+export const openDetails = (tab) => tab?.openTiming ?? {};
+
 /** Adds one entry ({ stage, start_ms, ms, ...extra }) to the session's timeline, if it has one. */
 function mark(session, stage, startedAt, extra = {}) {
   const timeline = session?.timeline;

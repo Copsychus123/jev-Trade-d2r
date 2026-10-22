@@ -422,3 +422,35 @@ test("a refused press is counted as an attempt even though it never reaches hist
   assert.equal(agent.state.history.length, 0, "no refused press may reach history");
   assert.equal(agent.state.stale_streak.count, 1, "alternating targets must keep the streak from tripping");
 });
+
+test("predict at the action budget blocks before reading the page or asking Jev, and a stopped run is refused first", async () => {
+  const tab = new FakeTab([page("p1", [click("a1", "x")])]);
+  let observed = 0;
+  const observe = tab.observe.bind(tab);
+  tab.observe = async () => (observed += 1, observe());
+  const choose = makeChoose(decide("a1"));
+  const agent = await Agent.create({ tab, choose });
+  const readsAtStart = observed;
+  agent.state.history = Array.from({ length: 60 }, () => ({ action: "x", kind: "click" }));
+  await assert.rejects(agent.command("predict"), /已達 60 個動作的上限/u);
+  assert.equal(agent.state.status, "blocked");
+  assert.equal(choose.calls.length, 0, "no paid Jev call");
+  assert.equal(observed, readsAtStart, "no page read");
+
+  // A blocked run is refused as stopped, and the phase rule cannot turn it back into a handoff.
+  agent.state.history = [];
+  await assert.rejects(agent.command("predict"), /This run has stopped/u);
+  assert.equal(agent.state.status, "blocked");
+});
+
+test("DONE and BLOCKED stand even when the page text changed since the decision (no freshness gate, like agent.py)", async () => {
+  // a DONE of the first phase hands over to the second
+  for (const [verdict, status] of [["DONE", "handoff"], ["BLOCKED", "blocked"]]) {
+    const tab = new FakeTab([page("p1", [click("a1", "x")])]);
+    const agent = await Agent.create({ tab, choose: makeChoose({ ...decide(verdict, verdict), target: null }) });
+    await agent.command("predict");
+    tab.isFresh = false; // an ad or a relative time changed the text since
+    await agent.command("act", { fingerprint: "p1" });
+    assert.equal(agent.state.status, status);
+  }
+});

@@ -276,7 +276,7 @@ test("the tuned shapes are unchanged: the item stays first, ahead of the type li
 });
 
 // --- when the best candidate may be filled in without asking (decideCandidates) -------------------------------------
-// The lines below are verbatim from the 54 truth pictures' OCR text, first lines only (see docs/design.md for the
+// The lines below are verbatim from the earlier 54-picture truth set's OCR text, first lines only (see docs/design.md for the
 // measurement); the table is the real one, so these are the candidate lists the panel really gets.
 
 /** Whether the best candidate of `text` may be filled in by itself, with the candidates it was decided on. */

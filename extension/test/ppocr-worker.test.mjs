@@ -52,6 +52,7 @@ export class OcrPipeline {
     const state = globalThis.__ppocrWorkerTest;
     state.reads.push(image);
     state.readOptions.push(options);
+    if (state.head) options.onHead?.(state.head); // the lines a real pipeline reports before the rest
     return state.answer(image);
   }
   async detect(image) {
@@ -87,7 +88,8 @@ function workerState(overrides = {}) {
     bgr: [], // what imageDataToBgr returned, in order
     builds: [], // OcrPipeline constructor arguments
     reads: [], // what recognizeImage was handed
-    readOptions: [], // the options recognizeImage was handed (nameRegionOnly, capDet)
+    readOptions: [], // the options recognizeImage was handed (capDet, onHead)
+    head: null, // lines the stand-in pipeline reports through onHead before it answers
     answer: async () => ({ lines: [] }),
     ...overrides,
   };
@@ -286,6 +288,19 @@ test("a recognize converts the panel's pixels and answers with the same id and t
     [["data", "h", "w"], 2, 1],
     "that value is the real module's { data, w, h }, not a shape of the stand-in's invention",
   );
+});
+
+test("a read that reports its head posts a head message under the read's id before its result", async () => {
+  const { scope } = await readyWorker(
+    workerState({
+      head: [{ text: "哈勒昆", score: 0.9, tone: [198, 178, 120] }],
+      answer: async () => ({ lines: [{ text: "哈勒昆", score: 0.9, tone: [198, 178, 120] }, { text: "之冠", score: 0.8, tone: null }] }),
+    }),
+  );
+  scope.receive({ type: "recognize", id: 9, width: 1, height: 1, data: new Uint8ClampedArray(4) });
+  await settleUntil(() => scope.posted.length === 4, "the head and the result");
+  assert.deepEqual(scope.posted[2], { type: "head", id: 9, text: "哈勒昆", tones: [[198, 178, 120]] });
+  assert.deepEqual(scope.posted[3], { type: "result", id: 9, text: "哈勒昆\n之冠", tones: [[198, 178, 120], null] });
 });
 
 test("a recognize that throws answers the read's own id, with the thrown value's own text when it is not an Error", async () => {

@@ -26,9 +26,10 @@ export class AbortedError extends Error {
 
 /** The backend refused or could not be reached. `status` is 0 for a network failure. */
 export class ApiError extends Error {
-  constructor(status, message) {
+  constructor(status, message, code = null) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = code; // the server's own error code (`invite_used_up`, `too_many_failures`, …), when it sent one
   }
 }

@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createCorrections } from "../src/ocr/corrections.js";
+import { createValueCorrections } from "../src/ocr/value-corrections.js";
 import { MAX_LISTED, countLine, initLearningPanel } from "../src/learning-panel.js";
 import { indexTables } from "../src/traderie/lookup.js";
 
@@ -57,16 +58,18 @@ async function setup({ withTables = true } = {}) {
   const byId = new Map(ids.map((id) => [id, new Node()]));
   byId.get("learn-confirm").hidden = true;
   globalThis.document = { getElementById: (id) => byId.get(id), createElement: (tag) => new Node(tag) };
-  const corrections = createCorrections({
-    storage: { get: async () => undefined, set: async () => {} },
-    setTimer: () => 0,
-    clearTimer: () => {},
-  });
-  await corrections.load();
+  const memoryOptions = { storage: { get: async () => undefined, set: async () => {} }, setTimer: () => 0, clearTimer: () => {} };
+  let clock = 1000;
+  const now = () => (clock += 1); // every learn is a later moment, so "newest first" is not a tie
+  const corrections = createCorrections({ ...memoryOptions, now });
+  const baseCorrections = createCorrections({ ...memoryOptions, only: "base", now });
+  const valueCorrections = createValueCorrections({ ...memoryOptions, now });
+  await Promise.all([corrections.load(), baseCorrections.load(), valueCorrections.load()]);
   corrections.attach(tables);
-  initLearningPanel({ corrections, getTables: () => (withTables ? tables : null) });
+  baseCorrections.attach(tables);
+  initLearningPanel({ corrections, baseCorrections, valueCorrections, getTables: () => (withTables ? tables : null) });
   const el = (id) => byId.get(id);
-  return { corrections, el, rows: () => el("learn-list").children };
+  return { corrections, baseCorrections, valueCorrections, el, rows: () => el("learn-list").children };
 }
 
 test("with nothing remembered the block says so, and offers neither clearing nor a list", async () => {
@@ -82,10 +85,37 @@ test("the count line says how many are remembered and how many are already sure"
   s.corrections.learn("鎖子甲x", "Ring Mail");
   s.corrections.learn("鎖子甲x", "Ring Mail");
 
-  assert.equal(s.el("learn-count").textContent, "已記住 2 筆更正（其中 1 筆選過 2 次以上，下次會自動填入）。");
-  assert.equal(countLine([]), "還沒有記住任何更正。");
+  assert.equal(s.el("learn-count").textContent, "已記住 2 筆更正：名稱 2 筆（其中 1 筆選過 2 次以上，下次會自動填入）。");
+  assert.equal(countLine(), "還沒有記住任何更正。");
   assert.equal(s.el("learn-clear").hidden, false);
   assert.equal(s.el("learn-details").hidden, false);
+});
+
+test("names, bases and numbers are one list, newest first, each with its own sentence and its own ✕", async () => {
+  const s = await setup();
+  s.corrections.learn("蜘蛛之網x", "Arachnid Mesh");
+  s.baseCorrections.learn("rondache", "Ring Mail");
+  s.baseCorrections.learn("rondache", "Ring Mail");
+  s.valueCorrections.learn("+7% Faster Cast Rate", "fcr", 8);
+
+  assert.deepEqual(s.rows().map((row) => row.children[0].textContent), [
+    "讀到「7 faster cast rate」→ 數值 8（改過 1 次）",
+    "讀到「rondache」→ 底材 鎖子甲（Ring Mail）（改過 2 次）",
+    "讀到「蜘蛛之網x」→ 蜘蛛之網（Arachnid Mesh）（選過 1 次）",
+  ]);
+  assert.equal(
+    s.el("learn-count").textContent,
+    "已記住 3 筆更正：名稱 1 筆（其中 0 筆選過 2 次以上，下次會自動填入）、底材 1 筆（其中 1 筆改過 2 次以上，下次會直接用）、數值 1 筆（下次直接填）。",
+  );
+
+  s.rows()[0].children[1].click();
+  assert.equal(s.valueCorrections.size, 0);
+  assert.equal(s.baseCorrections.size, 1);
+  assert.equal(s.corrections.size, 1);
+
+  s.el("learn-clear").click();
+  s.el("learn-clear-yes").click();
+  assert.equal(s.baseCorrections.size + s.corrections.size, 0);
 });
 
 test("each remembered pair is a plain Chinese sentence with a ✕, newest first", async () => {

@@ -109,7 +109,6 @@ const IDS = [
   "ocr-status",
   "ocr-candidates",
   "ocr-go",
-  "ocr-auto",
   "ocr-file",
   "ocr-drop",
   "ocr-dropzone",
@@ -124,6 +123,7 @@ const IDS = [
   "ocr-time",
   "ocr-text",
   "item",
+  "stats-base",
 ];
 
 function makeDocument() {
@@ -264,6 +264,10 @@ class FakeWorker {
         this.emit({ type: "warmupResult", id: message.id });
       });
     } else if (message.type === "recognize") {
+      if (workerBehaviour.headText !== undefined) {
+        // The first lines of the read, ahead of the (possibly held) result.
+        queueMicrotask(() => this.emit({ type: "head", id: message.id, text: workerBehaviour.headText, tones: workerBehaviour.headTones ?? [] }));
+      }
       const deliver = () => {
         clock += 600; // one read's worth of time, so "辨識用時" is a known string
         if (workerBehaviour.failWith) this.emit({ type: "error", id: message.id, message: workerBehaviour.failWith });
@@ -447,7 +451,7 @@ const SURE_TYPES_TEXT = "鎖子甲\nBuckler"; // two type names: sure
 const UNSURE_TEXT = "Ripsaw\nRing Mail"; // an item with its type line under it: could be a rare with that random name
 const UNSURE_ALONE_TEXT = "瑞普煞"; // a three-character name alone: collides with stat words too easily
 
-function setup({ seed: seedMode = "missing", busy = false, pick = true, storage = {}, fetch = bytesFetch(), worker = {}, corrections = null } = {}) {
+function setup({ seed: seedMode = "missing", busy = false, pick = true, storage = {}, fetch = bytesFetch(), worker = {}, corrections = null, baseCorrections = null } = {}) {
   storageData = { ...storage };
   clock = 1000;
   urlCount = 0;
@@ -475,6 +479,7 @@ function setup({ seed: seedMode = "missing", busy = false, pick = true, storage 
   const api = initOcrPanel({
     tables,
     corrections,
+    baseCorrections,
     onPick: (name, kind, shown) => {
       picks.push([name, kind]);
       fields.push(shown);
@@ -554,6 +559,24 @@ test("the models arriving let the read go on to its candidates, still with no do
   assert.equal(s.document.statusTexts.some((text) => text.includes("下載辨識模型")), false, "no download line");
 });
 
+test("with the models stored, the panel posts init then warmup before any picture is loaded", async () => {
+  setup({ seed: "present" });
+  await settle(3);
+
+  assert.equal(workers.length, 1, "one engine, built at panel start");
+  assert.deepEqual(workers[0].posted.map((m) => m.type), ["init", "warmup"]);
+});
+
+test("with no models stored nothing is built at panel start, and the download builds and warms the engine", async () => {
+  const s = setup({ worker: { text: UNSURE_TEXT } });
+  await settle(2);
+  assert.equal(workers.length, 0, "nothing downloaded, nothing built");
+
+  s.paste([image()]);
+  await settle(5);
+  assert.deepEqual(workers[0].posted.map((m) => m.type).slice(0, 2), ["init", "warmup"]);
+});
+
 test("with the models already stored the read starts by itself, and waits for the player while a query runs", async () => {
   const s = setup({ seed: "present", busy: true });
   await settle(2);
@@ -570,11 +593,10 @@ test("with the models already stored the read starts by itself, and waits for th
   assert.deepEqual(s.texts, [SURE_TEXT]);
 });
 
-test("auto-read turned off in storage keeps the 辨識 button on screen", async () => {
+test("the ocrAuto: false storage seam (Chrome checks only) keeps the 辨識 button on screen", async () => {
   const s = setup({ seed: "present", storage: { ocrAuto: false, ocrHintSeen: true } });
   await settle(3);
 
-  assert.equal(s.el("ocr-auto").checked, false);
   assert.equal(s.el("ocr-dot").hidden, true, "the hint dot is gone once it was seen");
   s.paste([image()]);
   await settle(3);
@@ -1142,6 +1164,29 @@ test("a search with a name that was not typed after the read teaches nothing, an
   assert.equal(corrections.size, 0);
 });
 
+test("a base typed over a read in the affix form is remembered for exactly that text, and an untouched or non-base one is not", async () => {
+  const storage = { get: async () => undefined, set: async () => {} };
+  const baseCorrections = createCorrections({ storage, only: "base", setTimer: () => 0, clearTimer: () => {} });
+  await baseCorrections.load();
+  const text = "Hxnor Of Dxrkness";
+  const s = await readImage({ worker: { text }, baseCorrections });
+  assert.equal(s.api.learnedBase(text), null);
+
+  s.api.noteBaseQuery("Ring Mail"); // the box was not typed in after the read: nothing to learn
+  assert.equal(baseCorrections.size, 0);
+
+  const t = await readImage({ worker: { text }, baseCorrections });
+  t.el("stats-base").fire("input");
+  t.api.noteBaseQuery("Griswold's Honor"); // typed, but an item and not a base
+  assert.equal(baseCorrections.size, 0);
+
+  const u = await readImage({ worker: { text }, baseCorrections });
+  u.el("stats-base").fire("input");
+  u.api.noteBaseQuery("鎖子甲");
+  assert.equal(u.api.learnedBase(text).name, "Ring Mail");
+  assert.equal(u.api.learnedBase("some other text"), null);
+});
+
 test("only the first search after a read counts as the player's verdict on it", async () => {
   const { corrections } = await memory();
   const s = await readImage({ worker: { text: UNSURE_TEXT }, corrections });
@@ -1160,4 +1205,51 @@ test("a memory that cannot be read changes nothing about a read", async () => {
   assert.deepEqual(s.candidateLabels(), ["瑞普煞（Ripsaw）", "鎖子甲（Ring Mail）", "都不是，我自己輸入"]);
   s.candidateButtons()[0].click(); // choosing still works
   assert.deepEqual(s.picks, [["Ripsaw", "item"]]);
+});
+
+// --- the name is decided on the first lines, before the rest of the picture is read ----------------------------------
+
+test("the name is filled in and the candidates shown as soon as the head arrives, before the rest is read", async () => {
+  const s = setup({ seed: "present", worker: { hold: true, headText: SURE_TEXT, text: `${SURE_TEXT}\n+20% Faster Cast Rate` } });
+  await settle(2);
+  s.paste([image()]);
+  await settle(5);
+
+  assert.deepEqual(s.picks, [["Griswold's Honor", "item"]], "the head's name is already in the field");
+  assert.equal(s.el("ocr-time").textContent, "", "the rest is still being read");
+  assert.equal(s.el("ocr-text").textContent, "");
+  assert.deepEqual(s.texts, [], "the affix handoff waits for the whole text");
+
+  workers[0].respond();
+  await settle(3);
+  assert.deepEqual(s.picks, [["Griswold's Honor", "item"]], "a head that was sure is not decided again by the rest");
+  assert.match(s.el("ocr-time").textContent, /^辨識用時 \d+\.\d 秒（名稱 \d+\.\d 秒）$/);
+  assert.deepEqual(s.texts, [`${SURE_TEXT}\n+20% Faster Cast Rate`]);
+});
+
+test("a head the reader was not sure about is decided again on the whole text", async () => {
+  const s = await readImage({ worker: { headText: UNSURE_TEXT, text: SURE_TEXT } });
+  assert.deepEqual(s.picks, [["Griswold's Honor", "item"]], "the whole text was sure, so it fills in now");
+  assert.equal(s.el("ocr-candidates").dataset.unsure, "");
+});
+
+test("a read with no head is decided once, on the whole text, and shows no name time", async () => {
+  const s = await readImage();
+  assert.deepEqual(s.picks, [["Griswold's Honor", "item"]]);
+  assert.match(s.el("ocr-time").textContent, /^辨識用時 \d+\.\d 秒$/);
+});
+
+test("a name the player picked from an unsure head's buttons is not replaced when the rest of the read arrives", async () => {
+  const s = setup({ seed: "present", worker: { hold: true, headText: UNSURE_TEXT, text: SURE_TEXT } });
+  await settle(2);
+  s.paste([image()]);
+  await settle(5);
+  assert.deepEqual(s.picks, [], "the head asked");
+  s.candidateButtons()[1].click(); // the player answers while the rest is still being read
+  const picked = [...s.picks];
+  assert.equal(picked.length, 1);
+
+  workers[0].respond();
+  await settle(3);
+  assert.deepEqual(s.picks, picked, "the whole text, sure of another name, leaves the player's pick alone");
 });

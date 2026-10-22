@@ -61,16 +61,12 @@ export function createResultActions({ getMarket, rowsOf, getItemName, getActiveT
     if (openable(url)) chrome.tabs.create({ url });
   }
 
-  /** The kept rows as the view's cell lists: the CSV file and the clipboard both send exactly these. */
-  function exportCells({ config, rows }) {
-    return rows.map(config.cells);
-  }
-
+  /** Both exports send the kept rows as the view's cell lists (`rows.map(config.cells)`), the same cells as the screen. */
   function download(key) {
     const target = exportRows(key);
     if (!target) return;
-    const { config } = target;
-    saveText(csvFileName(getItemName(), config.label), toCsv(config.head, exportCells(target)), "text/csv;charset=utf-8");
+    const { config, rows } = target;
+    saveText(csvFileName(getItemName(), config.label), toCsv(config.head, rows.map(config.cells)), "text/csv;charset=utf-8");
   }
 
   async function copy(key) {
@@ -80,7 +76,7 @@ export function createResultActions({ getMarket, rowsOf, getItemName, getActiveT
     let label;
     try {
       // Tab separated so a spreadsheet pastes it into columns.
-      await navigator.clipboard.writeText(toTsv(config.head, exportCells(target)));
+      await navigator.clipboard.writeText(toTsv(config.head, rows.map(config.cells)));
       label = `已複製 ${rows.length} 筆`;
     } catch {
       label = "複製失敗";

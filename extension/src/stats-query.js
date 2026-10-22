@@ -29,9 +29,10 @@ export function judgeStats(session, { market, statsForm, stopped, guardProblem }
 /**
  * Runs one query on `session` ({ tab, outcome }, which the panel owns so Stop and the cleanup reach its tab) and
  * resolves with the name the downloads use. Errors are the panel's to describe. `begin(text)` clears the last query,
- * shows the running screen and returns the fresh market; `setStatus(text)`, `render()` and `shouldStop()` are the panel's.
+ * shows the running screen and returns the fresh market; `countUse(itemName)` counts the query's use of the invite;
+ * `setStatus(text)`, `render()` and `shouldStop()` are the panel's.
  */
-export async function runStatsFlow(input, session, { begin, setStatus, render, shouldStop, loadTables }) {
+export async function runStatsFlow(input, session, { begin, setStatus, render, shouldStop, loadTables, countUse = null }) {
   const rawBase = (input.base ?? "").trim();
   const tables = await loadTables();
   const englishBase = resolveBase(rawBase, tables);
@@ -39,11 +40,14 @@ export async function runStatsFlow(input, session, { begin, setStatus, render, s
   const chosen = input.conditions.filter((c) => c.on).map((c) => c.label);
   const market = begin([...chosen, quality.values ? quality.label : null, englishBase || null].filter(Boolean).join("・"));
   if (rawBase && englishBase && rawBase !== englishBase) {
-    if (!market.lookup) market.lookup = { notes: [] };
-    if (!market.lookup.notes) market.lookup.notes = [];
+    market.lookup ||= { notes: [] };
+    market.lookup.notes ||= [];
     market.lookup.notes.push(`底材「${rawBase}」對照為 ${englishBase}`);
   }
   setStatus("正在準備…");
+  // The search costs one use of the invite, counted once the input is known good and before a window is opened: a code
+  // that is used up or refused ends the query here (the panel describes the error), with nothing read from Traderie.
+  if (countUse) await countUse(englishBase || rawBase || "stats");
   const scripts = await loadPageScripts();
   session.outcome = await findAndReadStats({
     conditions: input.conditions,

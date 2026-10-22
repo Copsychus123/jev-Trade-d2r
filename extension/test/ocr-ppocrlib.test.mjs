@@ -11,6 +11,7 @@ import {
   sortedBoxes,
   getRotateCropImage,
   inkTone,
+  HEAD_LINES,
 } from "../src/ocr/ppocrlib.js";
 import { toneQuality } from "../src/ocr/tone.js";
 
@@ -268,21 +269,66 @@ test("a crop that really is upside down keeps the turned reading, and crops the 
   assert.deepEqual(none.calls, [1], "nothing was turned, so nothing is read twice");
 });
 
-test("a whole picture whose first line the classifier turns upside down still reads that line upright, in both reading modes", async () => {
+test("a whole picture whose first line the classifier turns upside down still reads that line upright", async () => {
   const w = 300;
   const h = 100;
   const data = new Uint8Array(w * h * 3);
   const box = (y0, high) => [[10, y0], [290, y0], [290, y0 + high], [10, y0 + high]];
-  for (const nameRegionOnly of [false, true]) {
-    const pipeline = new OcrPipeline(null, null, []);
-    pipeline.detect = async () => [box(10, 20), box(50, 30)];
-    // The classifier turns the first line (20 high: 14:1, the wide one) and leaves the second (30 high) alone.
-    pipeline.classify = async (crops) => crops.map((crop) => (crop.h === 20 ? { ...crop, turned: true } : crop));
-    pipeline.recognize = async (crops) =>
-      crops.map((crop) => (crop.turned ? { text: "0-", score: 0.56 } : { text: "名稱", score: 0.99 }));
-    const { lines } = await pipeline.recognizeImage({ data, w, h }, { nameRegionOnly });
-    assert.equal(lines[0].text, "名稱", `nameRegionOnly ${nameRegionOnly}`);
-  }
+  const pipeline = new OcrPipeline(null, null, []);
+  pipeline.detect = async () => [box(10, 20), box(50, 30)];
+  // The classifier turns the first line (20 high: 14:1, the wide one) and leaves the second (30 high) alone.
+  pipeline.classify = async (crops) => crops.map((crop) => (crop.h === 20 ? { ...crop, turned: true } : crop));
+  pipeline.recognize = async (crops) =>
+    crops.map((crop) => (crop.turned ? { text: "0-", score: 0.56 } : { text: "名稱", score: 0.99 }));
+  const { lines } = await pipeline.recognizeImage({ data, w, h });
+  assert.equal(lines[0].text, "名稱");
+});
+
+/** A pipeline whose detector finds `count` stacked lines, line i being 100 + 10 i px wide and read as that number. */
+function stackedPipeline(count) {
+  const pipeline = new OcrPipeline(null, null, []);
+  const box = (i) => [[10, 10 + 40 * i], [110 + 10 * i, 10 + 40 * i], [110 + 10 * i, 30 + 40 * i], [10, 30 + 40 * i]];
+  pipeline.detect = async () => Array.from({ length: count }, (_, i) => box(i));
+  pipeline.classify = async (crops) => crops;
+  pipeline.recognize = async (crops) => crops.map((crop) => ({ text: String(crop.w), score: 0.99 }));
+  return { pipeline, w: 400, h: 40 * count + 20 };
+}
+
+test("a read of more lines than the head reports the first HEAD_LINES lines once, before the rest, and still returns every line in order", async () => {
+  const { pipeline, w, h } = stackedPipeline(8);
+  const heads = [];
+  let readsWhenHeadCame = null;
+  const read = pipeline.recognize.bind(pipeline);
+  let reads = 0;
+  pipeline.recognize = async (crops) => {
+    reads += 1;
+    return read(crops);
+  };
+  const { lines, stages } = await pipeline.recognizeImage(
+    { data: new Uint8Array(w * h * 3), w, h },
+    {
+      onHead: (headLines) => {
+        readsWhenHeadCame = reads;
+        heads.push(headLines.map((line) => line.text));
+      },
+    },
+  );
+  assert.equal(HEAD_LINES, 6);
+  assert.deepEqual(heads, [["100", "110", "120", "130", "140", "150"]]);
+  assert.equal(readsWhenHeadCame, 1, "the head was reported after one recogniser pass, before the rest was read");
+  assert.deepEqual(lines.map((line) => line.text), ["100", "110", "120", "130", "140", "150", "160", "170"]);
+  assert.ok(stages.head >= 0 && stages.head <= stages.total);
+});
+
+test("a read of no more lines than the head never calls onHead: its result is the head", async () => {
+  const { pipeline, w, h } = stackedPipeline(HEAD_LINES);
+  let called = 0;
+  const { lines } = await pipeline.recognizeImage(
+    { data: new Uint8Array(w * h * 3), w, h },
+    { onHead: () => (called += 1) },
+  );
+  assert.equal(called, 0);
+  assert.equal(lines.length, HEAD_LINES);
 });
 
 

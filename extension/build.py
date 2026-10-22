@@ -23,12 +23,13 @@ SECRET_NAMES = ("TYPESAFE_API_KEY", "RUN_TOKEN_SECRET", "KV_REST_API_TOKEN")
 SECRET_PATTERN = re.compile(r"TYPESAFE_API_KEY|RUN_TOKEN_SECRET|KV_REST_API_TOKEN|Bearer\s+[A-Za-z0-9._-]{20,}")
 PAGE_SCRIPTS = ("snapshot.js", "after_input.js", "resolve_target.js", "covered_overlay.js", "settle.js")
 # Page scripts that sit beside the traderie modules rather than at the package root.
-PAGE_SCRIPTS_SUBDIR = ("settled_page.js", "fetch_json.js")
+PAGE_SCRIPTS_SUBDIR = ("settled_page.js", "fetch_json.js", "post_form.js")
 # Shared assets the panel also needs: the CSV export and the colour tokens (see tests/test_ui_tokens.py).
 STATIC_FILES = ("csv.js", "tokens.css")
-# What extension/src/traderie/lookup.js (indexTables, productUrlFor) reads; audit-only fields stay in the source table.
+# What extension/src/traderie/lookup.js (indexTables, productUrlFor) and the listing form (traderie/listing.js
+# runeProducts: the "runes" category, and the item line's category) read; audit-only fields stay in the source table.
 SHIPPED_TABLE_KEYS = ("generated_at", "version", "products", "zh", "bases", "game_only")
-SHIPPED_PRODUCT_KEYS = ("name", "slug")
+SHIPPED_PRODUCT_KEYS = ("name", "slug", "category")
 # Editor and tool leftovers that can land inside extension/src: a build must never copy them into the shipped tree
 # (a backup of a module once rode along into dist and the zip: 75 files where the source has 70).
 NOT_SHIPPED_SUFFIXES = (".bak", ".orig", ".tmp", ".swp", "~")

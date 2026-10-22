@@ -33,6 +33,10 @@
 //   Cls: cls_image_shape [3,48,192], cls_batch_num 6, cls_thresh 0.9, labels 0/180
 //   Rec: rec_img_shape [3,48,320], rec_batch_num 6
 
+// How many lines (reading order) make the head of a read: the lines the item's name is decided on. docs/design.md,
+// "P3 offline pre-check": the first 6 lines decide exactly as the whole text does.
+export const HEAD_LINES = 6;
+
 const CFG = {
   text_score: 0.5,
   min_side_len: 30,
@@ -55,7 +59,7 @@ const CFG = {
     score_mode: "fast",
     min_size: 3,
   },
-  cls: { shape: [3, 48, 192], batch_num: 6, thresh: 0.9, labels: ["0", "180"] },
+  cls: { shape: [3, 48, 192], batch_num: 6, thresh: 0.9 }, // labels 0/180: output column 0 is upright, 1 is turned
   rec: { shape: [3, 48, 320], batch_num: 6 },
 };
 
@@ -100,10 +104,7 @@ function axisSamples(dstLen, srcLen) {
     let f = (i + 0.5) * scale - 0.5;
     let j = Math.floor(f);
     f -= j;
-    if (srcLen < 2) {
-      j = 0;
-      f = 0;
-    } else if (j < 0) {
+    if (srcLen < 2 || j < 0) {
       j = 0;
       f = 0;
     } else if (j >= srcLen - 1) {
@@ -513,16 +514,13 @@ export function dbPostprocess(prob, mapW, mapH, destW, destH) {
 const Y_BAND = 10;
 export function sortedBoxes(boxes) {
   const order = boxes.map((_, i) => i).sort((a, b) => boxes[a][0][1] - boxes[b][0][1] || a - b);
-  const ys = order.map((i) => boxes[i][0][1]);
-  const lineIds = [];
-  let cur = 0;
-  for (let i = 0; i < order.length; i++) {
-    if (i > 0 && ys[i] - ys[i - 1] >= Y_BAND) cur++;
-    lineIds.push(cur);
-  }
-  const pairs = order.map((oi, i) => ({ oi, line: lineIds[i], x: boxes[oi][0][0] }));
-  pairs.sort((a, b) => a.line - b.line || a.x - b.x);
-  return pairs.map((p) => boxes[p.oi]);
+  let line = 0;
+  const keyed = order.map((oi, i) => {
+    if (i > 0 && boxes[oi][0][1] - boxes[order[i - 1]][0][1] >= Y_BAND) line++;
+    return { oi, line, x: boxes[oi][0][0] };
+  });
+  keyed.sort((a, b) => a.line - b.line || a.x - b.x);
+  return keyed.map((p) => boxes[p.oi]);
 }
 
 // ------------------------------------------------------------- crop / warp
@@ -641,9 +639,8 @@ export function getRotateCropImage(img, points) {
       warpPixel(out, (y * cw + x) * 3, src, sw, sh, sx, sy);
     }
   }
-  const res = { data: out, w: cw, h: ch };
-  if (ch / cw >= 1.5) return rotate90(res);
-  return res;
+  const cropped = { data: out, w: cw, h: ch };
+  return ch / cw >= 1.5 ? rotate90(cropped) : cropped;
 }
 
 // np.rot90 (counter-clockwise): (h, w) -> (w, h) with (x, y) -> (y, w - 1 - x).
@@ -703,7 +700,6 @@ function applyVerticalPadding(img, widthHeightRatio, minHeight) {
     const newH = Math.max(trunc(w / widthHeightRatio), minHeight) * 2;
     const paddingH = trunc(Math.abs(newH - h) / 2);
     const out = new Uint8Array(w * (h + 2 * paddingH) * 3);
-    out.fill(0);
     out.set(img.data, paddingH * w * 3);
     return { img: { data: out, w, h: h + 2 * paddingH }, top: paddingH };
   }
@@ -824,6 +820,15 @@ export class OcrPipeline {
     const out = await session.run({ [name]: tensor });
     return out[session.outputNames[0]];
   }
+
+  // One inference of a zero-filled float tensor of shape `dims` through the named session; the milliseconds it took.
+  async warmRun(name, dims) {
+    const start = performance.now();
+    const tensor = new this.ort.Tensor("float32", new Float32Array(dims.reduce((count, d) => count * d, 1)), dims);
+    await this.runSession(this.sessions[name], tensor);
+    return Math.round(performance.now() - start);
+  }
+
   /** Runs a minimal synthetic inference through det/cls/rec sessions so WebGPU shaders compile before real crops arrive. */
   async warmup() {
     const log = [];
@@ -831,43 +836,22 @@ export class OcrPipeline {
     const t0 = performance.now();
     try {
       if (this.sessions.det) {
-        const td0 = performance.now();
         try {
-          const detTensor = new this.ort.Tensor("float32", new Float32Array(1 * 3 * 736 * 960), [1, 3, 736, 960]);
-          await this.runSession(this.sessions.det, detTensor);
-          log.push(`det 736x960 ok: ${Math.round(performance.now() - td0)}ms`);
+          log.push(`det 736x960 ok: ${await this.warmRun("det", [1, 3, 736, 960])}ms`);
         } catch (e1) {
           log.push(`det 736x960 err: ${e1?.message}`);
-          const td1 = performance.now();
-          const detTensor = new this.ort.Tensor("float32", new Float32Array(1 * 3 * 64 * 64), [1, 3, 64, 64]);
-          await this.runSession(this.sessions.det, detTensor);
-          log.push(`det 64x64 ok: ${Math.round(performance.now() - td1)}ms`);
+          log.push(`det 64x64 ok: ${await this.warmRun("det", [1, 3, 64, 64])}ms`);
         }
       }
     } catch (e) {
       log.push(`det fatal: ${e?.message}`);
     }
-    try {
-      if (this.sessions.cls) {
-        const tc0 = performance.now();
-        const [ic, ih, iw] = CFG.cls.shape;
-        const clsTensor = new this.ort.Tensor("float32", new Float32Array(1 * ic * ih * iw), [1, ic, ih, iw]);
-        await this.runSession(this.sessions.cls, clsTensor);
-        log.push(`cls ok: ${Math.round(performance.now() - tc0)}ms`);
+    for (const name of ["cls", "rec"]) {
+      try {
+        if (this.sessions[name]) log.push(`${name} ok: ${await this.warmRun(name, [1, ...CFG[name].shape])}ms`);
+      } catch (e) {
+        log.push(`${name} err: ${e?.message}`);
       }
-    } catch (e) {
-      log.push(`cls err: ${e?.message}`);
-    }
-    try {
-      if (this.sessions.rec) {
-        const tr0 = performance.now();
-        const [ic, ih, iw] = CFG.rec.shape;
-        const recTensor = new this.ort.Tensor("float32", new Float32Array(1 * ic * ih * iw), [1, ic, ih, iw]);
-        await this.runSession(this.sessions.rec, recTensor);
-        log.push(`rec ok: ${Math.round(performance.now() - tr0)}ms`);
-      }
-    } catch (e) {
-      log.push(`rec err: ${e?.message}`);
     }
     log.push(`total warmup: ${Math.round(performance.now() - t0)}ms`);
     return log;
@@ -892,11 +876,9 @@ export class OcrPipeline {
     const { rh, rw } = detInputSize(img.h, img.w, limit ?? CFG.det);
     const resized = resizeLinear(img, rw, rh);
     const chw = toNormalizedCHW(resized, CFG.det.mean, CFG.det.std);
-    const t = new this.ort.Tensor("float32", chw, [1, 3, rh, rw]);
-    const out = await this.runSession(this.sessions.det, t);
-    const dims = out.dims; // [N, C, H, W]
-    const mapH = dims[2];
-    const mapW = dims[3];
+    const tensor = new this.ort.Tensor("float32", chw, [1, 3, rh, rw]);
+    const out = await this.runSession(this.sessions.det, tensor);
+    const [, , mapH, mapW] = out.dims; // [N, C, H, W]
     const prob = out.data.subarray(0, mapW * mapH);
     const { boxes } = dbPostprocess(prob, mapW, mapH, img.w, img.h);
     return sortedBoxes(boxes);
@@ -909,11 +891,9 @@ export class OcrPipeline {
     for (const [beg, end] of batchRanges(idx.length, CFG.cls.batch_num)) {
       const { batch, preds } = await this.runBatch({ session: this.sessions.cls, crops, idx, beg, end, ic, ih, width: iw });
       for (let i = 0; i < batch.length; i++) {
-        const a = preds.data[i * 2]; // preds.dims: [N, 2] — the class order is [0, 180]
-        const b = preds.data[i * 2 + 1];
-        const label = b > a ? CFG.cls.labels[1] : CFG.cls.labels[0];
-        const score = b > a ? b : a;
-        if (label.includes("180") && score > CFG.cls.thresh) {
+        const upright = preds.data[i * 2]; // preds.dims: [N, 2] — the class order is [0, 180]
+        const upsideDown = preds.data[i * 2 + 1];
+        if (upsideDown > upright && upsideDown > CFG.cls.thresh) {
           out[idx[beg + i]] = rotate180(crops[idx[beg + i]]);
         }
       }
@@ -928,14 +908,12 @@ export class OcrPipeline {
     for (const [beg, end] of batchRanges(idx.length, CFG.rec.batch_num)) {
       let maxWhRatio = iwBase / ih;
       for (let i = beg; i < end; i++) {
-        const r = crops[idx[i]].w / crops[idx[i]].h;
-        if (r > maxWhRatio) maxWhRatio = r;
+        const ratio = crops[idx[i]].w / crops[idx[i]].h;
+        if (ratio > maxWhRatio) maxWhRatio = ratio;
       }
       const imgW = trunc(ih * maxWhRatio);
       const { batch, preds } = await this.runBatch({ session: this.sessions.rec, crops, idx, beg, end, ic, ih, width: imgW });
-      const dims = preds.dims; // [N, T, C]
-      const T = dims[1];
-      const C = dims[2];
+      const [, T, C] = preds.dims; // [N, T, C]
       for (let i = 0; i < batch.length; i++) {
         const { text, score } = this.ctcDecode(preds.data, i, T, C);
         results[idx[beg + i]] = { text, score };
@@ -982,7 +960,7 @@ export class OcrPipeline {
     return { text: chars.join(""), score: Math.round(mean * 1e5) / 1e5 };
   }
 
-  async recognizeImage(bgr, { nameRegionOnly = false, capDet = false } = {}) {
+  async recognizeImage(bgr, { capDet = false, onHead = null } = {}) {
     const t0 = performance.now();
     let img = resizeWithinBounds(bgr, CFG.min_side_len, CFG.max_side_len);
     let padTop = 0;
@@ -999,56 +977,40 @@ export class OcrPipeline {
     const tDet = performance.now();
     const allCrops = boxes.map((b) => getRotateCropImage(img, b));
 
-    let crops = allCrops;
-    let recOut = [];
-    let tCls = tDet;
-    let tRec = tDet;
+    // Head first: the first HEAD_LINES lines (reading order) are read and handed to `onHead` before the rest, so the
+    // caller can decide the item's name while the stat lines are still being read. Nothing is read twice; each part is
+    // batched on its own (by aspect ratio, 6 crops a batch), so a garbled line's text can differ slightly from a
+    // whole-picture read, which the accuracy gate of scripts/ocr_e2e.py covers.
+    const headCrops = allCrops.slice(0, HEAD_LINES);
+    const restCrops = allCrops.slice(HEAD_LINES);
+    const readCrops = async (list) => {
+      const c0 = performance.now();
+      const classified = await this.classify(list);
+      const c1 = performance.now();
+      const out = await this.recognizeChecked(list, classified);
+      const c2 = performance.now();
+      return { lines: finalLines(out.map((line, i) => ({ ...line, tone: inkTone(list[i]) }))), cls: c1 - c0, rec: c2 - c1 };
+    };
+    const head = await readCrops(headCrops);
+    const tHead = performance.now();
+    if (restCrops.length && onHead) onHead(head.lines);
+    const rest = restCrops.length ? await readCrops(restCrops) : { lines: [], cls: 0, rec: 0 };
 
-    if (nameRegionOnly) {
-      // Progressively classify and recognize line by line until first real stat line
-      const STAT_LINE = /[%+:：]|[(（][A-Za-z]/u;
-      const isStatLine = (txt) => {
-        if (/出售[價价][格錢]/u.test(txt)) return false;
-        const untagged = txt.replace(/[[［].*$|【(?=精英|卓越|普通|[A-Za-z0-9]).*$/u, "");
-        const mark = untagged.search(STAT_LINE);
-        return mark !== -1 && /\d/u.test(untagged.slice(mark));
-      };
-
-      recOut = [];
-      crops = [];
-      for (let i = 0; i < allCrops.length; i++) {
-        const [classified] = await this.classify([allCrops[i]]);
-        const [recResult] = await this.recognizeChecked([allCrops[i]], [classified]);
-        if (isStatLine(recResult?.text ?? "")) {
-          break;
-        }
-        crops.push(allCrops[i]);
-        recOut.push(recResult);
-      }
-      tCls = performance.now();
-      tRec = tCls;
-    } else {
-      const clsCrops = await this.classify(crops);
-      tCls = performance.now();
-      recOut = await this.recognizeChecked(crops, clsCrops);
-      tRec = performance.now();
-    }
-
-    const lines = finalLines(recOut.map((line, i) => ({ ...line, tone: inkTone(crops[i]) })));
+    const lines = [...head.lines, ...rest.lines];
     const tTotal = performance.now();
     const stages = {
       resize: Math.round(tResize - t0),
       det: Math.round(tDet - tResize),
-      cls: Math.round(tCls - tDet),
-      rec: Math.round(tRec - tCls),
+      cls: Math.round(head.cls + rest.cls),
+      rec: Math.round(head.rec + rest.rec),
+      head: Math.round(tHead - t0), // from the picture arriving to the name lines being read
       total: Math.round(tTotal - t0),
-      nameRegionOnly,
     };
     return {
       lines,
       stages,
       detBoxes: boxes.length,
-      crops: crops.length,
+      crops: allCrops.length,
       paddedTop: padTop,
       inputSize: [img.w, img.h],
     };

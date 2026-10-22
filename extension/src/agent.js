@@ -144,10 +144,14 @@ export class Agent {
     countStale(state, reason);
   }
 
-  /** this.choose plus its round trip as the client saw it (`choose_ms`, next to Jev's own `latency_ms`). */
-  async _choose(...args) {
+  /**
+   * this.choose plus its round trip as the client saw it (`choose_ms`, next to Jev's own `latency_ms`); the model
+   * calls it made are charged to the run's budget.
+   */
+  async _choose(state, phaseHistory, ...options) {
     const started = now();
-    const decision = await this.choose(...args);
+    const decision = await this.choose(state.page, state.phase, phaseHistory, ...options);
+    this.callBudget.used += decision.model_calls ?? 0;
     return { ...decision, choose_ms: Math.round(now() - started) };
   }
 
@@ -319,7 +323,7 @@ export class Agent {
   async _predict() {
     const state = this.state;
     if (state.started_at === null) state.started_at = now();
-    if (state.awaiting_handoff) throw new Error("Controller handoff required before continuing this run.");
+    this._requireRunnable(state);
     // Cleared before the page read: a stale read is a navigation, not a target that keeps failing, and it must not be
     // charged to the step before (whose action may have succeeded).
     state.last_attempt = null;
@@ -329,9 +333,6 @@ export class Agent {
     if (this._finishPhaseByRule(state)) return this._settle(state);
     await this._syncPage(state);
     if (this._applyScopeGuard(state)) return this._settle(state);
-    if (state.status === "done" || state.status === "blocked") {
-      throw new Error("This run has stopped. Start a fresh run.");
-    }
     const phaseHistory = state.history.slice(state.phase_start);
     const byRule = this._nextByRule(state, phaseHistory);
     if (byRule) {
@@ -340,11 +341,10 @@ export class Agent {
       return this._settle(state);
     }
     // Mirrors the server: a request may cost two model calls, so stop while two more would not fit.
-    const budget = this.callBudget;
-    if (budget.used + 2 > JEV_CALL_LIMIT) throw new Error(`Jev 呼叫次數已達這次查詢的上限（${JEV_CALL_LIMIT} 次），查詢已停止`);
-    let decision = await this._choose(state.page, state.phase, phaseHistory);
-    budget.used += decision.model_calls ?? 0;
-    decision = await this._vetoAndRechoose(state, phaseHistory, decision, budget);
+    if (this.callBudget.used + 2 > JEV_CALL_LIMIT) {
+      throw new Error(`Jev 呼叫次數已達這次查詢的上限（${JEV_CALL_LIMIT} 次），查詢已停止`);
+    }
+    const decision = await this._vetoAndRechoose(state, phaseHistory, await this._choose(state, phaseHistory));
     state.decision = decision;
     state.decisions.push({
       ...state.decision,
@@ -357,18 +357,17 @@ export class Agent {
   }
 
   /** Jev gave up on a page the caller can see is fine: ask once more without the BLOCKED option. */
-  async _vetoAndRechoose(state, phaseHistory, decision, budget) {
+  async _vetoAndRechoose(state, phaseHistory, decision) {
     if (
       decision.choice === "BLOCKED" &&
       this.vetoBlocked?.(state.page) &&
       state.veto_fingerprint !== state.page.fingerprint &&
-      budget.used + 2 <= JEV_CALL_LIMIT
+      this.callBudget.used + 2 <= JEV_CALL_LIMIT
     ) {
       state.veto_fingerprint = state.page.fingerprint;
       state.decision = decision;
       state.decisions.push({ ...decision, vetoed: true, fingerprint: state.page.fingerprint, ...this._decisionInfo(state) });
-      decision = await this._choose(state.page, state.phase, phaseHistory, { noBlock: true });
-      budget.used += decision.model_calls ?? 0;
+      return this._choose(state, phaseHistory, { noBlock: true });
     }
     return decision;
   }
@@ -393,7 +392,7 @@ export class Agent {
     // Consume once, before any mutation. A retry cannot double-click.
     state.decision = null;
     const selected = decision.choice;
-    if (selected === "DONE" || selected === "BLOCKED") return await this._finishByVerdict(selected, page);
+    if (selected === "DONE" || selected === "BLOCKED") return await this._finishByVerdict(selected);
 
     state.last_attempt = { choice: selected, fingerprint: page.fingerprint };
     state.attempts += 1; // counts failed presses too: an action that keeps going stale still costs a step
@@ -412,18 +411,35 @@ export class Agent {
     return repeated.length === 3 && repeated.every((h) => h.page_changed === false && h.kind !== "wait");
   }
 
-  /** A DONE or BLOCKED choice is a verdict about the page: it only stands while the page is still the same one. */
-  async _finishByVerdict(selected, page) {
+  /**
+   * A DONE or BLOCKED choice is a verdict about the view, not an input, so it has no freshness gate (the twin of
+   * agent.py `_apply_verdict`): ads and relative times change the page text between the decision and now, and the
+   * controller reads and verifies the live page itself right after. A gate here could discard a correct verdict again
+   * and again, paying a Jev call each time with nothing but the call budget to stop it.
+   */
+  async _finishByVerdict(selected) {
     const state = this.state;
-    if (!(await this._isFresh(page))) {
-      state.status = "ready";
-      await this._refreshForRetry(state);
-      throw new StalePage("Page changed since the decision. Choose again.");
-    }
     if (selected === "DONE" && this._advancePhase(state)) return this.snapshot();
     if (selected === "DONE") this._finishRun(state);
     else this._block(state);
     return this.snapshot();
+  }
+
+  /**
+   * Refuses a prediction that cannot go anywhere, before any page read or Jev call costs anything (the twin of
+   * agent.py `_require_runnable`): a handoff is pending, the run already stopped, or the action budget is spent.
+   */
+  _requireRunnable(state) {
+    if (state.awaiting_handoff) throw new Error("Controller handoff required before continuing this run.");
+    if (state.status === "done" || state.status === "blocked") throw new Error("This run has stopped. Start a fresh run.");
+    this._requireStepBudget(state);
+  }
+
+  _requireStepBudget(state) {
+    if (state.history.length >= MAX_STEPS || state.attempts > MAX_STEPS) {
+      state.status = "blocked";
+      throw new Error(`已達 ${MAX_STEPS} 個動作的上限，查詢已停止`);
+    }
   }
 
   /** The element the decision chose (still on the page, and within the step budget) plus the text to type into it. */
@@ -434,10 +450,7 @@ export class Agent {
       await this._refreshForRetry(state);
       throw new StalePage("Chosen element is no longer available. Choose again.");
     }
-    if (state.history.length >= MAX_STEPS || state.attempts > MAX_STEPS) {
-      state.status = "blocked";
-      throw new Error(`已達 ${MAX_STEPS} 個動作的上限，查詢已停止`);
-    }
+    this._requireStepBudget(state);
     let text = null;
     if (action.kind === "fill") {
       if (!(await this._isFresh(page, action))) {

@@ -1,8 +1,10 @@
+/* The side panel's stylesheet. Colour and metric come from tokens.css (src/jev_ultrafast/static/tokens.css): spacing,
+   radius, control height and every colour are names there, never literals here. A Chrome side panel is 320-400 px wide. */
+
+/* ---- base ---- */
 :root {
   color-scheme: light dark;
-  font-family: system-ui, "Noto Sans TC", sans-serif;
-  font-size: 14px;
-  /* The palette is shared with the local demo and lives in tokens.css (src/jev_ultrafast/static/tokens.css). */
+  font: 14px/1.45 system-ui, "Noto Sans TC", sans-serif;
 }
 [hidden] {
   display: none !important;
@@ -15,101 +17,54 @@ body {
   min-width: 0;
 }
 main {
-  padding: 4px 12px 16px;
+  padding: var(--space-1) var(--space-3) var(--space-4);
   overflow-wrap: break-word;
 }
+
+/* ---- type ---- */
 h1 {
   font-size: 16px;
+  font-weight: 600;
   margin: 0;
   flex: 1;
   min-width: 0;
 }
 h2 {
   font-size: 15px;
-  margin: 8px 0 4px;
+  font-weight: 600;
+  margin: 0;
 }
 h3 {
   font-size: 13px;
-  margin: 14px 0 4px;
+  font-weight: 600;
+  margin: var(--space-4) 0 var(--space-2);
 }
 p {
-  margin: 6px 0 0;
+  margin: var(--space-2) 0 0;
 }
-label {
-  display: block;
-  margin: 10px 0 4px;
-  font-weight: 600;
+.help,
+.small,
+.line2,
+.meta,
+.quota {
+  font-size: 12px;
 }
-input,
-select {
-  width: 100%;
-  min-height: 32px;
-  padding: 5px 8px;
+.help {
+  margin-top: var(--space-1);
 }
-button {
-  min-height: 32px;
-  padding: 4px 12px;
-  cursor: pointer;
+.muted,
+.help,
+.empty {
+  color: var(--muted);
 }
-button.primary {
-  background: var(--accent);
-  color: var(--on-solid);
-  border: 0;
-  border-radius: 4px;
-}
-button.wide {
-  width: 100%;
-  min-height: 38px;
-  margin-top: 10px;
-  font-size: 15px;
-}
-button.icon {
-  padding: 4px 8px;
-}
-button.link {
-  min-height: 32px;
-  padding: 0 2px;
-  border: 0;
-  background: none;
-  color: var(--accent);
-  text-align: left;
-}
-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+.empty {
+  padding: var(--space-4) 0;
+  text-align: center;
 }
 summary {
   cursor: pointer;
   min-height: 28px;
-  padding: 4px 0;
-}
-.muted {
-  color: var(--muted);
-  margin: 6px 0 0;
-}
-.small {
-  font-size: 12px;
-}
-.help {
-  font-size: 12px;
-  margin-top: 4px;
-}
-.row {
-  display: flex;
-  gap: 6px;
-  margin-top: 6px;
-}
-.row input {
-  flex: 1;
-  min-width: 0;
-}
-.row.between {
-  justify-content: space-between;
-  align-items: center;
+  padding: var(--space-1) 0;
 }
 .sr {
   position: absolute;
@@ -120,29 +75,239 @@ summary {
   white-space: nowrap;
 }
 
+/* ---- controls: a button is the secondary one; .primary is the one thing to press; .link is a text action ---- */
+button {
+  min-height: var(--control-h);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: Canvas;
+  color: CanvasText;
+  font: inherit;
+  cursor: pointer;
+}
+button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-solid);
+  font-weight: 600;
+}
+button.link {
+  min-height: 32px;
+  padding: 0 var(--space-1);
+  border: 0;
+  background: none;
+  color: var(--accent);
+  text-align: left;
+}
+button.link.back {
+  margin-left: calc(-1 * var(--space-1));
+  white-space: nowrap;
+}
+button.icon {
+  width: var(--control-h);
+  padding: 0;
+}
+button.wide {
+  width: 100%;
+  min-height: var(--control-h-lg);
+  margin-top: var(--space-3);
+  font-size: 15px;
+}
+button.remove {
+  flex: none;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0 var(--space-2);
+  border: 0;
+  background: none;
+  color: var(--muted);
+  line-height: 1;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+:where(input:not([type="checkbox"]):not([type="radio"]), select) {
+  width: 100%;
+  min-height: var(--control-h);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: Canvas;
+  color: CanvasText;
+  font: inherit;
+}
+label {
+  display: block;
+  margin: var(--space-3) 0 var(--space-1);
+  font-weight: 600;
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* Checkboxes and radios are not text fields: the control rule above must not stretch them. */
+input[type="checkbox"],
+input[type="radio"] {
+  width: auto;
+  min-height: 0;
+  padding: 0;
+  flex: none;
+}
+
+/* ---- layout primitives ---- */
+.row {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.row input {
+  flex: 1;
+  min-width: 0;
+}
+.row.between {
+  justify-content: space-between;
+  align-items: center;
+}
+.row.pair button {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.row.pair #filter-preset {
+  flex-grow: 2;
+}
+.fields {
+  display: grid;
+  grid-template-columns: 5em 1fr;
+  gap: var(--space-2) var(--space-3);
+  align-items: center;
+  margin-top: var(--space-2);
+}
+.fields label {
+  margin: 0;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  margin-top: var(--space-2);
+}
+.actions:not(:has(:is(button, a):not([hidden]))) {
+  display: none;
+}
+.actions button {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* A line of items centred on one row: the header, a screen's title row, a numbered step, the environment summary. */
+.top,
+.screen-head,
+.listing-step,
+.listing-env summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.screen-head {
+  margin-top: var(--space-2);
+}
+.screen-head .screen-title {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.settings-group {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+.settings-group > h3:first-child {
+  margin-top: 0;
+}
+.settings-fold > summary {
+  font-weight: 600;
+}
+.settings-fold #more-box h3 {
+  margin-top: var(--space-6);
+}
+.settings-danger {
+  border-top-color: var(--bad);
+}
+.settings-danger h3 {
+  color: var(--bad);
+}
+button.danger {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+#filter-fields label {
+  margin-top: var(--space-2);
+}
+
+/* ---- notices: one box for a banner, a warning, a note, a filter line and the trust line ---- */
+.notice {
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 13px;
+}
+.notice[data-tone="info"] {
+  border-left-color: var(--accent);
+  background: var(--accent-wash);
+}
+.notice[data-tone="warn"] {
+  border-left-color: var(--warn);
+  background: var(--warn-wash);
+}
+.notice[data-tone="bad"] {
+  border-left-color: var(--bad);
+  background: var(--bad-wash);
+}
+.notice[data-tone="ok"] {
+  border-left-color: var(--ok);
+  background: var(--ok-wash);
+}
+.notice p {
+  margin: 0;
+}
+.banner-message {
+  font-weight: 600;
+}
+.notice .banner-hint {
+  margin-top: var(--space-1);
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
 /* ---- header ---- */
 .top {
   position: sticky;
   top: 0;
   z-index: 10;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   background: Canvas;
   border-bottom: 1px solid var(--line);
 }
 .quota {
-  font-size: 12px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
   color: var(--muted);
   white-space: nowrap;
+}
+.quota:empty {
+  display: none;
 }
 
 /* ---- first use, settings ---- */
 .welcome .lead {
   font-size: 16px;
   font-weight: 600;
-  margin-top: 16px;
+  margin-top: var(--space-4);
 }
 .masked {
   font-family: ui-monospace, monospace;
@@ -151,32 +316,26 @@ summary {
 .check {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   font-weight: 400;
   min-height: 32px;
 }
-.check input {
-  width: auto;
-  min-height: 0;
-}
-
-/* ---- the form ---- */
 .stepper-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin-top: 14px;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
   font-weight: 600;
 }
 .stepper {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
 }
 .stepper button {
-  min-width: 32px;
-  padding: 4px 0;
+  min-width: var(--control-h);
+  padding: 0;
 }
 .stepper output {
   min-width: 28px;
@@ -185,33 +344,20 @@ summary {
 }
 
 /* ---- the running screen ---- */
-.summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 8px;
-}
-.summary-text,
-.mode-title {
-  font-weight: 600;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
 .stopped {
   color: var(--muted);
 }
 .steps {
   list-style: none;
-  margin: 12px 0 0;
+  margin: var(--space-3) 0 0;
   padding: 0;
 }
 .steps li {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 2px 8px;
-  padding: 3px 0;
+  gap: 2px var(--space-2);
+  padding: var(--space-1) 0;
 }
 .steps li[data-state="pending"] {
   color: var(--muted);
@@ -231,24 +377,14 @@ summary {
 }
 .steps small {
   flex-basis: 100%;
-  padding-left: calc(1.2em + 8px);
+  padding-left: calc(1.2em + var(--space-2));
   font-weight: 400;
   color: var(--muted);
   overflow-wrap: anywhere;
 }
-.keep-open,
-.notes {
-  padding: 6px 8px;
-  border-left: 3px solid var(--warn);
-  background: var(--warn-wash);
-}
 
-/* ---- trust line, notes, banner ---- */
-.trust {
-  margin-top: 10px;
-}
+/* ---- trust line ---- */
 .trust p {
-  margin: 0;
   color: var(--ok);
   font-weight: 600;
 }
@@ -258,34 +394,22 @@ summary {
 .trust summary::-webkit-details-marker {
   display: none;
 }
+.trust[data-kind="warn"] {
+  border-left-color: var(--bad);
+  background: var(--bad-wash);
+}
 .trust[data-kind="warn"] summary {
   color: var(--bad);
   font-weight: 600;
 }
 .trust ul {
-  margin: 4px 0 0;
-  padding-left: 20px;
-}
-.banner {
-  margin-top: 10px;
-  padding: 10px;
-  border: 1px solid var(--bad);
-  border-radius: 6px;
-  background: var(--bad-wash);
-}
-.banner-message {
-  margin: 0;
-  font-weight: 600;
-}
-.banner-hint {
-  font-size: 12px;
-  color: var(--muted);
-  overflow-wrap: anywhere;
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-6);
 }
 
 /* ---- results ---- */
 #part-results {
-  margin-top: 12px;
+  margin-top: var(--space-3);
 }
 .tabs {
   display: flex;
@@ -293,10 +417,11 @@ summary {
 }
 .tabs [role="tab"] {
   flex: 1;
-  min-height: 38px;
-  padding: 4px 6px;
+  min-height: var(--control-h-lg);
+  padding: 0 var(--space-2);
   border: 0;
   border-bottom: 3px solid transparent;
+  border-radius: 0;
   background: none;
   font-weight: 600;
 }
@@ -313,65 +438,94 @@ summary {
   color: var(--bad);
 }
 .tab-mark:not(:empty) {
-  margin-left: 4px;
-  padding: 0 5px;
+  margin-left: var(--space-1);
+  padding: 0 var(--space-1);
   border: 1px solid currentColor;
-  border-radius: 8px;
+  border-radius: var(--radius-pill);
 }
 [role="tabpanel"] {
-  padding-top: 8px;
+  padding-top: var(--space-2);
 }
 .meta {
   margin-top: 0;
-  font-size: 12px;
   overflow-wrap: anywhere;
 }
+.filter-line {
+  display: flex;
+  align-items: baseline;
+  gap: 0 var(--space-2);
+  font-size: 12px;
+}
+#filter-text {
+  flex: 1;
+  min-width: 0;
+}
+.filter-line button.link {
+  flex: none;
+  min-height: 28px;
+}
+.pager {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+.pager button {
+  min-width: var(--control-h);
+}
+
+/* ---- lists: results, the scan records, the learning record ---- */
 .listings,
 .affixes {
   list-style: none;
-  margin: 6px 0 0;
+  margin: var(--space-2) 0 0;
   padding: 0;
 }
 .listings li {
-  padding: 7px 0;
+  padding: var(--space-2) 0;
   border-bottom: 1px solid var(--line);
 }
-.line1 {
+.line1,
+#learn-list li {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  gap: 10px;
+  gap: var(--space-2);
 }
 .line1 strong {
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.line1 button.remove {
-  flex: none;
-  min-width: 28px;
-  min-height: 28px;
-  padding: 0 6px;
-  border: 0;
-  background: none;
-  color: var(--muted);
-  line-height: 1;
+.line1 .side {
+  flex: 0 1 auto;
+  min-width: 7em;
+  max-width: 45%;
+  text-align: right;
+  overflow-wrap: break-word;
 }
-#learn-list li {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 10px;
+.line2 {
+  margin-top: 2px;
+  color: var(--muted);
   overflow-wrap: anywhere;
 }
-#learn-list button.remove {
+#learn-list li {
+  overflow-wrap: anywhere;
+}
+.record .actions {
+  margin-top: var(--space-1);
+}
+.record .actions button {
   flex: none;
-  min-width: 28px;
-  min-height: 28px;
-  padding: 0 6px;
-  border: 0;
-  background: none;
-  color: var(--muted);
-  line-height: 1;
+  min-height: 32px;
+  padding: 0;
+  font-size: 13px;
+}
+.options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-3);
+  margin-top: var(--space-2);
 }
 .options[aria-label]::before {
   content: attr(aria-label) "：";
@@ -384,8 +538,8 @@ summary {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 8px;
-  margin-top: 6px;
+  gap: var(--space-1) var(--space-2);
+  margin-top: var(--space-2);
 }
 .name-box .name-input {
   flex: 1 1 120px;
@@ -394,69 +548,9 @@ summary {
 .name-box .muted {
   flex-basis: 100%;
 }
-.side {
-  max-width: 45%;
-  text-align: right;
-  overflow-wrap: anywhere;
-}
-.line2 {
-  margin-top: 2px;
+.suggest-hint {
   font-size: 12px;
   color: var(--muted);
-}
-.filter-line {
-  display: flex;
-  align-items: baseline;
-  gap: 0 6px;
-  margin: 10px 0 6px;
-  padding: 6px 8px;
-  border-left: 3px solid var(--accent);
-  background: var(--accent-wash);
-  font-size: 12px;
-}
-#filter-text {
-  flex: 1;
-  min-width: 0;
-}
-.filter-line button.link {
-  flex: none;
-  min-height: 28px;
-}
-#filter-fields label {
-  margin-top: 8px;
-}
-.row.pair button {
-  flex: 1 1 0;
-  min-width: 0;
-}
-.row.pair #filter-preset {
-  flex-grow: 2;
-}
-.pager {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 12px;
-  margin-top: 8px;
-}
-.pager button {
-  min-width: 36px;
-}
-.options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0 12px;
-  margin-top: 6px;
-}
-.actions {
-  display: flex;
-  gap: 6px;
-  margin-top: 10px;
-}
-.actions button {
-  flex: 1 1 0;
-  min-width: 0;
-  padding-inline: 4px;
 }
 
 /* ---- screenshot reader (under the name field) ---- */
@@ -469,15 +563,14 @@ summary {
 .field-icon {
   position: absolute;
   top: 50%;
-  right: 4px;
+  right: var(--space-1);
   transform: translateY(-50%);
   width: 32px;
   min-height: 32px;
   height: 32px;
   padding: 0;
   font-size: 15px;
-  border: 1px solid var(--accent);
-  border-radius: 4px;
+  border-color: var(--accent);
   background: transparent;
 }
 .field-icon i {
@@ -494,9 +587,9 @@ summary {
   top: 100%;
   right: 0;
   z-index: 5;
-  margin-top: 4px;
-  padding: 5px 9px;
-  border-radius: 4px;
+  margin-top: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius);
   background: var(--toast);
   color: var(--on-solid);
   font-size: 11px;
@@ -508,34 +601,34 @@ summary {
 }
 .tag {
   display: inline-block;
-  margin-top: 6px;
-  padding: 1px 8px;
-  border-radius: 9px;
+  margin-top: var(--space-2);
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-pill);
   background: var(--tag-surface);
   color: var(--tag-ink);
   font-size: 12px;
 }
 .dropzone {
-  margin-top: 6px;
-  padding: 14px 8px;
+  margin-top: var(--space-2);
+  padding: var(--space-4) var(--space-2);
   border: 2px dashed var(--accent);
-  border-radius: 6px;
+  border-radius: var(--radius);
   background: var(--accent-wash-strong);
   font-weight: 600;
   text-align: center;
   pointer-events: none;
 }
 .ocr-panel {
-  margin-top: 8px;
-  padding: 8px;
+  margin-top: var(--space-2);
+  padding: var(--space-2);
   border: 1px dashed var(--accent);
-  border-radius: 6px;
+  border-radius: var(--radius);
 }
 .ocr-top {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 6px;
+  gap: var(--space-2);
 }
 .ocr-frame {
   position: relative;
@@ -556,7 +649,7 @@ summary {
   pointer-events: none;
 }
 #ocr-go {
-  margin-top: 8px;
+  margin-top: var(--space-2);
 }
 #ocr-candidates {
   flex-wrap: wrap;
@@ -572,7 +665,7 @@ summary {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 4px 12px;
+  gap: var(--space-1) var(--space-3);
 }
 #ocr-text {
   white-space: pre-wrap;
@@ -586,46 +679,6 @@ summary {
 .ocr-panel.done #ocr-box {
   display: none;
 }
-
-/* ---- the two ways to search: names (unique/set) or affixes (yellow/blue/white) ---- */
-.choose h2 {
-  margin-top: 12px;
-}
-.choice {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  width: 100%;
-  margin-top: 8px;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: transparent;
-  text-align: left;
-}
-.choice:hover, .choice:focus-visible {
-  border-color: var(--accent);
-}
-.choice-title {
-  font-size: 15px;
-  font-weight: 600;
-}
-.choice-sub {
-  font-size: 13px;
-}
-.choice-eg,
-.suggest-hint {
-  font-size: 12px;
-  color: var(--muted);
-}
-.mode-chosen {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 8px;
-}
 .suggest {
   position: absolute;
   top: 100%;
@@ -637,57 +690,60 @@ summary {
   list-style: none;
   background: Canvas;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius);
 }
 .suggest li {
   display: flex;
   flex-wrap: wrap;
-  gap: 0 8px;
-  padding: 6px 8px;
+  gap: 0 var(--space-2);
+  padding: var(--space-2);
   cursor: pointer;
 }
-.suggest li[aria-selected="true"], .suggest li:hover {
+.suggest li[aria-selected="true"],
+.suggest li:hover {
   background: color-mix(in srgb, var(--accent) 15%, Canvas);
 }
+
+/* ---- the affix form (yellow / blue / white items) ---- */
 .quality {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 12px;
-  margin: 12px 0 0;
+  gap: var(--space-1) var(--space-3);
+  margin: var(--space-3) 0 0;
   padding: 0;
   border: 0;
 }
 .quality legend {
   float: left;
-  margin: 0 12px 0 0;
+  margin: 0 var(--space-3) 0 0;
   padding: 0;
   font-weight: 600;
 }
-.quality label {
+.quality label,
+.affix-name {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
+  margin: 0;
+  font-weight: 400;
 }
 .affix {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 8px;
-  padding: 6px 4px;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-2) var(--space-1);
   border-bottom: 1px solid var(--line);
 }
 .affix-name {
-  display: flex;
   flex: 1 1 130px;
-  align-items: center;
-  gap: 6px;
   min-width: 0;
   overflow-wrap: anywhere;
 }
 .affix-limits {
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
 }
 .affix-limits input {
   width: 64px;
@@ -700,49 +756,130 @@ summary {
   border-color: var(--warn);
   border-style: dashed;
 }
+/* A number the player corrected before for this same line: their own entry, so no dashed "look at me" border. */
+.affix-limits input.from-learned,
+#listing-affixes input.from-learned {
+  border-color: var(--ok);
+  border-style: dotted;
+}
 .affix.unmapped {
   color: var(--muted);
 }
 .affix.invalid input {
   outline: 2px solid var(--bad);
 }
-
-/* Checkboxes and radios are not text fields: the global input rule must not stretch them. */
-input[type="checkbox"],
-input[type="radio"] {
-  width: auto;
-  min-height: 0;
-  padding: 0;
-  flex: none;
-}
-.quality label,
-.affix-name {
-  display: inline-flex;
-  margin: 0;
-  font-weight: 400;
-}
-#part-stats h2 {
-  margin-top: 14px;
-}
-#part-stats .row.pair > * {
-  flex: 1 1 0;
-  min-width: 0;
-  width: auto;
-}
 .affix-remove {
   flex: none;
   min-width: 32px;
 }
-.line1 .side {
-  flex: 0 1 auto;
-  min-width: 7em;
-  overflow-wrap: break-word;
+
+/* ---- the TR交易 screen: the item line, the affix rows (a number the reader filled in keeps the dashed capture mark)
+   and the price groups ---- */
+.listing-item {
+  font-weight: 600;
+}
+#listing-affixes .affix {
+  gap: var(--space-2);
+}
+#listing-affixes .affix label {
+  flex: 1;
+}
+#listing-affixes input.affix-value {
+  width: 72px;
+  min-width: 0;
+}
+#listing-affixes input.from-capture,
+#listing-rarity.from-capture {
+  border-color: var(--warn);
+  border-style: dashed;
+}
+.price-group .rune {
+  flex: 1;
+  min-width: 0;
+}
+.price-group .qty {
+  width: 64px;
+  min-width: 0;
+}
+#listing-price {
+  margin: 0;
+  padding: var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
 }
 
-/* ---- 裝備掃描: at 320 px the two list links would squeeze together ---- */
-@media (max-width: 320px) {
-  #part-scan .listings li {
-    flex-wrap: wrap;
-    gap: 0 8px;
+/* ---- a very narrow panel ---- */
+@media (max-width: 340px) {
+  .record .actions {
+    gap: var(--space-2);
   }
+  .fields {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- TR交易: item card, numbered steps, environment summary, and a bottom bar that keeps 上架 in reach ---- */
+.listing-card {
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.listing-card .listing-item {
+  margin: 0;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.step-no {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--on-solid);
+  font-size: 12px;
+  font-weight: 600;
+}
+.listing-env {
+  margin-top: var(--space-4);
+  border-top: 1px solid var(--line);
+}
+#listing-env-summary {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+#listing-price .check {
+  margin-top: var(--space-2);
+}
+.action-bar {
+  position: sticky;
+  bottom: 0;
+  margin: var(--space-4) calc(-1 * var(--space-3)) 0;
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  border-top: 1px solid var(--line);
+  background: Canvas;
+}
+.action-bar .wide {
+  margin-top: var(--space-2);
+}
+.listing-status:not(:empty) {
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.listing-status[data-tone="ok"] {
+  border-color: var(--ok);
+  background: var(--ok-wash);
+}
+.listing-status[data-tone="warn"] {
+  border-color: var(--warn);
+  background: var(--warn-wash);
+}
+.listing-status[data-tone="bad"] {
+  border-color: var(--bad);
+  background: var(--bad-wash);
 }

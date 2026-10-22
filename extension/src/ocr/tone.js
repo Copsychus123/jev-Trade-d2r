@@ -18,9 +18,9 @@ export function toneQuality(tone) {
   const max = Math.max(r, g, b);
   const min = Math.min(r, g, b);
   if (max < BRIGHT_MIN) return null;
-  const saturation = (max - min) / max;
-  if (saturation < GREY_MAX) return "white";
   const delta = max - min;
+  const saturation = delta / max;
+  if (saturation < GREY_MAX) return "white";
   let hue;
   if (max === r) hue = (((g - b) / delta) % 6) * 60;
   else if (max === g) hue = ((b - r) / delta + 2) * 60;

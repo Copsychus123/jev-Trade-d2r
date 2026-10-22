@@ -168,6 +168,7 @@ function readNumber(entry, line) {
   const withinCeiling = entry.ceiling == null || min <= entry.ceiling;
   return { min, confident: confident && withinCeiling };
 }
+
 /** A short run of Chinese without a digit is an item's name or type line, not an affix. */
 function isNameLine(cjk) {
   if (/無法凍結|無形|技能/u.test(cjk)) return false;

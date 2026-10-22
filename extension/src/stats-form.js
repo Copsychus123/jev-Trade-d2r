@@ -2,7 +2,8 @@
 // stats-form-state.js; this file only draws them. Screenshot text is untrusted: everything is written with textContent.
 import { AFFIXES } from "./ocr/affix_dictionary.js";
 import { parseAffixLines } from "./ocr/affixes.js";
-import { $, element } from "./dom.js";
+import { applyValues } from "./ocr/value-corrections.js";
+import { $, clearCaptureMark, element } from "./dom.js";
 import {
   addCondition,
   availableToAdd,
@@ -21,32 +22,37 @@ import { QUALITIES, unmappedKeys } from "./traderie/stats.js";
 
 /** Title of every field whose value came from a screenshot: the player is asked to confirm it. */
 const FROM_CAPTURE_TITLE = "從擷取讀到，請確認";
+/** Title of a number the player corrected before for this same line: no question to answer, the player's own entry. */
+const FROM_LEARNED_VALUE_TITLE = "照你上次改的數字";
+/** Title of a base the player corrected before for this same read: shown for confirmation like a captured one. */
+const FROM_LEARNED_BASE_TITLE = "照你上次改的底材，請確認";
 
 /**
  * One 最小/最大 number box of `condition`. Only the box that actually carries a captured number is marked: an empty
  * one came from nothing.
  */
 function limitInput(condition, field, text, busy) {
-  const captured = condition.fromCapture && condition[field] !== null && condition[field] !== "";
+  const filled = condition[field] !== null && condition[field] !== "";
+  const captured = condition.fromCapture && filled;
+  // The mark is for the player's remembered number as filled in; a number typed over it is a new answer.
+  const learned = field === "min" && condition.learned && filled && Number(condition.min) === condition.readMin;
   const input = element("input", {
     type: "number",
-    className: `affix-${field}${captured ? " from-capture" : ""}`,
+    className: `affix-${field}${captured ? " from-capture" : ""}${learned ? " from-learned" : ""}`,
     min: "0",
     step: "1",
     value: condition[field] ?? "",
     placeholder: text,
   });
   if (captured) input.title = FROM_CAPTURE_TITLE;
+  if (learned) input.title = FROM_LEARNED_VALUE_TITLE;
   input.setAttribute("aria-label", `${condition.label}${text}值`);
   input.disabled = busy;
   return input;
 }
 
-/** The capture mark is a question the player has not answered yet; editing the control answers it, so the mark goes. */
-function clearCaptureMark(control) {
-  control.classList.remove("from-capture");
-  control.removeAttribute("title");
-}
+/** The dictionary key of the condition row an event came from, or undefined outside the rows. */
+const rowKey = (event) => event.target.closest("li")?.dataset.key;
 
 /**
  * The quality radios, built from QUALITIES: a quality added to stats.js always has a control here, with the same value
@@ -68,11 +74,10 @@ function buildQualityRadios() {
  * condition Traderie has no property for is greyed out as soon as the screenshot is read. `onChange` is called after
  * every change so the page can enable or disable the start button.
  */
-export function initStatsForm({ getProperties, onChange }) {
+export function initStatsForm({ getProperties, onChange, valueCorrections = null }) {
   let form = emptyStatsForm();
   let busy = false;
-  let hasScreenshot = false;
-  let screenshotText = "";
+  let screenshotText = ""; // what the last picture read; "fill from screenshot" works only while it is not empty
 
   buildQualityRadios(); // before the first render: every later pass reads the radios this fills in
   const qualityRadios = () => document.querySelectorAll('input[name="quality"]');
@@ -125,7 +130,7 @@ export function initStatsForm({ getProperties, onChange }) {
     select.replaceChildren(new Option("新增條件…", ""));
     for (const entry of availableToAdd(form, AFFIXES)) select.append(new Option(entry.zh, entry.key));
     select.disabled = busy;
-    $("affix-fill").disabled = busy || !hasScreenshot;
+    $("affix-fill").disabled = busy || !screenshotText;
   }
 
   /** The quality radios mirror the form's choice. */
@@ -143,9 +148,10 @@ export function initStatsForm({ getProperties, onChange }) {
   function renderBase() {
     const base = $("stats-base");
     if (base.value !== form.base) base.value = form.base;
-    const fromCapture = base.dataset.from === "ocr";
-    base.classList.toggle("from-capture", fromCapture);
-    if (fromCapture) base.title = FROM_CAPTURE_TITLE;
+    const source = base.dataset.from;
+    base.classList.toggle("from-capture", source === "ocr" || source === "learned");
+    if (source === "ocr") base.title = FROM_CAPTURE_TITLE;
+    else if (source === "learned") base.title = FROM_LEARNED_BASE_TITLE;
     else base.removeAttribute("title");
     base.disabled = busy;
   }
@@ -160,7 +166,7 @@ export function initStatsForm({ getProperties, onChange }) {
   function wireEvents() {
     const list = $("affix-list");
     list.addEventListener("change", (event) => {
-      const key = event.target.closest("li")?.dataset.key;
+      const key = rowKey(event);
       if (key && event.target.classList.contains("affix-on")) set(setOn(form, key, event.target.checked));
     });
     list.addEventListener("input", (event) => {
@@ -173,7 +179,7 @@ export function initStatsForm({ getProperties, onChange }) {
       onChange();
     });
     list.addEventListener("click", (event) => {
-      const key = event.target.closest("li")?.dataset.key;
+      const key = rowKey(event);
       if (key && event.target.closest(".affix-remove")) set(removeCondition(form, key));
     });
     $("affix-select").addEventListener("change", (event) => {
@@ -192,14 +198,20 @@ export function initStatsForm({ getProperties, onChange }) {
     $("affix-fill").addEventListener("click", () => fillFromText(screenshotText, { carryValues: true }));
   }
 
+  /** Text read from a picture, kept so the "fill from screenshot" button can use it later. */
+  function rememberScreenshot(text) {
+    screenshotText = text;
+    render();
+  }
+
   async function fillFromText(text, options) {
     screenshotText = text;
-    hasScreenshot = Boolean(text);
     const properties = await getProperties();
+    const parsed = parseAffixLines(text);
     set(
       fillFromScreenshot(
         form,
-        parseAffixLines(text),
+        { ...parsed, conditions: applyValues(parsed.conditions, valueCorrections) },
         properties ? unmappedKeys(properties) : form.unavailable,
         options,
       ),
@@ -213,23 +225,25 @@ export function initStatsForm({ getProperties, onChange }) {
     startBlocker: () => startBlocker(form),
     fillFromText,
     /** A new picture: the old reading no longer belongs to it. */
-    forgetScreenshot() {
-      screenshotText = "";
-      hasScreenshot = false;
-      render();
-    },
-    /** Text read from a picture, kept so the "fill from screenshot" button can use it later. */
-    rememberScreenshot(text) {
-      screenshotText = text;
-      hasScreenshot = Boolean(text);
-      render();
-    },
-    /** The base typed or read from a picture; a typed one is never replaced by a later reading. */
-    setBaseFromScreenshot(name) {
+    forgetScreenshot: () => rememberScreenshot(""),
+    rememberScreenshot,
+    /**
+     * The base typed or read from a picture; a typed one is never replaced by a later reading. `from` says where it
+     * came from: "ocr" (the reader's own) or "learned" (the player's earlier correction of this read).
+     */
+    setBaseFromScreenshot(name, { from = "ocr" } = {}) {
       const input = $("stats-base");
-      if (input.value.trim() && input.dataset.from !== "ocr") return;
-      input.dataset.from = "ocr";
+      if (input.value.trim() && input.dataset.from !== "ocr" && input.dataset.from !== "learned") return;
+      input.dataset.from = from;
       set(setBase(form, name));
+    },
+    /**
+     * A scan record's own search: its base and the quality of its name line, and no affix condition (they are added
+     * afterwards, on purpose, from the result screen). Replaces whatever the form held; the base is marked as read.
+     */
+    setForRecord({ base, quality, from = "ocr" }) {
+      $("stats-base").dataset.from = from;
+      set({ ...emptyStatsForm(), unavailable: form.unavailable, base, quality });
     },
     /** Traderie has no property for these keys: they are greyed out and switched off. */
     markUnavailable(keys) {

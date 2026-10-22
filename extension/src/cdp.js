@@ -31,7 +31,7 @@ const isNavigationFailure = (message) => NAVIGATION_FAILURE.test(message);
 /** How long Chrome may take to answer a command before the run gives up on it. */
 export const commandTimeoutMs = (method) => (method === "Page.navigate" ? NAVIGATE_TIMEOUT_MS : COMMAND_TIMEOUT_MS);
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Runs a read that a navigation may interrupt; a StalePage means the old document is gone, not a failure. */
 const ignoringStalePage = async (read) => {
@@ -45,6 +45,12 @@ const ignoringStalePage = async (read) => {
 
 /** Compares by value, never by identity: the page's own markers and guards are arrays. */
 const sameValue = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+/** The expression that calls an injected page script (one arrow function) with JSON-encoded arguments. */
+const pageCall = (script, ...args) => `${script}(${args.map((arg) => JSON.stringify(arg)).join(", ")})`;
+
+/** A page read that waits for its promise and, being read-only, survives a swapped target. */
+const AWAITED_READ = { awaitPromise: true, retryable: true };
 
 /** Runs a chrome.* call that may fail because the thing is already gone; never throws. */
 const quiet = async (call) => {
@@ -90,6 +96,7 @@ const PAGE_SCRIPT_FILES = {
   settle: "settle.js",
   settledPage: "settled_page.js",
   fetchJson: "fetch_json.js",
+  postForm: "post_form.js",
 };
 
 async function readPageScript(name) {
@@ -281,17 +288,11 @@ export class Tab {
 
   /** Resolves { capped, ms, visibility } (settle.js): whether the cap ended the wait, how long it took, and the document's visibility state. */
   async settle(quietMs = 600, timeoutMs = 15000, minChars = 100) {
-    return this.evaluate(`${this.scripts.settle}(${quietMs}, ${timeoutMs}, ${minChars})`, {
-      awaitPromise: true,
-      retryable: true,
-    });
+    return this.evaluate(pageCall(this.scripts.settle, quietMs, timeoutMs, minChars), AWAITED_READ);
   }
 
   async readSettledPage(quietMs = 500, timeoutMs = 5000) {
-    const page = await this.evaluate(`${this.scripts.settledPage}(${quietMs}, ${timeoutMs})`, {
-      awaitPromise: true,
-      retryable: true,
-    });
+    const page = await this.evaluate(pageCall(this.scripts.settledPage, quietMs, timeoutMs), AWAITED_READ);
     if (!page || typeof page.url !== "string") throw new TimeoutError("頁面沒有穩定下來");
     return page;
   }
@@ -341,11 +342,7 @@ export class Tab {
     try {
       await this.send(
         "Runtime.evaluate",
-        {
-          expression: `${this.scripts.afterInput}(${JSON.stringify(action)})`,
-          awaitPromise: true,
-          returnByValue: true,
-        },
+        { expression: pageCall(this.scripts.afterInput, action), awaitPromise: true, returnByValue: true },
         { retryable: true },
       );
     } catch (error) {
@@ -427,7 +424,7 @@ export class Tab {
     if (!Number.isInteger(action.node)) throw new Error("Invalid observed node");
     let target;
     try {
-      target = await this.evaluate(`${this.scripts.resolveTarget}(${JSON.stringify(action)})`);
+      target = await this.evaluate(pageCall(this.scripts.resolveTarget, action));
     } catch (error) {
       if (error instanceof StalePage && kind === "select") {
         throw new Error("下拉選單操作被中斷，查詢已停止");
@@ -461,7 +458,7 @@ export class Tab {
    * cannot answer simply reports nothing.
    */
   async overlayCover(action) {
-    return this.evaluate(`${this.scripts.coveredOverlay}(${JSON.stringify(action)})`);
+    return this.evaluate(pageCall(this.scripts.coveredOverlay, action));
   }
 
   /**

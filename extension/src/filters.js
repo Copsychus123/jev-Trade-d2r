@@ -40,12 +40,7 @@ export const FILTER_OPTION_LABELS = {
   "Classic (Base Game)": "Classic（原版）",
 };
 
-export const EMPTY_FILTERS = {
-  platform: "",
-  mode: "",
-  ladder: "",
-  game_version: "",
-};
+export const EMPTY_FILTERS = Object.fromEntries(FILTER_FIELDS.map(({ key }) => [key, ""]));
 
 export const COMMON_PRESET = {
   platform: "PC",

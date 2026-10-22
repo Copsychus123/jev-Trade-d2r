@@ -7,19 +7,14 @@ export const OCR_CAPABILITY = "ppocr";
 
 /** 有可用的 GPU adapter 才請求 WebGPU；不然只用 wasm。gpu 預設取 globalThis.navigator?.gpu。 */
 export async function chooseProviders(gpu = globalThis.navigator?.gpu) {
-  if (!gpu) {
-    globalThis.__jevOcrProvider = "wasm";
-    return ["wasm"];
-  }
+  let providers = ["wasm"];
   try {
-    const adapter = await gpu.requestAdapter();
-    const ep = adapter ? ["webgpu", "wasm"] : ["wasm"];
-    globalThis.__jevOcrProvider = ep[0];
-    return ep;
+    if (gpu && (await gpu.requestAdapter())) providers = ["webgpu", "wasm"];
   } catch {
-    globalThis.__jevOcrProvider = "wasm";
-    return ["wasm"];
+    // requestAdapter failed: wasm only
   }
+  globalThis.__jevOcrProvider = providers[0];
+  return providers;
 }
 
 /** 擴充功能自己目錄裡的 module worker；用 chrome.runtime.getURL 讓路徑留在套件內。 */
@@ -107,6 +102,8 @@ export function createEngineCache({ create, idleMs = ENGINE_IDLE_MS, setTimer = 
   };
 }
 
+const workerError = (event) => new Error(event.message || "辨識 worker 發生錯誤");
+
 /**
  * The worker's message protocol as one promise: `ready` resolves on the worker's "ready" status, a "result"/"error"
  * message settles the read that waits under its id, and a worker-level error rejects the engine and every read still
@@ -114,6 +111,10 @@ export function createEngineCache({ create, idleMs = ENGINE_IDLE_MS, setTimer = 
  * text ("正在準備辨識引擎…" while loading, otherwise "正在辨識文字…").
  */
 function connectWorker(worker, waiting, onStatus) {
+  const settle = (id, outcome, value) => {
+    waiting.get(id)?.[outcome](value);
+    waiting.delete(id);
+  };
   return new Promise((resolve, reject) => {
     worker.addEventListener("message", (event) => {
       const message = event.data;
@@ -121,27 +122,24 @@ function connectWorker(worker, waiting, onStatus) {
         if (message.stage === "ready") resolve();
         onStatus(message.stage === "loading" ? "正在準備辨識引擎…" : "正在辨識文字…");
       } else if (message.type === "result") {
-        const res = { text: message.text, tones: message.tones ?? [] };
-        if (message.stages !== undefined) res.stages = message.stages;
-        waiting.get(message.id)?.resolve(res);
-        waiting.delete(message.id);
+        const result = { text: message.text, tones: message.tones ?? [] };
+        if (message.stages !== undefined) result.stages = message.stages;
+        settle(message.id, "resolve", result);
+      } else if (message.type === "head") {
+        // The first lines of a read in flight: the read stays waiting for its result.
+        waiting.get(message.id)?.onHead?.({ text: message.text, tones: message.tones ?? [] });
       } else if (message.type === "detectResult") {
-        waiting.get(message.id)?.resolve(message.boxes);
-        waiting.delete(message.id);
+        settle(message.id, "resolve", message.boxes);
       } else if (message.type === "warmupResult") {
-        waiting.get(message.id)?.resolve(message.log);
-        waiting.delete(message.id);
+        settle(message.id, "resolve", message.log);
       } else if (message.type === "error") {
         const error = new Error(message.message);
         if (message.id === null) reject(error);
-        else {
-          waiting.get(message.id)?.reject(error);
-          waiting.delete(message.id);
-        }
+        else settle(message.id, "reject", error);
       }
     });
     worker.addEventListener("error", (event) => {
-      const error = new Error(event.message || "辨識 worker 發生錯誤");
+      const error = workerError(event);
       reject(error);
       for (const { reject: rejectWaiting } of waiting.values()) rejectWaiting(error);
       waiting.clear();
@@ -159,7 +157,31 @@ export async function createOcrEngine({ models, providers, onStatus = () => {}, 
   const executionProviders = providers ?? (await chooseProviders());
   const worker = createWorker();
   let nextId = 1;
-  const waiting = new Map(); // id -> { resolve, reject }
+  // One worker request at a time: a read never runs while the warm-up (or another read) does. A request queued
+  // behind one when the worker dies is rejected, not posted to a worker that will never answer.
+  let chain = Promise.resolve();
+  let dead = null;
+  worker.addEventListener("error", (event) => {
+    dead = workerError(event);
+  });
+  const serial = (start) => {
+    const run = chain.then(() => {
+      if (dead) throw dead;
+      return start();
+    });
+    chain = run.catch(() => {});
+    return run;
+  };
+  const waiting = new Map(); // id -> { resolve, reject, onHead }
+  // Posts one request to the worker, once the ones before it have settled, and resolves with the worker's answer.
+  // `onHead` receives the first lines of a read early; with `softFail` a failed request settles as its own answer
+  // (the warm-up never rejects).
+  const request = (type, fields, { transfer, onHead, softFail = false } = {}) =>
+    serial(() => new Promise((resolve, reject) => {
+      const id = nextId++;
+      waiting.set(id, { resolve, reject: softFail ? resolve : reject, onHead });
+      worker.postMessage({ type, id, ...fields }, transfer);
+    }));
   const ready = connectWorker(worker, waiting, onStatus);
   ready.catch(() => {}); // 不讓沒人 await 的 init reject 變成 unhandled rejection
   // The worker has no chrome.* (extension APIs are not exposed to dedicated workers), so the panel resolves the
@@ -178,11 +200,7 @@ export async function createOcrEngine({ models, providers, onStatus = () => {}, 
       warmupPromise = (async () => {
         try {
           await ready;
-          const id = nextId++;
-          const res = await new Promise((resolve) => {
-            waiting.set(id, { resolve, reject: resolve });
-            worker.postMessage({ type: "warmup", id });
-          });
+          const res = await request("warmup", {}, { softFail: true });
           globalThis.__jevWarmupLog = res;
           return res;
         } catch {
@@ -193,21 +211,13 @@ export async function createOcrEngine({ models, providers, onStatus = () => {}, 
     return warmupPromise;
   }
   return {
-    async recognize({ width, height, data }, { nameRegionOnly = false, capDet = false } = {}) {
+    async recognize({ width, height, data }, { capDet = false, onHead = null } = {}) {
       await ready;
-      const id = nextId++;
-      return new Promise((resolve, reject) => {
-        waiting.set(id, { resolve, reject });
-        worker.postMessage({ type: "recognize", id, width, height, data, nameRegionOnly, capDet }, [data.buffer]);
-      });
+      return request("recognize", { width, height, data, capDet }, { transfer: [data.buffer], onHead });
     },
     async detectBoxes({ width, height, data }) {
       await ready;
-      const id = nextId++;
-      return new Promise((resolve, reject) => {
-        waiting.set(id, { resolve, reject });
-        worker.postMessage({ type: "detect", id, width, height, data }, [data.buffer]);
-      });
+      return request("detect", { width, height, data }, { transfer: [data.buffer] });
     },
     ready,
     warmup,

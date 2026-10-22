@@ -16,9 +16,6 @@ export const PPOCR = {
 export const PPOCR_FILES = ["det", "rec", "cls", "dict"]; // 下載順序
 export const PPOCR_BYTES = 31824456;
 
-/** A number of model bytes as MB with one decimal, for the "download once" messages of both panels. */
-export const formatMB = (bytes) => (bytes / 1e6).toFixed(1);
-
 // The IndexedDB location the model bytes live in (idb-keyval's default database). We put the verified bytes there
 // ourselves and read them back to hand to onnxruntime, so nothing ever downloads at run time.
 const CACHE_PATH = "jev";

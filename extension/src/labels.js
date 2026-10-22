@@ -29,7 +29,6 @@ export const CHECK_REASONS = {
   rows_match_filters: "掛單上看不到你設定的條件，網站可能沒有套用篩選",
 };
 
-
 /**
  * The one-sentence conclusion for a batch of listings, from `priceSummary` (traderie/price-summary.js): what the
  * High Rune Values of the read rows are, so the player does not have to read the table to know what to ask.

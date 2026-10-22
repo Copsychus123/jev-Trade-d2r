@@ -33,19 +33,22 @@ const change = (form, key, update) => ({
  */
 export function fillFromScreenshot(form, parsed, unavailable = form.unavailable, { carryValues = false } = {}) {
   const chosen = new Map(form.conditions.filter((c) => c.on).map((c) => [c.key, c]));
-  const read = parsed.conditions.map(
-    (c) =>
-      chosen.get(c.key) ?? {
-        key: c.key,
-        label: c.label,
-        kind: c.kind,
-        line: c.line,
-        min: carryValues ? c.min ?? null : null,
-        max: carryValues ? c.max ?? null : null,
-        fromCapture: carryValues && c.min !== null,
-        on: false,
-      },
-  );
+  const read = parsed.conditions.map((c) => {
+    if (chosen.has(c.key)) return chosen.get(c.key);
+    const readMin = carryValues ? c.min ?? null : null; // what the reader (or the player's memory) put there: a later edit is a correction of it
+    return {
+      key: c.key,
+      label: c.label,
+      kind: c.kind,
+      line: c.line,
+      min: readMin,
+      max: carryValues ? c.max ?? null : null,
+      readMin,
+      learned: carryValues && Boolean(c.learned), // the number is the player's own earlier correction, not the reader's guess
+      fromCapture: carryValues && c.min !== null && !c.learned,
+      on: false,
+    };
+  });
   const kept = [...chosen.values()].filter((c) => !parsed.conditions.some((p) => p.key === c.key));
   let next = { ...form, conditions: [...read, ...kept], unavailable };
   for (const c of parsed.conditions) {

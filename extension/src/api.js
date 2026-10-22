@@ -22,12 +22,17 @@ async function post(base, path, payload) {
   }
   const body = await response.json().catch(() => null);
   // A refused answer carries the server's own wording; any other unreadable answer gets the generic one.
-  if (!response.ok || body === null) throw new ApiError(response.status, body?.error || "伺服器沒有回應");
+  if (!response.ok || body === null) throw new ApiError(response.status, body?.error || "伺服器沒有回應", body?.code ?? null);
   return body;
 }
 
 export function startRun(base, { invite, itemName, loadMore }) {
   return post(base, "/api/run/start", { invite, item_name: itemName, load_more: loadMore });
+}
+
+/** What an invite code has left: `{ used, limit, left }`. Read-only on the server: it counts no use and asks no model. */
+export function inviteStatus(base, { invite }) {
+  return post(base, "/api/invite/status", { invite });
 }
 
 export function chooseNext(base, { runToken, phase, page, history, noBlock = false }) {

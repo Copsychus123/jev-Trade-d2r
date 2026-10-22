@@ -32,7 +32,8 @@ const TRADITIONAL =
   "閥闊陽陰隨隱難霧靜韌韓韻頂項頓顱領頰顎風飄飛饑飾馬馳驕騎髏魚魯鮫鮮鯊鱗鳥鳶鳴鷗鴉" +
   "鶴鷲鷹麥黃齒龍";
 
-const BACK = new Map([...SIMPLIFIED].map((character, at) => [character, [...TRADITIONAL][at]]));
+const traditionalCharacters = [...TRADITIONAL];
+const BACK = new Map([...SIMPLIFIED].map((character, at) => [character, traditionalCharacters[at]]));
 
 /** `text` with every simplified character in the table above turned back into its traditional one. */
 export function toTraditional(text) {

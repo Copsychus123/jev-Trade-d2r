@@ -237,7 +237,7 @@ function makeDocument() {
 }
 
 /** A fresh DOM with the shipped markup, the shipped item types already in the datalist, and one binder over it. */
-function boot({ properties = PROPERTIES } = {}) {
+function boot({ properties = PROPERTIES, valueCorrections = null } = {}) {
   const document = makeDocument();
   globalThis.document = document;
   globalThis.Option = FakeOption;
@@ -250,7 +250,7 @@ function boot({ properties = PROPERTIES } = {}) {
   }
 
   const calls = [];
-  const form = initStatsForm({ getProperties: async () => properties, onChange: (...args) => calls.push(args) });
+  const form = initStatsForm({ getProperties: async () => properties, onChange: (...args) => calls.push(args), valueCorrections });
   const get = (id) => document.getElementById(id);
   const row = (key) => get("affix-list").children.find((li) => li.dataset.key === key);
   return {
@@ -660,4 +660,48 @@ test("a quality radio switches the form's quality and goes through onChange", as
   assert.equal(panel.form.get().quality, "magic");
   assert.deepEqual(panel.radios().map((r) => [r.value, r.checked]), QUALITIES.map((q) => [q.key, q.key === "magic"]));
   assert.deepEqual(panel.calls, [[]]);
+});
+
+test("a scan record's own search keeps its base and quality and drops every affix condition", async () => {
+  const panel = boot();
+  await panel.form.fillFromText("+7% Faster Cast Rate\n+15 to Life", { carryValues: true });
+  assert.equal(panel.form.get().conditions.length, 2);
+
+  panel.form.setForRecord({ base: "Ring", quality: "rare" });
+
+  const form = panel.form.get();
+  assert.deepEqual([form.conditions, form.base, form.quality], [[], "Ring", "rare"]);
+  assert.equal(panel.get("stats-base").value, "Ring");
+  assert.equal(panel.get("stats-base").dataset.from, "ocr", "the base is marked as read, not typed");
+  assert.equal(panel.get("stats-base").classList.contains("from-capture"), true);
+  assert.deepEqual(panel.radios().map((r) => [r.value, r.checked]), QUALITIES.map((q) => [q.key, q.key === "rare"]));
+  assert.equal(panel.rows().length, 0);
+});
+
+test("a number the player corrected before fills the box as their own entry: dotted mark, no question, gone once they type over it", async () => {
+  const lookups = [];
+  const valueCorrections = {
+    lookup: (line, key) => {
+      lookups.push([line, key]);
+      return key === "fcr" ? { min: 8 } : null;
+    },
+  };
+  const panel = boot({ valueCorrections });
+  await panel.form.fillFromText("+7% Faster Cast Rate\n+15 to Life", { carryValues: true });
+
+  assert.deepEqual(lookups[0], ["+7% Faster Cast Rate", "fcr"]);
+  const [fcr] = panel.form.get().conditions;
+  assert.deepEqual([fcr.min, fcr.fromCapture, fcr.learned, fcr.readMin], [8, false, true, 8]);
+  const [learnedBox] = panel.limitBoxes("fcr");
+  assert.equal(learnedBox.value, 8);
+  assert.equal(learnedBox.classList.contains("from-learned"), true);
+  assert.equal(learnedBox.classList.contains("from-capture"), false);
+  assert.equal(learnedBox.title, "照你上次改的數字");
+  const [lifeBox] = panel.limitBoxes("life");
+  assert.equal(lifeBox.classList.contains("from-capture"), true, "a line the memory does not know is the reader's own guess");
+
+  await panel.type(learnedBox, "9");
+  assert.equal(learnedBox.classList.contains("from-learned"), false);
+  await panel.pick("mana"); // a redraw: the rebuilt box carries the typed number and no mark
+  assert.equal(panel.limitBoxes("fcr")[0].classList.contains("from-learned"), false);
 });

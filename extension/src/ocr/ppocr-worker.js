@@ -4,6 +4,7 @@ import * as ort from "../vendor/ort/ort.min.mjs";
 import { OcrPipeline, buildCharacterList, imageDataToBgr } from "./ppocrlib.js";
 
 let pipeline = null;
+const DICT_SIZE = 18710; // characters of the recogniser's dictionary, including the blank and space tokens
 
 ort.env.wasm.numThreads = 1; // 政策：wasm 固定 1 thread
 ort.env.wasm.simd = true;
@@ -22,7 +23,18 @@ const createSessions = async (providers, models) => {
 
 // The only error shape the panel reads: `id: null` means "the engine never started", otherwise it is the failed read.
 const postError = (id, message) => self.postMessage({ type: "error", id, message });
-const errorText = (error) => String(error.message || error);
+const errorText = (error) => error?.message || String(error);
+
+// Reports a read that arrived before the engine was ready; true when the handler must stop there.
+const notReady = (message) => {
+  if (pipeline) return false;
+  postError(message.id, "辨識引擎尚未就緒");
+  return true;
+};
+
+// The picture of a read request as the BGR image the pipeline takes.
+const messageImage = (message) =>
+  imageDataToBgr({ width: message.width, height: message.height, data: new Uint8ClampedArray(message.data) });
 
 async function handleInit(message) {
   self.postMessage({ type: "status", stage: "loading" });
@@ -35,8 +47,8 @@ async function handleInit(message) {
     return;
   }
   const characters = buildCharacterList(new TextDecoder().decode(new Uint8Array(message.models.dict)));
-  if (characters.length !== 18710) {
-    postError(null, `字元清單長度不對（${characters.length}，應為 18710）`);
+  if (characters.length !== DICT_SIZE) {
+    postError(null, `字元清單長度不對（${characters.length}，應為 ${DICT_SIZE}）`);
     return;
   }
   pipeline = new OcrPipeline(ort, sessions, characters);
@@ -44,19 +56,19 @@ async function handleInit(message) {
 }
 
 async function handleRecognize(message) {
-  if (!pipeline) {
-    postError(message.id, "辨識引擎尚未就緒");
-    return;
-  }
+  if (notReady(message)) return;
   try {
-    const image = imageDataToBgr({
-      width: message.width,
-      height: message.height,
-      data: new Uint8ClampedArray(message.data),
-    });
+    const image = messageImage(message);
     const recognized = await pipeline.recognizeImage(image, {
-      nameRegionOnly: Boolean(message.nameRegionOnly),
       capDet: Boolean(message.capDet),
+      // The first lines of the picture, as soon as they are read; the result with every line follows.
+      onHead: (headLines) =>
+        self.postMessage({
+          type: "head",
+          id: message.id,
+          text: headLines.map((line) => line.text).join("\n"),
+          tones: headLines.map((line) => line.tone),
+        }),
     });
     const lines = recognized.lines ?? [];
     const resultMsg = {
@@ -65,9 +77,7 @@ async function handleRecognize(message) {
       text: lines.map((line) => line.text).join("\n"),
       tones: lines.map((line) => line.tone),
     };
-    if (recognized.stages !== undefined && recognized.stages !== null) {
-      resultMsg.stages = recognized.stages;
-    }
+    if (recognized.stages !== undefined && recognized.stages !== null) resultMsg.stages = recognized.stages;
     self.postMessage(resultMsg);
   } catch (error) {
     postError(message.id, errorText(error));
@@ -75,16 +85,9 @@ async function handleRecognize(message) {
 }
 
 async function handleDetect(message) {
-  if (!pipeline) {
-    postError(message.id, "辨識引擎尚未就緒");
-    return;
-  }
+  if (notReady(message)) return;
   try {
-    const image = imageDataToBgr({
-      width: message.width,
-      height: message.height,
-      data: new Uint8ClampedArray(message.data),
-    });
+    const image = messageImage(message);
     const quads = await pipeline.detect(image);
     const boxes = quads.map((q) => {
       const xs = q.map(([x]) => x);
@@ -111,23 +114,24 @@ async function handleDetect(message) {
     postError(message.id, errorText(error));
   }
 }
+
 async function handleWarmup(message) {
-  let log = null;
-  if (!pipeline) {
+  const reply = (log) => {
     if (message.id !== undefined && message.id !== null) {
-      self.postMessage({ type: "warmupResult", id: message.id, log: ["no pipeline"] });
+      self.postMessage({ type: "warmupResult", id: message.id, log });
     }
+  };
+  if (!pipeline) {
+    reply(["no pipeline"]);
     return;
   }
+  let log;
   try {
     log = await pipeline.warmup();
   } catch (error) {
     log = [`error: ${error?.message}`];
-  } finally {
-    if (message.id !== undefined && message.id !== null) {
-      self.postMessage({ type: "warmupResult", id: message.id, log });
-    }
   }
+  reply(log);
 }
 
 self.addEventListener("message", (event) => {
