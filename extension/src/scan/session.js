@@ -17,13 +17,13 @@ export const KEY_TOLERANCE = 0.125; // crop keys this close (a fraction of the c
 export const HELD_BOX_PX = 6;
 export const HELD_KEY_TOLERANCE = 2 * KEY_TOLERANCE; // 16 of 64 cells
 // Two reads whose texts are at least this alike are the same item read again, not a second item: character bigrams
-// over the whitespace-stripped text. Measured on the stored reads (artifacts/ocr-e2e/report.json, 54 pictures): two
+// over the whitespace-stripped text. Measured on the stored reads (artifacts/ocr-e2e/report.json, the earlier 54-picture set): two
 // DIFFERENT items reach at most 0.449 (image-35 against image-41) and the shipped sweep's own items at most 0.234,
 // while the same tooltip read again from a second place reaches 0.689 (artifacts/diag-scan/results/t1-sanity.json,
 // image-18.png read twice). 0.6 sits between them with room on both sides.
 export const TEXT_SAME = 0.6;
 // Below this many characters a read holds too few bigrams for similarity to be evidence -- two different items' clipped
-// reads can look alike -- so there the two texts must be equal. Every stored read of the 54-picture corpus is 55
+// reads can look alike -- so there the two texts must be equal. Every stored read of the earlier 54-picture corpus (50 pictures now) is 55
 // characters or longer (median 157), and so is every record the measured sweep produced but one (43), so the rule
 // always has enough text to judge on a real tooltip.
 export const TEXT_SAME_MIN = 40;
@@ -79,6 +79,16 @@ export function keyDistance(a, b) {
   return n;
 }
 
+/** Whether two keys show the same panel: at most `tolerance` (a fraction of the cells) of their cells differ. */
+export function keysAlike(a, b, tolerance) {
+  return keyDistance(a, b) <= tolerance * a.length;
+}
+
+const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
+
+/** A copy of every plain object in `list` (the records keep their own, so a caller's array can change freely). */
+const copyEach = (list) => (list ?? []).map((item) => ({ ...item }));
+
 function stamp(at) {
   const d = at instanceof Date ? at : new Date(at);
   const pad = (n) => String(n).padStart(2, "0");
@@ -100,11 +110,9 @@ export function recordCells(record) {
 }
 
 export function createScanSession() {
-  const queue = [];
+  const queue = []; // jobs waiting for OCR: { blob, key, queuedAt }, each crop its own, so nothing can be paired wrongly
   const records = [];
   const seenKeys = []; // crop keys already queued this session, compared with KEY_TOLERANCE
-  const pendingKeys = []; // the keys of the crops in `queue`, in the same order, so `take` can hand a job its key
-  const pendingTimes = []; // the timestamps when crops were accepted into `queue`
   // 略過 (skipped) = a tooltip that was seen but made no new record: the same panel again (crop key), the same item's
   // text again (a re-read of a tooltip already recorded) or one with nothing readable on it. 丟棄 (dropped) = a
   // tooltip lost unread because the 300-crop queue was full.
@@ -122,13 +130,16 @@ export function createScanSession() {
   let generation = 0;
   let nextId = 1; // never reused, not even after 清除紀錄: an old row's ✕ can never delete a newer record
   const within = (a, b, px) => Math.abs(a - b) <= px;
-  const sameBox = (a, b) =>
-    within(a.x, b.x, 2) && within(a.y, b.y, 2) && within(a.width, b.width, 2) && within(a.height, b.height, 2);
-  const boxNear = (a, b) =>
-    within(a.x, b.x, HELD_BOX_PX) &&
-    within(a.y, b.y, HELD_BOX_PX) &&
-    within(a.width, b.width, HELD_BOX_PX) &&
-    within(a.height, b.height, HELD_BOX_PX);
+  const boxWithin = (a, b, px) =>
+    within(a.x, b.x, px) && within(a.y, b.y, px) && within(a.width, b.width, px) && within(a.height, b.height, px);
+  const sameBox = (a, b) => boxWithin(a, b, 2);
+  const boxNear = (a, b) => boxWithin(a, b, HELD_BOX_PX);
+  // A full queue refuses the crop; the count is what the panel shows as 丟棄.
+  const queueIsFull = () => {
+    if (queue.length < MAX_QUEUE) return false;
+    stats.dropped += 1;
+    return true;
+  };
   const readAgain = (a, b) => {
     const na = normalizeText(a);
     const nb = normalizeText(b);
@@ -167,9 +178,7 @@ export function createScanSession() {
     // The picture already cropped stays held while its box barely moves and its content is still the same panel: one
     // hover is one crop, however long it lasts and however much the game re-renders underneath it (the key is anchored
     // on the panel's own dark structure, so a re-encoded frame and a pixel of hand shake stay inside the tolerance).
-    if (held && boxNear(held.box, box) && keyDistance(boxKey(small, box), held.key) <= HELD_KEY_TOLERANCE * held.key.length) {
-      return null;
-    }
+    if (held && boxNear(held.box, box) && keysAlike(boxKey(small, box), held.key, HELD_KEY_TOLERANCE)) return null;
     if (lastBox && sameBox(lastBox, box) && lastHash === hash) streak += 1;
     else startStreak(box, hash);
     if (streak < STABLE_FRAMES || emitted) return null;
@@ -179,29 +188,71 @@ export function createScanSession() {
     return { box, key };
   }
 
-  // True when this stable crop should be queued for OCR. The key describes the panel's content, so the same panel
-  // shown again elsewhere (a different backdrop, the detector's box a couple of pixels off) is refused even before
-  // it is queued.
+  // The job this stable crop is queued as, or null when it is refused. The key describes the panel's content, so the
+  // same panel shown again elsewhere (a different backdrop, the detector's box a couple of pixels off) is refused even
+  // before it is queued. The crop itself is filled in later, by `fill`, once the browser has encoded it: the key, the
+  // time and the picture then travel as one object, so a crop whose encode fails (see `drop`) cannot shift a later
+  // crop's identity.
   // Queue wait semantics: stamp queuedAt at accept() time so waitMs measures time spent waiting in the queue until processScanJob starts.
-  function accept(cropKey, queuedAt = (typeof performance !== "undefined" ? performance.now() : Date.now())) {
-    const tolerance = KEY_TOLERANCE * cropKey.length; // 8 of a 64-cell key
-    const matchKey = (key) => key && keyDistance(key, cropKey) <= tolerance;
-    if (
-      seenKeys.some(matchKey) ||
-      records.some((r) => matchKey(r.key)) ||
-      pendingKeys.some(matchKey)
-    ) {
+  function accept(cropKey, queuedAt = now()) {
+    const matchKey = (key) => key && keysAlike(key, cropKey, KEY_TOLERANCE); // 8 of a 64-cell key
+    if (seenKeys.some(matchKey) || records.some((r) => matchKey(r.key))) {
       stats.skipped += 1;
-      return false;
+      return null;
     }
-    if (queue.length >= MAX_QUEUE) {
-      stats.dropped += 1;
-      return false;
-    }
+    if (queueIsFull()) return null;
+    const job = { blob: null, key: cropKey, queuedAt };
     seenKeys.push(cropKey);
-    pendingKeys.push(cropKey);
-    pendingTimes.push(queuedAt);
-    return true;
+    queue.push(job);
+    return job;
+  }
+
+  // A picture the player uploaded: one finished job with no crop key (it is not a hover, so there is no panel content
+  // to compare); the same item uploaded twice is still one record, through the text rule in `addRecord`. Null (and
+  // counted as 丟棄) when the queue is full.
+  function addUpload(blob, queuedAt = now()) {
+    if (queueIsFull()) return null;
+    const job = { blob, key: null, queuedAt };
+    queue.push(job);
+    return job;
+  }
+
+  // The encoded crop for a job `accept` handed out. Until this runs, `take` passes the job over: a picture that is
+  // still being encoded is never read.
+  function fill(job, blob) {
+    job.blob = blob;
+    return job;
+  }
+
+  // A crop the browser could not encode: it is forgotten, key and all, so the item can be cropped again and so that
+  // the failure cannot be charged to another crop. The count is what the panel shows as 丟棄. A job `clear` already
+  // took out of the queue is left alone: its key is gone with it, and the same key in `seenKeys` now belongs to a crop
+  // accepted after the clear.
+  function drop(job) {
+    const at = queue.indexOf(job);
+    if (at < 0) return;
+    queue.splice(at, 1);
+    seenKeys.splice(seenKeys.indexOf(job.key), 1);
+    stats.dropped += 1;
+  }
+
+  // A crop whose read failed before it made any record: its key is forgotten (and the hold released) so the same
+  // tooltip can be cropped and read again, as after an encode failure. A key of a cleared run, or one that a record
+  // carries (the head already made it), stays.
+  function forgetKey(key, from = generation) {
+    if (!key || from !== generation || records.some((record) => record.key && keysAlike(record.key, key, KEY_TOLERANCE))) return;
+    const at = seenKeys.findIndex((seen) => keyDistance(seen, key) === 0);
+    if (at >= 0) seenKeys.splice(at, 1);
+    if (held && keysAlike(held.key, key, HELD_KEY_TOLERANCE)) {
+      // A read that keeps failing is retried after a fresh stable run, not on every frame; a different tooltip's run
+      // in progress is left alone.
+      if (lastBox && boxNear(held.box, lastBox)) {
+        streak = 0;
+        lastBox = null;
+      }
+      held = null;
+      emitted = false;
+    }
   }
 
   // True when this OCR result becomes a record. A result carrying the generation of a run that was cleared since
@@ -216,8 +267,8 @@ export function createScanSession() {
       stats.skipped += 1;
       return false;
     }
-    const conditions = record.conditions || [];
-    const options = (record.options || []).map((o) => ({ ...o }));
+    const conditions = copyEach(record.conditions);
+    const options = copyEach(record.options);
     if (!record.name && options.length === 0 && conditions.length === 0) {
       stats.skipped += 1;
       return false;
@@ -229,11 +280,14 @@ export function createScanSession() {
       zh: record.zh ?? "",
       kind: record.kind ?? null,
       base: record.base ?? null,
+      baseKey: record.baseKey ?? "", // the text piece the base is remembered under when the player changes it
+      baseLearned: record.baseLearned ?? 0, // how many times in a row the player corrected this read's base (0: the base is the reader's own)
       options: record.name ? [] : options, // a named record has nothing left to pick
-      conditions: conditions.map((c) => ({ ...c })),
+      conditions,
       text: record.text ?? "",
       key: record.key ?? null, // the crop key `accept` saw for this panel, so removing the record can forget it
       firstKey: record.firstKey ?? "", // the first name line of the read: what a name typed for this record is remembered under
+      quality: record.quality ?? null, // the name line's colour class (gold/green/yellow/blue/white), for the listing's Rarity
     });
     return true;
   }
@@ -249,7 +303,7 @@ export function createScanSession() {
     if (record.key) {
       const at = seenKeys.findIndex((seen) => keyDistance(seen, record.key) === 0);
       if (at >= 0) seenKeys.splice(at, 1);
-      if (held && keyDistance(held.key, record.key) <= HELD_KEY_TOLERANCE * held.key.length) {
+      if (held && keysAlike(held.key, record.key, HELD_KEY_TOLERANCE)) {
         held = null;
         emitted = false;
       }
@@ -263,15 +317,48 @@ export function createScanSession() {
   function nameRecord(id, { name, kind, zh = "" } = {}) {
     const record = records.find((r) => r.id === id);
     if (!record || record.name || !name || !kind) return false;
-    Object.assign(record, { name, zh, kind, options: [] });
+    Object.assign(record, { name, zh, kind, options: [], chosen: true });
     return true;
   }
 
-  function updateAffixes(id, { text, conditions }) {
-    const record = records.find((r) => r.id === id);
-    if (!record) return false;
-    record.text = text ?? record.text;
-    record.conditions = conditions ?? record.conditions;
+  // The rest of a read whose head already made a record: the full text and its affix lines. A full text that reads as
+  // an item already on the list (readAgain) is the same item shown again, so the provisional record goes away and
+  // counts as 略過 (its crop key stays seen and the hold is not released: it IS that item). The whole text's own
+  // decision is the record's: a sure name (`name`, `kind`, `zh`) names it, possible names (`options`) make it unsure,
+  // and a whole text with neither leaves the head's name alone; a missing base is filled in.
+  // False when the record is gone (cleared or deleted meanwhile) or was taken off as a repeat.
+  function finishRecord(
+    id,
+    { text, conditions, name = null, kind = null, zh = "", base = null, baseKey = "", baseLearned = 0, options = [], firstKey = "", quality = null },
+  ) {
+    const index = records.findIndex((r) => r.id === id);
+    if (index < 0) return false;
+    const record = records[index];
+    if (records.some((other) => other !== record && readAgain(other.text, text))) {
+      records.splice(index, 1);
+      stats.skipped += 1;
+      return false;
+    }
+    record.text = text;
+    record.conditions = copyEach(conditions);
+    record.firstKey = firstKey || record.firstKey;
+    record.quality = quality ?? record.quality;
+    // A name the player picked or typed on this record while the rest was being read stays: only the whole text's
+    // affix lines, text and base are taken from it.
+    if (!record.chosen && name && kind) {
+      // The whole text decides what the record is called: a sure name there names a record the head could not name and
+      // replaces another one the head was sure about (a crop holding two tooltips, where a later line carries the name
+      // the matcher prefers).
+      if (record.name !== name) Object.assign(record, { name, zh, kind, options: [], base: base ?? record.base });
+    } else if (!record.chosen && options.length) {
+      // ... and a whole text that is not sure takes a name the head filled in back: the record asks, as it always did
+      // when the whole text was all there was.
+      Object.assign(record, { name: null, zh: "", kind: null, options: copyEach(options), base: base ?? record.base });
+    }
+    // The whole text reads the same lines as the head and more, so a base the player's memory knows is the whole's to give.
+    if (!record.base || baseLearned > record.baseLearned) {
+      Object.assign(record, { base: base ?? record.base, baseKey: baseKey || record.baseKey, baseLearned: baseLearned || record.baseLearned });
+    }
     return true;
   }
 
@@ -283,24 +370,18 @@ export function createScanSession() {
     return option ? nameRecord(id, option) : false;
   }
 
-  // The next crop waiting for OCR, with the generation it was captured in, or null when none is waiting.
+  // The next crop waiting for OCR, with the generation it was captured in, or null when none is ready. A job whose
+  // picture is still being encoded is stepped over, and the order of the ready ones is kept.
   function take() {
-    const job = queue.shift();
-    if (job === undefined) return null;
-    const queuedFromJob = job && typeof job === "object" && typeof job.queuedAt === "number" ? job.queuedAt : null;
-    return {
-      blob: job,
-      generation,
-      key: pendingKeys.shift() ?? null,
-      queuedAt: queuedFromJob ?? pendingTimes.shift() ?? null,
-    };
+    const at = queue.findIndex((job) => job.blob !== null);
+    if (at < 0) return null;
+    const [job] = queue.splice(at, 1);
+    return { blob: job.blob, generation, key: job.key, queuedAt: job.queuedAt ?? null };
   }
 
   // Drops the records, the crops still waiting for OCR and the "already seen" memory so the player can start over.
   function clear() {
     queue.length = 0;
-    pendingKeys.length = 0;
-    pendingTimes.length = 0;
     records.length = 0;
     seenKeys.length = 0;
     generation += 1;
@@ -313,6 +394,10 @@ export function createScanSession() {
       return streak;
     },
     accept,
+    addUpload,
+    fill,
+    drop,
+    forgetKey,
     queue,
     take,
     stats,
@@ -321,7 +406,7 @@ export function createScanSession() {
     removeRecord,
     resolveRecord,
     nameRecord,
-    updateAffixes,
+    finishRecord,
     clear,
   };
 }

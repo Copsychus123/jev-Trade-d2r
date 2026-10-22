@@ -7,12 +7,14 @@ import { toCsv } from "../csv.js";
 import { $ } from "../dom.js";
 import { saveText } from "../download.js";
 import { parseAffixLines } from "../ocr/affixes.js";
+import { applyValues } from "../ocr/value-corrections.js";
 import { decideCandidates } from "../ocr/match.js";
 import { initNameSuggest } from "../name-suggest.js";
 import { LEARNED_HINT } from "../ocr/corrections.js";
 import { chineseName, labelWithChinese, tableEntry } from "../traderie/lookup.js";
+import { announceRecognized } from "./announce.js";
 import { startCapture } from "./capture.js";
-import { HELD_KEY_TOLERANCE, RECORD_HEAD, baseCandidate, createScanSession, isUnsure, keyDistance, recordCells } from "./session.js";
+import { HELD_KEY_TOLERANCE, RECORD_HEAD, baseCandidate, createScanSession, isUnsure, keysAlike, recordCells } from "./session.js";
 import { clusterAndPad } from "./fallback.js";
 import { DETECT_WIDTH, boxHash, boxKey } from "./tooltip.js";
 
@@ -35,55 +37,101 @@ const BLACK_MESSAGE = "擷取到的是黑畫面：請把遊戲改成「視窗化
 const HIDDEN_MESSAGE = "遊戲視窗蓋住了這個面板，掃描會變慢、快速掠過的裝備可能漏掉。建議把遊戲改成視窗模式、和 Chrome 並排。";
 const SLOW_MESSAGE = "畫面更新偏慢，快速掠過的裝備可能漏掉。建議把遊戲改成視窗模式、和 Chrome 並排，並關掉其他吃資源的程式。";
 
+/** The text to show for a caught error (a thrown non-Error shows as itself). */
+const reason = (error) => error?.message || error;
+
 // ---- the pieces that need no per-panel state: a crop's read, a list row, the stats line -------------------------
 
 /**
- * One queued crop through the engine: read it, match what it says, and let the session keep the record the two make
- * (it refuses one with neither a name nor an affix line, and one whose crop came from a cleared run). The read's own
- * seconds are what 平均辨識 averages. `onRead` runs the moment the engine answered and before the record lands, so
- * the screen drops an earlier failure at the point the panel learns a later read worked.
+ * What one read's text says: the matcher's candidates, whether they are sure, and the record fields they make. Used on
+ * the head of a read and again on its whole text.
  */
-async function processScanJob(job, { ocr, tables, session, onRead }) {
-  const started = performance.now();
-  const { text, tones, stages } = await ocr.recognize(job.blob);
-  const durationSec = (performance.now() - started) / 1000;
-  session.stats.ocrSeconds += durationSec;
-  onRead();
-
+function judgeText(text, tones, { ocr, tables }) {
   const candidates = ocr.match(text, tones);
   const sure = decideCandidates(candidates).confident;
   const match = sure ? candidates[0] : null;
   const possible = sure ? [] : ocr.possible(candidates, text);
   const name = match?.name ?? null;
+  // The base the affix search starts from: the reader's own, unless the player corrected it for this text before.
+  // It is remembered under the piece of text the base was read from (the base candidate's own, else the type line, which
+  // normally sits on the second name line).
+  const baseFound = candidates.find((c) => c?.kind === "base");
+  const keys = ocr.nameKeys(text);
+  const baseKey = baseFound?.matched || keys[1]?.key || keys[0]?.key || "";
+  const learned = ocr.learnedBase(text);
+  return {
+    name,
+    zh: name ? chineseName(name, tables, match.matched) : "",
+    kind: match?.kind ?? null,
+    base: learned?.name ?? baseCandidate(candidates),
+    baseKey,
+    baseLearned: learned?.count ?? 0,
+    options: possible.map((c) => ({
+      kind: c.kind,
+      name: c.name,
+      zh: chineseName(c.name, tables, c.matched),
+      label: labelWithChinese(c.name, tables, c.matched) + (c.learned ? ` · ${LEARNED_HINT}` : ""),
+      matched: c.matched ?? "",
+      learned: c.learned ?? 0,
+    })),
+    conditions: applyValues(parseAffixLines(text).conditions, ocr.values),
+    text,
+    firstKey: ocr.firstKey(text),
+    quality: candidates[0]?.quality ?? null, // the name line's colour: what a base record's Rarity is prefilled from
+  };
+}
 
-  session.addRecord(
-    {
-      at: new Date(),
-      name,
-      zh: name ? chineseName(name, tables, match.matched) : "",
-      kind: match?.kind ?? null,
-      base: baseCandidate(candidates),
-      options: possible.map((c) => ({
-        kind: c.kind,
-        name: c.name,
-        zh: chineseName(c.name, tables, c.matched),
-        label: labelWithChinese(c.name, tables, c.matched) + (c.learned ? ` · ${LEARNED_HINT}` : ""),
-        matched: c.matched ?? "",
-        learned: c.learned ?? 0,
-      })),
-      conditions: parseAffixLines(text).conditions,
-      text,
-      key: job.key,
-      firstKey: ocr.firstKey(text),
-    },
-    job.generation,
-  );
+/**
+ * One queued crop through the engine: read it, match what it says, and let the session keep the record the two make
+ * (it refuses one with neither a name nor an affix line, and one whose crop came from a cleared run). The engine
+ * reports the first lines of a long read before the rest (`onHead`): when they already name the item, or give possible
+ * names, the record goes on the list then, and the whole text only completes it (`finishRecord`: its affix lines, a
+ * name the head could not give, and the check that it is not an item already listed). A head that names nothing waits
+ * for the whole text, as a short read always does. The read's own seconds are what 平均辨識 averages. `onRead` runs
+ * the moment the engine answered and before the record lands, so the screen drops an earlier failure at the point
+ * the panel learns a later read worked.
+ */
+async function processScanJob(job, { ocr, tables, session, onRead, onUpdate }) {
+  const started = performance.now();
+  let headRecordId = null;
+  let headRefused = false;
+  let headAt = null;
+  let read;
+  const newRecord = (judged) => ({ at: new Date(), ...judged, key: job.key });
+  try {
+    read = await ocr.recognize(job.blob, {
+      onHead: ({ text: headText, tones: headTones }) => {
+        const head = judgeText(headText, headTones, { ocr, tables });
+        if (!head.name && !head.options.length) return;
+        if (session.addRecord(newRecord(head), job.generation)) {
+          headRecordId = session.records[0].id; // addRecord puts the new record first
+          headAt = performance.now();
+          onUpdate();
+        } else {
+          headRefused = true; // a repeat (or a cleared run): the whole text would be refused for the same reason
+        }
+      },
+    });
+  } catch (error) {
+    // A read that failed after its head must not leave a half-read record (head text only, no affix lines) behind.
+    if (headRecordId !== null) session.removeRecord(headRecordId);
+    throw error;
+  }
+  const { text, tones, stages } = read;
+  const durationSec = (performance.now() - started) / 1000;
+  session.stats.ocrSeconds += durationSec;
+  onRead();
+
+  const whole = judgeText(text, tones, { ocr, tables });
+  if (headRecordId !== null) session.finishRecord(headRecordId, whole);
+  else if (!headRefused) session.addRecord(newRecord(whole), job.generation);
 
   const readMs = Math.round(durationSec * 1000);
   const waitMs = job.queuedAt ? Math.round(started - job.queuedAt) : 0;
   const cropTiming = {
     readMs,
-    perceivedLatencyMs: readMs,
+    // When the name reached the list: at the head when the head made the record, otherwise when the read ended.
+    perceivedLatencyMs: headAt === null ? readMs : Math.round(headAt - started),
     waitMs,
     stages: stages ?? null,
     timing: job.timing ?? null,
@@ -160,13 +208,14 @@ function nameBox(record, { tables, onType, state }) {
 }
 
 /**
- * One `<li>` per record: the name line, the 類型/詞綴 line and the two search buttons. A record with no name also shows
+ * One `<li>` per record: the name line, the 類型/詞綴 line and the search and listing buttons. A record with no name also shows
  * the possible names to pick (when the read had any) and the box to type one.
  */
-function recordListItem(record, index, { onSearchName, onSearchStats, onRemove, onPick, ...naming }) {
+function recordListItem(record, index, { onSearchName, onSearchStats, onList, onRemove, onPick, blockReason, ...naming }) {
   const cells = recordCells(record); // one source of truth for 類型 and 詞綴
   const unsure = isUnsure(record);
   const li = document.createElement("li");
+  li.className = "record";
   li.dataset.index = String(index);
   li.dataset.name = record.name ?? "";
   li.dataset.kind = record.kind ?? "";
@@ -202,11 +251,22 @@ function recordListItem(record, index, { onSearchName, onSearchStats, onRemove, 
   if (!record.name) li.append(nameBox(record, naming));
   const actions = document.createElement("div");
   actions.className = "actions";
+  actions.setAttribute("role", "group");
+  actions.setAttribute("aria-label", `${record.name || "這一筆"}的操作`);
   const precise = linkButton("精準搜尋", index, () => onSearchName(record));
   const fuzzy = linkButton("模糊搜尋", index, () => onSearchStats(record));
+  const list = linkButton("TR交易", index, () => onList(record));
   precise.disabled = !record.name; // nothing to look up without a name
   fuzzy.disabled = unsure; // and nothing to search by until the player has said which item it is
-  actions.append(precise, fuzzy);
+  list.disabled = !record.name; // a listing needs the item's name
+  const blocked = blockReason(); // an invite that is used up or refused: all three cost a use, so none can start
+  if (blocked) {
+    for (const button of [precise, fuzzy, list]) {
+      button.disabled = true;
+      button.title = blocked;
+    }
+  }
+  actions.append(precise, fuzzy, list);
   li.append(actions);
   return li;
 }
@@ -236,7 +296,7 @@ function meanGrey(img) {
   return count ? sum / count : 0;
 }
 
-export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
+export function initScanPanel({ ocr, tables, onSearchName, onSearchStats, onList, getBlock = () => "", announce = announceRecognized }) {
   const session = createScanSession();
   let capture = null;
   let pumping = false; // one OCR at a time
@@ -273,10 +333,18 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
     naming.drafts.delete(id);
     naming.notes.delete(id);
   };
+  // A record that got its name (picked or typed): the reader remembers it under `key`, and its draft box goes away.
+  const settleNaming = (record, key, name) => {
+    ocr.learn(key, name);
+    forgetDraft(record.id);
+    renderScreen();
+  };
   // What every list item's buttons carry; built once so a redraw allocates nothing per record.
   const searches = {
+    blockReason: getBlock,
     onSearchName,
     onSearchStats,
+    onList,
     tables,
     state: naming,
     onRemove: (record) => {
@@ -289,9 +357,7 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
       const option = record.options[at];
       const key = keyOf(record, option);
       if (!session.resolveRecord(record.id, at)) return;
-      ocr.learn(key, option.name);
-      forgetDraft(record.id);
-      renderScreen();
+      settleNaming(record, key, option.name);
     },
     onType: (record, raw) => {
       const entry = tableEntry(raw, tables);
@@ -302,32 +368,26 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
       }
       const key = keyOf(record, null);
       if (!session.nameRecord(record.id, entry)) return;
-      ocr.learn(key, entry.name);
-      forgetDraft(record.id);
-      renderScreen();
+      settleNaming(record, key, entry.name);
     },
   };
 
   // ---- reading one frame ------------------------------------------------------------------------------------------
 
-  function downscaleFrame(bitmap) {
-    const width = DETECT_WIDTH; // the width the detector is tuned for
+  /** `bitmap` drawn at `width` (the height follows) on `canvas`, read back as pixels. */
+  function drawScaled(canvas, bitmap, width) {
     const height = Math.max(1, Math.round((bitmap.height * width) / bitmap.width));
-    detect.width = width;
-    detect.height = height;
-    const ctx = detect.getContext("2d", { willReadFrequently: true });
-    ctx.drawImage(bitmap, 0, 0, width, height);
-    return ctx.getImageData(0, 0, width, height);
-  }
-
-  function downscaleFallback(bitmap) {
-    const width = Math.min(bitmap.width, FALLBACK_WIDTH);
-    const height = Math.max(1, Math.round((bitmap.height * width) / bitmap.width));
-    const canvas = new OffscreenCanvas(width, height);
+    canvas.width = width;
+    canvas.height = height;
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
     ctx.drawImage(bitmap, 0, 0, width, height);
     return ctx.getImageData(0, 0, width, height);
   }
+
+  // DETECT_WIDTH is the width the detector is tuned for.
+  const downscaleFrame = (bitmap) => drawScaled(detect, bitmap, DETECT_WIDTH);
+  const downscaleFallback = (bitmap) => drawScaled(new OffscreenCanvas(1, 1), bitmap, Math.min(bitmap.width, FALLBACK_WIDTH));
+
   async function runFallback(bitmap, small) {
     fallbackRunning = true;
     session.stats.fallbackRuns = (session.stats.fallbackRuns ?? 0) + 1;
@@ -378,9 +438,19 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
     // unknown background that differs from one place on screen to the next. The session hands its own key over for a
     // box it detected, so the grid is measured once per crop.
     const cropKey = key ?? boxKey(small, box);
-    if (!session.accept(cropKey)) return null;
-    const blob = await crop.convertToBlob({ type: "image/png" });
-    session.queue.push(blob);
+    const job = session.accept(cropKey);
+    if (!job) return null;
+    // An encode that fails (a covered panel makes it slow, and it can throw) costs this one crop, counted as 丟棄: the
+    // job is forgotten key and all, so the item can be cropped again and no later crop inherits its identity. The
+    // rejection must not reach the frame loop: capture.js treats a throw from onFrame as the end of the share.
+    let blob;
+    try {
+      blob = await crop.convertToBlob({ type: "image/png" });
+    } catch {
+      session.drop(job);
+      return null;
+    }
+    session.fill(job, blob);
     pump();
     return blob;
   }
@@ -388,6 +458,12 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
   /** The black-frame advice runs on blackRun (see advice()): a long run of dark frames means the capture is not the game. */
   function noteBrightness(mean) {
     blackRun = mean < BLACK_MEAN ? blackRun + 1 : 0; // one picture is enough to drop the advice again
+  }
+
+  /** No held still picture to count: the next still frame starts the fallback's streak again. */
+  function forgetStillFrames() {
+    frameStreak = 0;
+    lastFrameHash = null;
   }
 
   async function onFrame(frame) {
@@ -401,12 +477,10 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
       noteBrightness(meanGrey(small));
       const hit = session.feed(small);
       if (hit) {
-        frameStreak = 0;
-        lastFrameHash = null;
+        forgetStillFrames();
         await grab(bitmap, hit.box, small, hit.key);
       } else if (session.streak > 0) {
-        frameStreak = 0;
-        lastFrameHash = null;
+        forgetStillFrames();
       } else if (typeof ocr?.detectBoxes === "function") {
         const hash = boxHash(small, { x: 0, y: 0, width: small.width, height: small.height });
         if (lastFrameHash === hash) frameStreak += 1;
@@ -441,8 +515,7 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
    */
   function fallbackIsNewPicture(small, stamp) {
     if (!fallbackPicture) return true;
-    const same = keyDistance(boxKey(small, fallbackPicture.box), fallbackPicture.key)
-      <= HELD_KEY_TOLERANCE * fallbackPicture.key.length;
+    const same = keysAlike(boxKey(small, fallbackPicture.box), fallbackPicture.key, HELD_KEY_TOLERANCE);
     if (!same) return true; // another tooltip is under the cursor now
     return !fallbackPicture.resolved && stamp - lastFallbackStamp >= FALLBACK_UNREAD_BACKOFF_US;
   }
@@ -454,28 +527,88 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
     errorText = "";
   };
 
+  /** png or jpg only: by the browser's type, or by the extension when the type is empty. */
+  const isPicture = (file) => /^image\/(png|jpeg)$/u.test(file.type) || (!file.type && /\.(png|jpe?g)$/iu.test(file.name));
+  let uploadFailures = 0; // pictures of the current upload batch that could not be read (a later good read clears errorText)
+  let uploading = false; // uploaded pictures are still being read: the status line says so, then reports the count
+  // The scan ends the share by itself once one record names an item (the scan-stop-first box; the box's own
+  // initial state is the shipped markup, so the panel reads it at start instead of keeping a second default).
+  let stopOnFirst = true;
+
+  /** 上傳檔案: each png/jpg goes through the same reader as a hovered tooltip and becomes (at most) one record. */
+  async function upload(files) {
+    const picked = [...files];
+    const pictures = picked.filter(isPicture);
+    const skipped = picked.length - pictures.length;
+    if (!pictures.length) {
+      if (picked.length) say("只能上傳 png 或 jpg 圖片。");
+      return;
+    }
+    stopped = false;
+    try {
+      if (!(await modelsReady())) {
+        say("已取消下載辨識模型，圖片沒有辨識。");
+        return;
+      }
+    } catch (error) {
+      say(`無法辨識圖片：${reason(error)}`);
+      return;
+    }
+    const added = pictures.filter((file) => session.addUpload(file)).length; // a full queue refuses the rest
+    const notes = [
+      skipped ? `略過 ${skipped} 個不是 png／jpg 的檔案` : "",
+      added < pictures.length ? `${pictures.length - added} 張因為佇列已滿沒有加入` : "",
+    ].filter(Boolean);
+    if (!added) {
+      say(`圖片沒有加入（${notes.join("、")}）。`);
+      return;
+    }
+    uploading = true;
+    uploadFailures = 0;
+    say(`已加入 ${added} 張圖片${notes.length ? `（${notes.join("、")}）` : ""}，辨識中…`);
+    pump();
+  }
+
   async function pump() {
     if (pumping) return;
     pumping = true;
     try {
-      while (session.queue.length) {
+      // `take()` answers null while every queued crop is still being encoded (queue.length counts those too); the
+      // fill that completes one calls pump() again, so stopping here loses nothing.
+      for (let job = session.take(); job; job = session.take()) {
         const before = session.records.length;
-        const job = session.take();
-        await processScanJob(job, { ocr, tables, session, onRead, onUpdate: renderScreen });
+        try {
+          await processScanJob(job, { ocr, tables, session, onRead, onUpdate: renderScreen });
+        } catch (error) {
+          // One unreadable picture costs that picture only: the rest of the queue (an upload has no later frame to
+          // start the pump again) is still read. The status line says the last failure.
+          errorText = `辨識失敗：${reason(error)}`;
+          if (uploading) uploadFailures += 1;
+          if (job.blob === fallbackBlob) fallbackBlob = null;
+          session.forgetKey(job.key, job.generation); // the item can be hovered and read again
+          renderScreen(); // also drops a head-only record the failed read took off the list
+          continue;
+        }
         // Asked after the read, not before it: a fallback run assigns `fallbackBlob` right after it queues (and
         // before this read can possibly finish), so a job taken before that would never be recognised as its own.
         if (fallbackBlob !== null && job.blob === fallbackBlob) {
           fallbackBlob = null; // the fallback's own crop answered: did it rescue the item this time?
           if (fallbackPicture) fallbackPicture.resolved = session.records.length > before;
         }
+        // A hover that gave a record naming an item (not an unsure one, not a repeat that left the list as it was).
+        if (session.records.length > before && session.records[0]?.name) {
+          announce();
+          // 識別到 1 件就結束: one identified item ends the share by itself (an upload has no share to end).
+          if (stopOnFirst && !uploading && capture) stop();
+        }
         renderScreen();
       }
-    } catch (error) {
-      // Not statusText: that is only shown while no capture is running, and a mid-scan failure must be visible now.
-      errorText = `辨識失敗：${error?.message || error}`;
-      refreshStatus();
     } finally {
       pumping = false;
+      if (uploading && session.queue.length === 0) {
+        uploading = false;
+        if (!capture) say(`圖片辨識完成，共 ${session.records.length} 件${uploadFailures ? `（${uploadFailures} 張讀取失敗）` : ""}`);
+      }
     }
   }
 
@@ -499,18 +632,16 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
   function refreshStatus() {
     let line = statusText;
     if (capture) line = `掃描中：已記錄 ${session.records.length} 件，${queueLine(session.stats)}`;
-    else if (stopped) line = `已停止，共記錄 ${session.records.length} 件`;
+    // Stopped by hand or by the auto-stop: crops cut before the stop are still read, so the waiting count stays up
+    // until the queue is empty (the record count grows while it drains).
+    else if (stopped) line = `已停止，共記錄 ${session.records.length} 件` + (session.stats.queued ? `，${queueLine(session.stats)}` : "");
     $("scan-status").textContent = [errorText, advice(), line].filter(Boolean).join(" ");
-  }
-
-  function renderStats() {
-    $("scan-stats").textContent = statsLine(session.stats, fps);
   }
 
   /** The two readouts under the list: the status line and the 掃描統計 line. */
   function renderReadouts() {
     refreshStatus();
-    renderStats();
+    $("scan-stats").textContent = statsLine(session.stats, fps);
   }
 
   /** Everything the screen says about the session at once: the record list and the two readouts under it. */
@@ -528,9 +659,9 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
     session.records.forEach((record, index) => list.append(recordListItem(record, index, searches)));
     if (typingFor !== undefined) naming.inputs.get(typingFor)?.focus();
     list.hidden = !session.records.length;
+    $("scan-empty").hidden = Boolean(session.records.length);
     for (const id of ["scan-csv", "scan-clear"]) $(id).disabled = !session.records.length;
   }
-
 
   function fileStamp() {
     const now = new Date();
@@ -540,14 +671,32 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
 
   // ---- starting and stopping -------------------------------------------------------------------------------------
 
-  /** Downloads the missing models through the reader's shared, silent path; false when the download was cancelled. */
-  async function downloadMissing({ names }) {
+  /**
+   * Makes sure the recognition models are there, downloading them through the reader's shared, silent path; false when
+   * the download was cancelled.
+   */
+  async function modelsReady() {
+    const { names } = await ocr.missingModels();
+    if (!names.length) return true;
     try {
       return await ocr.downloadModels({ names });
     } catch (error) {
       if (error?.kind === "cancelled") return false;
       throw error;
     }
+  }
+
+  function releaseWarm() {
+    if (!scanWarmRelease) return;
+    scanWarmRelease();
+    scanWarmRelease = null;
+  }
+
+  /** The start button and the stop button swap places while a capture runs. */
+  function showCapturing(on) {
+    $("scan-start").disabled = on;
+    $("scan-start").hidden = on;
+    $("scan-stop").hidden = !on;
   }
 
   /** A fresh capture starts from zero: no message, no error, and no frame counted yet. */
@@ -562,8 +711,7 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
     frames = 0;
     framesAtTick = 0;
     fps = 0;
-    frameStreak = 0;
-    lastFrameHash = null;
+    forgetStillFrames();
     lastFallbackStamp = -Infinity;
     fallbackPicture = null; // the previous run's picture says nothing about this capture's frames
     fallbackBlob = null;
@@ -577,8 +725,7 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
     }
     capture = started;
     resetRun();
-    $("scan-start").disabled = true;
-    $("scan-stop").hidden = false;
+    showCapturing(true);
     renderReadouts();
     ticker = setInterval(tick, 1000);
   }
@@ -587,9 +734,9 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
     if (capture) return;
     $("scan-start").disabled = true;
     stopped = false;
+    stopOnFirst = $("scan-stop-first").checked;
     try {
-      const missing = await ocr.missingModels();
-      if (missing.names.length && !(await downloadMissing(missing))) {
+      if (!(await modelsReady())) {
         say("已取消下載辨識模型，掃描沒有開始。");
         return;
       }
@@ -599,17 +746,11 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
       }
       await begin();
     } catch (error) {
-      if (scanWarmRelease) {
-        scanWarmRelease();
-        scanWarmRelease = null;
-      }
-      say(`無法開始掃描：${error?.message || error}`);
+      releaseWarm();
+      say(`無法開始掃描：${reason(error)}`);
     } finally {
       if (!capture) {
-        if (scanWarmRelease) {
-          scanWarmRelease();
-          scanWarmRelease = null;
-        }
+        releaseWarm();
         $("scan-start").disabled = false;
       }
     }
@@ -618,7 +759,7 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
   /** The capture ended: the player's "stop sharing" (no argument) or a failed read loop (the error to show). */
   function endCapture(error) {
     if (error) {
-      errorText = `擷取中斷：${error?.message || error}`;
+      errorText = `擷取中斷：${reason(error)}`;
       refreshStatus();
     }
     stop();
@@ -628,18 +769,14 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
     if (!capture) return;
     capture.stop();
     capture = null;
-    if (scanWarmRelease) {
-      scanWarmRelease();
-      scanWarmRelease = null;
-    }
+    releaseWarm();
     stopped = true;
     slow = false; // the advice about a running scan goes with it; a black picture stays until a bright one comes
     hidden = false;
     recentFps = [];
     clearInterval(ticker);
     ticker = null;
-    $("scan-stop").hidden = true;
-    $("scan-start").disabled = false;
+    showCapturing(false);
     renderReadouts();
   }
 
@@ -670,6 +807,13 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
   function wireControls() {
     $("scan-start").addEventListener("click", start);
     $("scan-stop").addEventListener("click", stop);
+    $("scan-upload").addEventListener("click", () => $("scan-file").click());
+    $("scan-stop-first").addEventListener("change", (event) => { stopOnFirst = event.target.checked; });
+    $("scan-file").addEventListener("change", async (event) => {
+      const files = [...(event.target.files ?? [])];
+      event.target.value = ""; // the same file can be picked again
+      await upload(files);
+    });
     $("scan-clear").addEventListener("click", () => {
       session.clear();
       renderScreen();
@@ -684,5 +828,5 @@ export function initScanPanel({ ocr, tables, onSearchName, onSearchStats }) {
   renderRecords();
   renderReadouts();
 
-  return { stop };
+  return { stop, refresh: renderRecords };
 }

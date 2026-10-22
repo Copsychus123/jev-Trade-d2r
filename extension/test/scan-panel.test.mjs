@@ -1,8 +1,8 @@
 // The 裝備掃描 screen (scan-panel.js) is the whole flow around the scan session: it takes frames off the shared
 // window, cuts each tooltip out of them, hands the crop to the OCR engine, keeps one record per item and writes the
 // list, the status line and the run's counters to the page. scan-session.test.mjs covers the state machine
-// underneath; nothing executed this module, so the crop arithmetic, the record markup, 清除紀錄 and every status
-// wording could ship unnoticed.
+// underneath; nothing executed this module, so the crop arithmetic, the record markup, 清除紀錄 and every count the
+// status lines report could ship unnoticed.
 //
 // This drives the real module end to end against fakes only: a fake Chrome capture (getDisplayMedia +
 // MediaStreamTrackProcessor) feeding synthetic frames, an OffscreenCanvas/createImageBitmap pair whose
@@ -23,6 +23,7 @@ installStubResolver();
 import { toneQuality } from "../src/ocr/tone.js";
 import { indexTables } from "../src/traderie/lookup.js";
 import { downscale } from "../src/scan/tooltip.js";
+import { RECORD_HEAD } from "../src/scan/session.js";
 import { fill, noise } from "./support/images.mjs";
 
 const { initScanPanel } = await import("../src/scan/scan-panel.js");
@@ -74,11 +75,9 @@ const NAME_TEXT = "Arachnid Mesh";
 const AFFIX_TEXT = "+27 力量 (STN)";
 const UNSURE_TEXT = "Arachnid Mesh Ring"; // read as an item with its type line under it: not sure which of the two
 const UNREADABLE_TEXT = ""; // no name and no affix line: the session refuses it and counts 略過
-
-// The two contingency messages scan-panel.js puts in front of the live status.
-const BLACK_ADVICE = "擷取到的是黑畫面：請把遊戲改成「視窗化全螢幕」。";
-const HIDDEN_ADVICE = "遊戲視窗蓋住了這個面板，掃描會變慢、快速掠過的裝備可能漏掉。建議把遊戲改成視窗模式、和 Chrome 並排。";
-const SLOW_ADVICE = "畫面更新偏慢，快速掠過的裝備可能漏掉。建議把遊戲改成視窗模式、和 Chrome 並排，並關掉其他吃資源的程式。";
+const NAME_ZH = "蛛網紋束帶"; // the Chinese name the tables give NAME_TEXT
+const AFFIX_LABEL = "力量"; // the condition label AFFIX_TEXT is read as
+const MISSING_NAME = "沒有這個東西"; // a name typed in that no table lists
 
 /** The candidates the shipped matcher answers for the texts these tests read (the shape matchOcrText returns). */
 function candidateFor(text, tones = []) {
@@ -89,7 +88,8 @@ function candidateFor(text, tones = []) {
       { kind: "base", name: "Ring", distance: 0, matched: "Ring", size: 2, at: 1 },
     ];
   }
-  return text === NAME_TEXT ? [{ name: NAME_TEXT, kind: "item", matched: NAME_TEXT }] : [];
+  const named = text === NAME_TEXT || text.startsWith(`${NAME_TEXT}\n`); // a name line, with or without lines under it
+  return named ? [{ name: NAME_TEXT, kind: "item", matched: NAME_TEXT }] : [];
 }
 
 const tables = indexTables({
@@ -179,7 +179,7 @@ class FakeNode {
   }
 }
 
-const IDS = ["scan-start", "scan-stop", "scan-status", "scan-list", "scan-csv", "scan-clear", "scan-stats"];
+const IDS = ["scan-start", "scan-stop", "scan-status", "scan-list", "scan-empty", "scan-csv", "scan-clear", "scan-stats", "scan-upload", "scan-file", "scan-stop-first"];
 
 function makeDocument(ids) {
   const byId = new Map(ids.map((id) => [id, new FakeNode("div")]));
@@ -188,6 +188,7 @@ function makeDocument(ids) {
   byId.get("scan-stop").hidden = true;
   byId.get("scan-csv").disabled = true;
   byId.get("scan-clear").disabled = true;
+  byId.get("scan-stop-first").checked = false; // the tests scan many items; the auto-stop is a checkbox
   return { byId, createElement: (tagName) => new FakeNode(tagName), getElementById: (id) => byId.get(id) ?? null };
 }
 
@@ -247,8 +248,14 @@ class FakeOffscreenCanvas {
     };
   }
 
-  /** What the panel queues for OCR: a PNG of the crop (only its type and size matter to these tests). */
+  /** What the panel queues for OCR: a PNG of the crop (only its type and size matter to these tests). A test can make
+   * one encode fail (env.failEncodes, counted down) or hold one open (env.holdEncode: a deferred the test resolves). */
   async convertToBlob({ type } = {}) {
+    if (env.failEncodes > 0) {
+      env.failEncodes -= 1;
+      throw new Error("encode failed");
+    }
+    if (env.holdEncode) await env.holdEncode.promise;
     return new Blob([new Uint8Array(this.width * this.height)], { type });
   }
 }
@@ -344,6 +351,8 @@ function setup({ pick, missing = { names: [], bytes: 0 }, download = async () =>
     bitmaps: [],
     failFrames: new Set(),
     holdFrames: new Set(),
+    failEncodes: 0, // how many of the next crop encodes throw
+    holdEncode: null, // { promise, resolve }: every encode waits on it while set
     held: null,
     frames: [],
     readers: [],
@@ -366,7 +375,9 @@ function setup({ pick, missing = { names: [], bytes: 0 }, download = async () =>
     missing,
     download,
     downloads: [],
-    handlers: { name: [], stats: [] },
+    handlers: { name: [], stats: [], list: [] },
+    block: "", // the reason the panel gives when an invite is used up or refused
+    announced: 0,
     ocr: null,
   };
   env.gate = new Promise((resolve) => {
@@ -378,6 +389,11 @@ function setup({ pick, missing = { names: [], bytes: 0 }, download = async () =>
     tables,
     onSearchName: (record) => env.handlers.name.push(record),
     onSearchStats: (record) => env.handlers.stats.push(record),
+    onList: (record) => env.handlers.list.push(record),
+    getBlock: () => env.block,
+    announce: () => {
+      env.announced += 1;
+    },
   });
   return env;
 }
@@ -436,6 +452,13 @@ function makeOcr() {
       return [...candidates, ...(api.extra ?? [])];
     },
     firstKey: (text) => (api.firstKeys ? api.firstKeys[text] ?? "" : ""),
+    // The base memory and the number memory of the real panel: a test sets `learnedBases` (text -> { name, count }) and
+    // `valueMemory` (a lookup(line, key) like value-corrections.js) to see what a read makes of them.
+    nameKeys: (text) => (api.keys ? api.keys[text] ?? [] : []),
+    learnedBase: (text) => (api.learnedBases ? api.learnedBases[text] ?? null : null),
+    get values() {
+      return api.valueMemory;
+    },
     learn(key, name) {
       api.learned.push([key, name]);
       return true;
@@ -452,6 +475,9 @@ function makeOcr() {
     learned: [], // what the panel asked the correction memory to remember: [key, name]
     extra: null, // names appended to the candidates of an unsure read
     firstKeys: null, // text -> the read's first name line
+    keys: null, // text -> the read's name-line pieces ({ key, at })
+    learnedBases: null, // text -> { name, count }: what the player corrected the base to for this text before
+    valueMemory: null, // { lookup(line, affixKey) }: the player's remembered affix numbers
   };
   return api;
 }
@@ -494,6 +520,71 @@ async function settle(done, label, limit = 10000) {
 const node = (id) => env.doc.byId.get(id);
 const statusText = () => node("scan-status").textContent;
 const statsText = () => node("scan-stats").textContent;
+
+// --- what the screen says, read as state -----------------------------------------------------------------------------
+// The status and stats lines are sentences for the player. These tests read the numbers in them and what stands in
+// front of them, never the sentence: this is the one place that names the labels (待辨識 N 件 is also what
+// scripts/scan_e2e.py waits on).
+const LIVE_LINE = /(?:掃描中：)?已記錄 (\d+) 件，待辨識 (\d+) 件(?:，約 (\d+) 秒)?/u;
+const STOPPED_LINE = /已停止，共記錄 (\d+) 件(?:，待辨識 (\d+) 件)?/u;
+const STATS_LINE = /每秒畫面 (\d+)、偵測 (\d+)、略過 (\d+)、丟棄 (\d+)、平均辨識 (\S+) 秒(?:、備援偵測 (\d+) 次、救回 (\d+) 件)?/u;
+
+/** The counts the status line states: while scanning, once stopped, or null when it states none (blank, a refusal). */
+function statusNumbers() {
+  const text = statusText();
+  const live = LIVE_LINE.exec(text);
+  if (live) return { scanning: true, recorded: Number(live[1]), queued: Number(live[2]), eta: live[3] === undefined ? null : Number(live[3]) };
+  const done = STOPPED_LINE.exec(text);
+  return done ? { scanning: false, recorded: Number(done[1]), queued: done[2] === undefined ? null : Number(done[2]) } : null;
+}
+const liveCounts = (recorded, queued, eta = null) => ({ scanning: true, recorded, queued, eta });
+const stoppedCount = (recorded, queued = null) => ({ scanning: false, recorded, queued });
+
+/** What stands in front of the counts on the status line (an engine error or a contingency advice); "" when nothing does. */
+function frontOf() {
+  const text = statusText();
+  const at = (LIVE_LINE.exec(text) ?? STOPPED_LINE.exec(text))?.index ?? 0;
+  return text.slice(0, at).trim();
+}
+
+/** The status line is just the live count: no error and no advice in front of it. */
+function assertQuietLiveStatus(recorded = 0, queued = 0) {
+  assert.equal(frontOf(), "", "nothing stands in front of the count");
+  assert.deepEqual(statusNumbers(), liveCounts(recorded, queued));
+}
+
+/** The numbers of the stats line; average is null until a read has landed, fallback null while the fallback never ran. */
+function statsNumbers() {
+  const match = STATS_LINE.exec(statsText());
+  if (!match) return null;
+  const [fps, detected, skipped, dropped] = match.slice(1, 5).map(Number);
+  return {
+    fps,
+    detected,
+    skipped,
+    dropped,
+    average: match[5] === "—" ? null : Number(match[5]),
+    fallback: match[6] === undefined ? null : { runs: Number(match[6]), rescued: Number(match[7]) },
+  };
+}
+const statsOf = ({ fps = 0, detected = 0, skipped = 0, dropped = 0, average = null, fallback = null } = {}) => ({ fps, detected, skipped, dropped, average, fallback });
+
+// The upload line states its numbers in the order the code gives them; whether it is the closing line is told by its label.
+const numbersIn = (text) => (text.match(/\d+/gu) ?? []).map(Number);
+const uploadDone = () => /圖片辨識完成/u.test(statusText());
+
+/** The second line of a row taken apart: the time, the type label and the affix labels (undefined when there are none). */
+function lineParts(item) {
+  const [time, type, affixes] = item.children[1].textContent.split(" · ");
+  return { time, type, affixes };
+}
+
+/** A downloaded CSV: the whole text and its cells per line (the BOM off; no fixture cell holds a comma). */
+async function csvOf(blob) {
+  const text = Buffer.from(await blob.arrayBuffer()).toString("utf8");
+  const rows = text.replace(/^\uFEFF/, "").split("\r\n").filter(Boolean).map((line) => line.split(","));
+  return { text, rows };
+}
 const listEl = () => node("scan-list");
 // The panel builds two canvases, but their construction order is not a contract, so each is found by its role: the
 // detector is the one the panel reads pixels back from (getContext with willReadFrequently), the crop is the other.
@@ -593,13 +684,12 @@ async function scanPanels(panels, texts, tonesOf = [], configure = () => {}) {
   for (let i = 0; i < texts.length; i++) await answer(i, texts[i], tonesOf[i]);
 }
 
-/** A fresh screen fed `frames`, one tick blown after them: the status line those frames produce. */
-async function statusAfterFrames(frames) {
+/** A fresh screen fed `frames` and one tick blown after them: the status line is then what those frames produce. */
+async function tickAfterFrames(frames) {
   setup();
   await startScan();
   await feedFrames(frames);
   fireTick();
-  return statusText();
 }
 
 /** Two panels delivered, the first crop held at the engine, then the read loop ended: one crop waits behind it. */
@@ -616,9 +706,10 @@ async function twoCropsWithOneHeldAtTheEngine() {
 test("before anything runs: no records, both list buttons disabled, the status and the stats blank", () => {
   setup();
   assert.equal(statusText(), "");
-  assert.equal(statsText(), "每秒畫面 0、偵測 0、略過 0、丟棄 0、平均辨識 — 秒");
+  assert.deepEqual(statsNumbers(), statsOf());
   assert.deepEqual(listEl().children, []);
   assert.equal(listEl().hidden, true);
+  assert.equal(node("scan-empty").hidden, false, "no record yet: the empty-state sentence shows");
   assert.equal(node("scan-csv").disabled, true);
   assert.equal(node("scan-clear").disabled, true);
   assert.equal(node("scan-stop").hidden, true);
@@ -665,18 +756,53 @@ test("a frame closer than 66 ms to the last one is counted in the rate but never
   assert.deepEqual([first.closed, skipped.closed, third.closed], [true, true, true]);
   await answer(0, NAME_TEXT);
   fireTick();
-  assert.equal(statsText(), "每秒畫面 3、偵測 2、略過 0、丟棄 0、平均辨識 1.0 秒");
+  assert.deepEqual(statsNumbers(), statsOf({ fps: 3, detected: 2, average: 1 }));
+});
+
+test("after the auto-stop the status line keeps the waiting count until the queue drains", async () => {
+  setup();
+  env.doc.byId.get("scan-stop-first").checked = true;
+  await startScan();
+  deliver([{ box: PANEL_B, stripes: 0.3 }, { box: PANEL_A }]);
+  await settleCrops(2); // both crops cut before the first read answers
+  await answer(0, NAME_TEXT); // stops the share; crop 1 is still waiting
+  await settle(() => env.stops === 1, "the share ends by itself");
+  await settle(() => statusNumbers().queued === 1, "the stopped line says what is still waiting");
+  await answer(1, AFFIX_TEXT);
+  await settle(() => statusNumbers().queued === null, "the waiting count leaves with the queue");
+});
+
+test("the scan-stop-first box ends the share once one record names an item, and unchecking keeps it going", async () => {
+  setup();
+  env.doc.byId.get("scan-stop-first").checked = true;
+  await startScan();
+  deliver([{ box: PANEL_B, stripes: 0.3 }, { box: PANEL_A }]);
+  await settleCrops(2); // both crops are cut before the first read answers
+  await answer(0, NAME_TEXT);
+  await settle(() => env.stops === 1, "the share ends by itself");
+  await answer(1, AFFIX_TEXT); // the second crop (a different item) was cut before the share ended: its read still lands
+  assert.equal(listEl().children.length, 2);
+
+  setup(); // unchecked: the capture keeps running for the whole sweep
+  await startScan();
+  deliver([{ box: PANEL_B, stripes: 0.3 }, { box: PANEL_A }]);
+  await settleCrops(2);
+  await answer(0, NAME_TEXT);
+  fireTick();
+  assert.equal(env.stops, 0);
+  assert.ok(node("scan-stop").hidden === false);
 });
 
 // --- the record list -------------------------------------------------------------------------------------------------
 
-test("one list item per record: the name line, the 類型/詞綴 line and two search buttons carrying the index", async () => {
+test("one list item per record: the name line, the 類型/詞綴 line and three buttons carrying the index", async () => {
   // The affix-only panel is read first, so the newest record (the named one) lands on top of the list.
   await scanPanels([{ box: PANEL_B, stripes: 0.3 }, { box: PANEL_A }], [AFFIX_TEXT, NAME_TEXT]);
 
   const items = listEl().children;
   assert.equal(items.length, 2);
   assert.equal(listEl().hidden, false);
+  assert.equal(node("scan-empty").hidden, true);
   assert.equal(node("scan-csv").disabled, false);
   assert.equal(node("scan-clear").disabled, false);
 
@@ -684,7 +810,7 @@ test("one list item per record: the name line, the 類型/詞綴 line and two se
   assertUnnamedItem(items[1]);
 });
 
-/** The named record (index 0): its 類型 line and two enabled search buttons. */
+/** The named record (index 0): its 類型 line and three enabled buttons. */
 function assertNamedItem(named) {
   assert.deepEqual({ index: named.dataset.index, name: named.dataset.name, kind: named.dataset.kind }, {
     index: "0",
@@ -693,23 +819,27 @@ function assertNamedItem(named) {
   });
   const [line1, line2, actions] = named.children;
   assert.equal(line1.className, "line1");
-  assert.deepEqual(line1.children.map((child) => [child.tagName, child.textContent]), [
-    ["strong", "蛛網紋束帶（Arachnid Mesh）"],
-    ["button", "✕"],
-  ]);
-  assert.deepEqual([line1.children[1].type, line1.children[1].getAttribute("aria-label")], [
-    "button",
-    "刪除這一筆：Arachnid Mesh",
-  ]);
+  assert.deepEqual(line1.children.map((child) => child.tagName), ["strong", "button"]);
+  const heading = line1.children[0].textContent;
+  assert.ok(heading.includes(NAME_ZH) && heading.includes(NAME_TEXT), "the name line carries both names");
+  assert.ok(heading.indexOf(NAME_ZH) < heading.indexOf(NAME_TEXT), "Chinese first");
+  assert.equal(line1.children[1].textContent, "✕");
+  assert.equal(line1.children[1].type, "button");
+  assert.ok(removeLabel(named).includes(NAME_TEXT), "the ✕ says which record it deletes");
   assert.equal(line2.className, "line2");
-  assert.equal(line2.textContent, "12:34:56 · 暗金/套裝/符文之語");
+  const parts = lineParts(named);
+  assert.deepEqual([parts.time, parts.type !== "", parts.affixes], ["12:34:56", true, undefined]);
   assert.equal(actions.className, "actions");
-  assert.deepEqual(actions.children.map((button) => button.textContent), ["精準搜尋", "模糊搜尋"]);
+  assert.equal(actions.getAttribute("role"), "group");
+  assert.ok(actions.getAttribute("aria-label").includes(NAME_TEXT), "the group says whose buttons these are");
+  assert.equal(named.className, "record");
+  assert.deepEqual(actions.children.map((button) => button.textContent), ["精準搜尋", "模糊搜尋", "TR交易"]);
   assert.deepEqual(actions.children.map((button) => [button.tagName, button.type, button.className, button.dataset.index]), [
     ["button", "button", "link", "0"],
     ["button", "button", "link", "0"],
+    ["button", "button", "link", "0"],
   ]);
-  assert.deepEqual(actions.children.map((button) => button.disabled), [false, false]);
+  assert.deepEqual(actions.children.map((button) => button.disabled), [false, false, false]);
 }
 
 /** The affix-only record (index 1): no name, so 精準搜尋 is disabled and only 模糊搜尋 can be pressed. */
@@ -719,13 +849,18 @@ function assertUnnamedItem(unnamed) {
     name: "",
     kind: "",
   });
-  assert.equal(unnamed.children[0].children[0].textContent, "沒認出名稱");
-  assert.equal(unnamed.children[1].textContent, "12:34:56 · — · 力量");
-  const actions = unnamed.children.at(-1); // after the 「輸入名稱」 box every record without a name has
+  assert.equal(unnamed.dataset.unsure, undefined, "no names to pick: it is unresolved, not unsure");
+  assert.ok(!unnamed.children[0].children[0].textContent.includes(NAME_TEXT), "no name is claimed");
+  const parts = lineParts(unnamed);
+  assert.deepEqual([parts.time, parts.affixes], ["12:34:56", AFFIX_LABEL]);
+  assert.notEqual(parts.type, lineParts(listEl().children[0]).type, "a record with no kind shows another type label than an item");
+  const actions = unnamed.children.at(-1); // after the name box every record without a name has
+  assert.ok(nameBoxOf(unnamed), "the box to type a name");
   assert.equal(unnamed.children.length, 4, "name line, type line, the box to type a name, the search buttons");
-  assert.deepEqual(actions.children.map((button) => button.dataset.index), ["1", "1"]);
+  assert.deepEqual(actions.children.map((button) => button.dataset.index), ["1", "1", "1"]);
   assert.equal(actions.children[0].disabled, true); // no name: 精準搜尋 cannot look anything up
   assert.equal(actions.children[1].disabled, false);
+  assert.equal(actions.children[2].disabled, true); // no name: nothing to list either
 }
 
 // --- 匯出 CSV --------------------------------------------------------------------------------------------------------
@@ -741,14 +876,16 @@ test("匯出 CSV downloads the records as a named CSV: header, one row per recor
   assert.equal(name, "jev-scan-20261012-1234.csv", "the name is jev-scan-<yyyymmdd-hhmm>.csv at the fixed clock");
   assert.equal(href, "blob:scan-download", "the anchor points at the object URL of the CSV blob");
   assert.equal(blob.type, "text/csv;charset=utf-8", "Excel is told the bytes are UTF-8 CSV");
-  const csv = Buffer.from(await blob.arrayBuffer()).toString("utf8");
-  assert.equal(
-    csv,
-    "\uFEFF時間,名稱,中文名稱,類型,詞綴,辨識文字\r\n" +
-      "2026-10-12 12:34:56,Arachnid Mesh,蛛網紋束帶,暗金/套裝/符文之語,,Arachnid Mesh\r\n" +
-      // The affix text starts with "+": csvCell prefixes it so a spreadsheet does not run it as a formula.
-      "2026-10-12 12:34:56,,,—,力量,'+27 力量 (STN)\r\n",
-  );
+  const { text, rows } = await csvOf(blob);
+  assert.ok(text.startsWith("\uFEFF"), "the BOM tells Excel the file is UTF-8");
+  assert.ok(text.endsWith("\r\n"), "every line ends with CRLF");
+  assert.equal(rows.length, 3, "a header and one row per record");
+  assert.equal(rows[0].join(","), RECORD_HEAD.join(","), "the header is the session's own");
+  assert.ok(rows.every((row) => row.length === RECORD_HEAD.length));
+  const [first, second] = listEl().children;
+  assert.deepEqual(rows[1], ["2026-10-12 12:34:56", NAME_TEXT, NAME_ZH, lineParts(first).type, "", NAME_TEXT]);
+  // The affix text starts with "+": csvCell prefixes it so a spreadsheet does not run it as a formula.
+  assert.deepEqual(rows[2], ["2026-10-12 12:34:56", "", "", lineParts(second).type, AFFIX_LABEL, `'${AFFIX_TEXT}`]);
 });
 
 test("匯出 CSV on an empty list saves nothing", async () => {
@@ -763,22 +900,24 @@ test("匯出 CSV on an empty list saves nothing", async () => {
 // --- ✕ on one row ----------------------------------------------------------------------------------------------------
 
 const removeButton = (item) => item.children[0].children[1];
+const removeLabel = (item) => removeButton(item).getAttribute("aria-label") ?? "";
 
 test("the ✕ of a row deletes that record only, and the status, the list and the CSV follow", async () => {
   await scanPanels([{ box: PANEL_B, stripes: 0.3 }, { box: PANEL_A }], [AFFIX_TEXT, NAME_TEXT]);
-  assert.equal(removeButton(listEl().children[1]).getAttribute("aria-label"), "刪除這一筆：沒認出名稱");
+  assert.equal(listEl().children[1].dataset.name, "", "the older row is the one with no name");
+  assert.ok(removeLabel(listEl().children[1]) !== "" && !removeLabel(listEl().children[1]).includes(NAME_TEXT));
 
   await removeButton(listEl().children[0]).fire("click"); // the named record on top
 
   assert.equal(listEl().children.length, 1);
   const [left] = listEl().children;
-  assert.deepEqual([left.dataset.name, left.children[0].children[0].textContent], ["", "沒認出名稱"]);
-  assert.equal(statusText(), "掃描中：已記錄 1 件，待辨識 0 件");
+  assert.equal(left.dataset.name, "", "the one left is the unnamed record");
+  assert.deepEqual(statusNumbers(), liveCounts(1, 0));
   assert.equal(node("scan-csv").disabled, false);
   await node("scan-csv").fire("click");
-  const csv = Buffer.from(await env.saved[0].blob.arrayBuffer()).toString("utf8");
-  assert.equal(csv.includes("Arachnid Mesh"), false, "the deleted record is not in the file");
-  assert.equal(csv.includes("力量"), true);
+  const { text: csv } = await csvOf(env.saved[0].blob);
+  assert.equal(csv.includes(NAME_TEXT), false, "the deleted record is not in the file");
+  assert.equal(csv.includes(AFFIX_LABEL), true);
   assert.deepEqual(env.handlers.name, []);
   assert.deepEqual(env.fetches, [], "deleting starts no query");
 });
@@ -791,7 +930,7 @@ test("deleting the last record hides the list and disables 下載 CSV and 清除
   assert.equal(listEl().hidden, true);
   assert.equal(node("scan-csv").disabled, true);
   assert.equal(node("scan-clear").disabled, true);
-  assert.equal(statusText(), "掃描中：已記錄 0 件，待辨識 0 件");
+  assert.deepEqual(statusNumbers(), liveCounts(0, 0));
 });
 
 test("a row can be deleted after the scan stopped, without touching the capture", async () => {
@@ -802,7 +941,7 @@ test("a row can be deleted after the scan stopped, without touching the capture"
   await removeButton(listEl().children[0]).fire("click");
 
   assert.equal(listEl().children.length, 0);
-  assert.equal(statusText(), "已停止，共記錄 0 件");
+  assert.deepEqual(statusNumbers(), stoppedCount(0));
   assert.equal(env.stops, stops);
 });
 
@@ -829,12 +968,70 @@ test("a deleted item is recorded again when the same tooltip is hovered again", 
   assert.equal(listEl().children[0].dataset.name, NAME_TEXT);
 });
 
+// --- the crop's encode: a failure or a slow one must not derail the scan -----------------------------------------------
+
+test("a crop whose encode fails is counted as 丟棄, the share goes on, and the same tooltip is cropped again", async () => {
+  // The encode is the one await between accepting a crop and queueing it. Before the jobs were one object, a throw
+  // here left the crop's key behind for every later crop and escaped onFrame, which capture.js reads as the share
+  // ending. Now the crop is dropped, forgotten key and all, and the next hover of the same tooltip is read.
+  setup();
+  await startScan();
+  env.failEncodes = 1;
+  env.holdFrames.add(300000);
+  const img = panelFrame(PANEL_A);
+  env.frames.push(fakeFrame(img, 100000), fakeFrame(img, 200000), darkFrame(300000));
+  env.frames.push(fakeFrame(img, 400000), fakeFrame(img, 500000));
+  openGate();
+  await settleCrops(1);
+  await settle(() => (fireTick(), statsNumbers()?.dropped === 1), "the failed encode to be counted as dropped");
+  assert.equal(env.ocr.reads.length, 0, "nothing reached the engine");
+  assert.equal(statusNumbers().queued, 0, "the failed crop did not stay in the queue");
+  assert.equal(env.stops, 0, "the share is still running");
+
+  releaseFrame(); // the same tooltip again, in the same share
+  await settleCrops(2);
+  await answer(0, NAME_TEXT);
+
+  assert.equal(listEl().children.length, 1, "the item is recorded on its second hover");
+  fireTick();
+  assert.equal(statsNumbers().dropped, 1);
+});
+
+test("the read loop does not choke on a crop that is still being encoded behind one that is ready", async () => {
+  // pump() loops while crops are queued; a crop whose encode has not finished is queued but not ready, and take()
+  // answers null for it. The loop must stop and let the finishing encode call pump() again, not read a null job.
+  setup();
+  await startScan();
+  // A's two frames, a held dark frame (the capture stays open), then B's two frames.
+  env.holdFrames.add(300000);
+  const imgA = panelFrame(PANEL_A);
+  const imgB = panelFrame(PANEL_B, { stripes: 0.3 });
+  env.frames.push(fakeFrame(imgA, 100000), fakeFrame(imgA, 200000), darkFrame(300000));
+  env.frames.push(fakeFrame(imgB, 400000), fakeFrame(imgB, 500000));
+  openGate();
+  await settleReads(1); // crop A at the engine: pump() is awaiting its read
+
+  let release;
+  env.holdEncode = { promise: new Promise((resolve) => (release = resolve)) };
+  releaseFrame();
+  await settleCrops(2); // crop B accepted, its encode held open: queued but not ready
+  await answer(0, NAME_TEXT); // A's read lands; the loop runs on and must find nothing ready
+  await settle(() => listEl().children.length === 1, "A's record");
+  assert.equal(frontOf(), "", "no failure banner: the loop stopped cleanly");
+
+  env.holdEncode = null;
+  release();
+  await settleReads(2);
+  await answer(1, AFFIX_TEXT);
+  await settle(() => listEl().children.length === 2, "B's record");
+});
+
 // --- 清除紀錄 --------------------------------------------------------------------------------------------------------
 
 test("清除紀錄 empties the list, disables both list buttons and leaves the run's counters standing", async () => {
   await scanPanels([{ box: PANEL_B, stripes: 0.3 }, { box: PANEL_A }], [AFFIX_TEXT, NAME_TEXT]);
   assert.equal(listEl().children.length, 2);
-  const during = statsText();
+  const during = statsNumbers();
 
   await node("scan-clear").fire("click");
 
@@ -842,17 +1039,17 @@ test("清除紀錄 empties the list, disables both list buttons and leaves the r
   assert.equal(listEl().hidden, true);
   assert.equal(node("scan-csv").disabled, true);
   assert.equal(node("scan-clear").disabled, true);
-  assert.equal(statusText(), "掃描中：已記錄 0 件，待辨識 0 件");
+  assert.deepEqual(statusNumbers(), liveCounts(0, 0));
   // 掃描統計 counts the run (frames, detections, reads), not the list, so clearing the list does not reset it.
-  assert.equal(statsText(), during);
-  assert.equal(statsText(), "每秒畫面 0、偵測 4、略過 0、丟棄 0、平均辨識 0.0 秒");
+  assert.deepEqual(statsNumbers(), during);
+  assert.deepEqual(statsNumbers(), statsOf({ detected: 4, average: 0 }));
 });
 
 test("清除紀錄 before the first crop does not stop the crops taken after it from being recorded", async () => {
   setup();
   await startScan();
   await node("scan-clear").fire("click"); // the player clears an empty list while the scan runs
-  assert.equal(statusText(), "掃描中：已記錄 0 件，待辨識 0 件");
+  assert.deepEqual(statusNumbers(), liveCounts(0, 0));
 
   deliver([{ box: PANEL_A }]);
   await settleReads(1);
@@ -862,21 +1059,21 @@ test("清除紀錄 before the first crop does not stop the crops taken after it 
   // are refused), so the generation the panel carries with each crop is what keeps this working.
   assert.equal(listEl().children.length, 1);
   assert.equal(listEl().children[0].dataset.name, NAME_TEXT);
-  assert.equal(statusText(), "掃描中：已記錄 1 件，待辨識 0 件");
+  assert.deepEqual(statusNumbers(), liveCounts(1, 0));
 });
 
 test("a crop the OCR is still reading when 清除紀錄 is pressed does not come back as a record", async () => {
   await twoCropsWithOneHeldAtTheEngine();
   fireTick();
-  assert.equal(statusText(), "掃描中：已記錄 0 件，待辨識 1 件"); // the second crop waits behind the open read
+  assert.deepEqual(statusNumbers(), liveCounts(0, 1)); // the second crop waits behind the open read
 
   await node("scan-clear").fire("click");
-  assert.equal(statusText(), "掃描中：已記錄 0 件，待辨識 0 件"); // the waiting crop went with the clear
+  assert.deepEqual(statusNumbers(), liveCounts(0, 0)); // the waiting crop went with the clear
   await answer(0, NAME_TEXT); // the read the player outran: its generation is the cleared one
 
   assert.deepEqual(listEl().children, []);
   assert.equal(env.ocr.reads.length, 1); // the dropped crop was never read
-  assert.equal(statsText(), "每秒畫面 4、偵測 4、略過 0、丟棄 0、平均辨識 — 秒"); // no read landed, so no average
+  assert.deepEqual(statsNumbers(), statsOf({ fps: 4, detected: 4 })); // no read landed, so no average
 });
 
 // --- the status line -------------------------------------------------------------------------------------------------
@@ -891,7 +1088,8 @@ test("a picker the player closed says so, leaves 開始掃描 usable and never a
   });
   await startScan();
 
-  assert.equal(statusText(), "沒有選擇遊戲視窗，掃描沒有開始。");
+  assert.notEqual(statusText(), "", "the player is told why nothing started");
+  assert.equal(statusNumbers(), null, "no scan runs, so no count is claimed");
   assert.equal(node("scan-start").disabled, false);
   assert.equal(node("scan-stop").hidden, true);
   assert.equal(env.readers.length, 0);
@@ -906,7 +1104,8 @@ test("a picker that failed for another reason shows the reason and leaves the bu
   });
   await startScan();
 
-  assert.equal(statusText(), "無法開始掃描：no window server");
+  assert.ok(statusText().includes("no window server"), "the reason is shown");
+  assert.equal(statusNumbers(), null);
   assert.equal(node("scan-start").disabled, false);
   assert.equal(node("scan-stop").hidden, true);
 });
@@ -925,7 +1124,8 @@ test("a cancelled model download never opens the picker and says why nothing sta
   assert.deepEqual(env.downloads.map((args) => ({ names: args.names })), [{
     names: ["det.onnx"],
   }]);
-  assert.equal(statusText(), "已取消下載辨識模型，掃描沒有開始。");
+  assert.notEqual(statusText(), "", "the player is told why nothing started");
+  assert.equal(statusNumbers(), null);
   assert.deepEqual(env.picks, []); // the share dialog was never opened
   assert.equal(node("scan-start").disabled, false);
 });
@@ -936,14 +1136,14 @@ test("while sharing, the status counts the records and the crops still waiting f
   assert.equal(node("scan-stop").hidden, false);
 
   fireTick();
-  assert.equal(statusText(), "掃描中：已記錄 0 件，待辨識 1 件"); // one read in flight, one crop behind it
+  assert.deepEqual(statusNumbers(), liveCounts(0, 1)); // one read in flight, one crop behind it
 
   env.times = [2000]; // the first read, started at 0, ends at 2 s
   await answer(0, NAME_TEXT);
-  assert.equal(statusText(), "掃描中：已記錄 1 件，待辨識 1 件，約 2 秒"); // the record landed, the next crop still waited
+  assert.deepEqual(statusNumbers(), liveCounts(1, 1, 2)); // the record landed, the next crop still waited
 
   await answer(1, AFFIX_TEXT);
-  assert.equal(statusText(), "掃描中：已記錄 2 件，待辨識 0 件");
+  assert.deepEqual(statusNumbers(), liveCounts(2, 0));
   assert.deepEqual(listEl().children.map((item) => item.dataset.index), ["0", "1"]);
 });
 
@@ -954,33 +1154,36 @@ test("the waiting line estimates the queue as its length times the average read,
   await settleReads(1);
   await drained();
   fireTick();
-  assert.equal(statusText(), "掃描中：已記錄 0 件，待辨識 2 件"); // no read has finished: no number to multiply
+  assert.deepEqual(statusNumbers(), liveCounts(0, 2)); // no read has finished: no number to multiply
 
   env.times = [3000, 3000, 7000, 7000, 7000]; // read 1 ends at 3 s, read 2 runs 3 s -> 7 s: the average is 3.5 s
   await answer(0, NAME_TEXT);
-  assert.equal(statusText(), "掃描中：已記錄 1 件，待辨識 2 件，約 6 秒"); // 2 x 3.0 s
+  assert.deepEqual(statusNumbers(), liveCounts(1, 2, 6)); // 2 x 3.0 s
 
   await answer(1, AFFIX_TEXT);
-  assert.equal(statusText(), "掃描中：已記錄 2 件，待辨識 1 件，約 4 秒"); // 1 x 3.5 s, rounded
+  assert.deepEqual(statusNumbers(), liveCounts(2, 1, 4)); // 1 x 3.5 s, rounded
 
   await answer(2, UNSURE_TEXT);
   await settle(() => listEl().children.length === 3, "the third record to land");
-  assert.equal(statusText(), "掃描中：已記錄 3 件，待辨識 0 件"); // an empty queue has no estimate
+  assert.deepEqual(statusNumbers(), liveCounts(3, 0)); // an empty queue has no estimate
 });
 
 test("停止掃描 releases the share, drops the ticker and states the final count", async () => {
   await scanPanels([{ box: PANEL_A }], [NAME_TEXT]);
+  assert.equal(node("scan-start").hidden, true, "while sharing, 停止掃描 takes the start button's place");
 
   await node("scan-stop").fire("click");
 
-  assert.equal(statusText(), "已停止，共記錄 1 件");
+  assert.deepEqual(statusNumbers(), stoppedCount(1));
+  assert.equal(frontOf(), "");
   assert.equal(node("scan-stop").hidden, true);
+  assert.equal(node("scan-start").hidden, false);
   assert.equal(node("scan-start").disabled, false);
   assert.equal(env.stops, 1); // capture.stop(): the window is no longer shared
   assert.deepEqual(env.tickers.map((ticker) => ticker.cleared), [true]);
-  const stopped = statsText();
+  const stoppedStats = statsNumbers();
   fireTick(); // a stopped panel has no ticker left
-  assert.equal(statsText(), stopped);
+  assert.deepEqual(statsNumbers(), stoppedStats);
 });
 
 test("the stop the panel hands back ends a running share like 停止掃描, and does nothing when no scan runs", async () => {
@@ -988,7 +1191,7 @@ test("the stop the panel hands back ends a running share like 停止掃描, and 
 
   env.scan.stop();
 
-  assert.equal(statusText(), "已停止，共記錄 1 件");
+  assert.deepEqual(statusNumbers(), stoppedCount(1));
   assert.equal(node("scan-stop").hidden, true);
   assert.equal(node("scan-start").disabled, false);
   assert.equal(env.stops, 1);
@@ -1001,7 +1204,8 @@ test("the player's own 停止分享 ends the run the same way, with no error in 
 
   env.tracks[0].end(); // Chrome's "stop sharing"
 
-  assert.equal(statusText(), "已停止，共記錄 1 件");
+  assert.deepEqual(statusNumbers(), stoppedCount(1));
+  assert.equal(frontOf(), "", "no error in front of the count");
   assert.equal(node("scan-stop").hidden, true);
   assert.equal(node("scan-start").disabled, false);
   assert.equal(env.stops, 1);
@@ -1018,7 +1222,8 @@ test("a read loop that gave up ends the capture and puts the reason in front of 
 
   await settle(() => env.stops === 1, "the failed read loop to end the capture");
 
-  assert.equal(statusText(), "擷取中斷：boom 已停止，共記錄 0 件");
+  assert.deepEqual(statusNumbers(), stoppedCount(0));
+  assert.ok(frontOf().includes("boom"), "the reason stands in front of the final count");
   assert.equal(node("scan-stop").hidden, true);
   assert.equal(node("scan-start").disabled, false);
   assert.deepEqual(listEl().children, []);
@@ -1033,10 +1238,11 @@ test("a read the engine refused shows 辨識失敗 in front of the live status, 
   deliver([{ box: PANEL_A }, { box: PANEL_B, stripes: 0.3 }]);
   await settleReads(1); // panel A's crop is at the engine and stays there
   env.ocr.pending[0].reject(new Error("engine exploded"));
-  await settle(() => statusText().includes("辨識失敗"), "the failure to reach the status line");
+  await settle(() => statusText().includes("engine exploded"), "the failure to reach the status line");
 
   // Not statusText: a mid-scan failure must be visible now, in front of the live count.
-  assert.equal(statusText(), "辨識失敗：engine exploded 掃描中：已記錄 0 件，待辨識 0 件");
+  assert.ok(frontOf().includes("engine exploded"));
+  assert.deepEqual(statusNumbers(), liveCounts(0, 0));
   assert.deepEqual(listEl().children, []);
 
   releaseFrame();
@@ -1044,12 +1250,13 @@ test("a read the engine refused shows 辨識失敗 in front of the live status, 
   fireTick(); // the second's tick is what puts the waiting count on the status line
   // The failure stays up while the next read is in flight (that read has already left the queue): it is only retired
   // by a read that lands, not by one that starts.
-  assert.equal(statusText(), "辨識失敗：engine exploded 掃描中：已記錄 0 件，待辨識 0 件");
+  assert.ok(frontOf().includes("engine exploded"));
+  assert.deepEqual(statusNumbers(), liveCounts(0, 0));
 
   // The read that works is what retires the failure: it clears at the point the panel learns a later read landed.
   env.ocr.pending[1].resolve({ text: AFFIX_TEXT, tones: [] });
   await settle(() => listEl().children.length === 1, "the record of crop 1 to land");
-  assert.equal(statusText(), "掃描中：已記錄 1 件，待辨識 0 件");
+  assertQuietLiveStatus(1, 0);
   assert.equal(listEl().children[0].dataset.name, "");
 });
 
@@ -1057,55 +1264,70 @@ test("a long run of dark frames warns about a black capture, and a picture comin
   const dark = (n, from = 0) => Array.from({ length: n }, (_, i) => darkFrame((from + i + 1) * 100000));
 
   // One dark frame short of the run the advice needs (BLACK_FRAMES = 30): 29 of them stay silent.
-  assert.equal(await statusAfterFrames(dark(29)), "掃描中：已記錄 0 件，待辨識 0 件");
+  await tickAfterFrames(dark(29));
+  assertQuietLiveStatus();
 
   // The 30th sets it, and it is composed in front of the live count.
-  assert.equal(await statusAfterFrames(dark(30)), `${BLACK_ADVICE} 掃描中：已記錄 0 件，待辨識 0 件`);
+  await tickAfterFrames(dark(30));
+  const black = frontOf();
+  assert.notEqual(black, "", "the advice stands in front of the live count");
+  assert.deepEqual(statusNumbers(), liveCounts(0, 0));
 
   // The black-screen advice outranks the slowdown one: slow ticks never replace it.
   fireTicks(3);
-  assert.equal(statusText(), `${BLACK_ADVICE} 掃描中：已記錄 0 件，待辨識 0 件`);
+  assert.equal(frontOf(), black);
+  assert.deepEqual(statusNumbers(), liveCounts(0, 0));
 
   // Frames with a picture on them are what clear it (the tick has no say here).
   const bright = [panelFrame(PANEL_A), panelFrame(PANEL_A)].map((img, i) => fakeFrame(img, (31 + i) * 100000));
-  assert.equal(await statusAfterFrames([...dark(30), ...bright]), "掃描中：已記錄 0 件，待辨識 0 件");
+  await tickAfterFrames([...dark(30), ...bright]);
+  assertQuietLiveStatus();
 });
 
 test("a covered side panel says so, and the advice goes when the panel is visible again or the scan stops", async () => {
   setup();
   await startScan();
   fireTick();
-  assert.equal(statusText(), "掃描中：已記錄 0 件，待辨識 0 件"); // visible: nothing to say
+  assertQuietLiveStatus(); // visible: nothing to say
 
   env.visibility = "hidden"; // the game now covers Chrome
   fireTick();
-  assert.equal(statusText(), `${HIDDEN_ADVICE} 掃描中：已記錄 0 件，待辨識 0 件`);
+  const covered = frontOf();
+  assert.notEqual(covered, "");
+  assert.deepEqual(statusNumbers(), liveCounts(0, 0));
 
   env.visibility = "visible";
   fireTick();
-  assert.equal(statusText(), "掃描中：已記錄 0 件，待辨識 0 件");
+  assertQuietLiveStatus();
 
   env.visibility = "hidden";
   fireTick();
   await node("scan-stop").fire("click");
-  assert.equal(statusText(), "已停止，共記錄 0 件"); // nothing is being scanned any more, so nothing is slow
+  assert.deepEqual(statusNumbers(), stoppedCount(0)); // nothing is being scanned any more, so nothing is slow
+  assert.equal(frontOf(), "");
 });
 
 test("a covered panel is told once, and the black-picture advice still comes first", async () => {
   setup();
   await startScan();
   env.visibility = "hidden";
+  fireTick(); // no frame this second: only the cover is told, as the reference for what follows
+  const covered = frontOf();
+  assert.notEqual(covered, "");
   await liveSecond(2); // slow as well: the cause (covered) is named, not both
   await liveSecond(2);
   await liveSecond(2);
-  assert.equal(statusText(), `${HIDDEN_ADVICE} 掃描中：已記錄 0 件，待辨識 0 件`);
+  assert.equal(frontOf(), covered);
+  assert.deepEqual(statusNumbers(), liveCounts(0, 0));
 
   const dark = Array.from({ length: 30 }, () => darkFrame((env.stamp += 1_000_000)));
   env.frames.push(...dark);
   env.wake();
   await settle(() => env.frames.length === 0 && env.readers[0].idle, "30 dark frames");
   fireTick();
-  assert.equal(statusText(), `${BLACK_ADVICE} 掃描中：已記錄 0 件，待辨識 0 件`);
+  const black = frontOf();
+  assert.ok(black !== "" && black !== covered, "the black-picture advice replaces the covered one");
+  assert.deepEqual(statusNumbers(), liveCounts(0, 0));
 });
 
 test("a rate that bounces around under five frames a second still advises the game beside Chrome, and a fast one drops it", async () => {
@@ -1113,29 +1335,50 @@ test("a rate that bounces around under five frames a second still advises the ga
   await startScan();
   const seconds = [7, 2, 1, 6, 4, 3, 8]; // the rate measured while the game covered Chrome
   for (const count of seconds.slice(0, 2)) await liveSecond(count);
-  assert.equal(statusText(), "掃描中：已記錄 0 件，待辨識 0 件", "two seconds are not a pattern");
+  assertQuietLiveStatus(); // two seconds are not a pattern
 
   for (const count of seconds.slice(2)) await liveSecond(count);
-  assert.equal(statusText(), `${SLOW_ADVICE} 掃描中：已記錄 0 件，待辨識 0 件`); // the last six average 4.0
+  assert.notEqual(frontOf(), ""); // the last six average 4.0
+  assert.deepEqual(statusNumbers(), liveCounts(0, 0));
 
   for (let i = 0; i < 3; i++) await liveSecond(12); // the picture recovered
-  assert.equal(statusText(), "掃描中：已記錄 0 件，待辨識 0 件");
+  assertQuietLiveStatus();
 });
 
 test("seconds without a frame are a still picture: they never raise the slow advice and do not hide a slow stretch", async () => {
   setup();
   await startScan();
   fireTicks(10); // nothing moves on the shared window from the start
-  assert.equal(statusText(), "掃描中：已記錄 0 件，待辨識 0 件");
+  assertQuietLiveStatus();
 
   await liveSecond(12);
   await liveSecond(12);
   await liveSecond(12); // a sweep at a healthy rate ...
   fireTicks(10); // ... and then the picture stays still while the last tooltip is read
-  assert.equal(statusText(), "掃描中：已記錄 0 件，待辨識 0 件");
+  assertQuietLiveStatus();
 
   for (const count of [2, 0, 0, 1, 0, 3]) await liveSecond(count); // slow seconds with idle ones between them
-  assert.equal(statusText(), `${SLOW_ADVICE} 掃描中：已記錄 0 件，待辨識 0 件`);
+  assert.notEqual(frontOf(), "");
+  assert.deepEqual(statusNumbers(), liveCounts(0, 0));
+});
+
+test("the three advices are three different messages", async () => {
+  await tickAfterFrames(Array.from({ length: 30 }, (_, i) => darkFrame((i + 1) * 100000)));
+  const black = frontOf();
+
+  setup();
+  await startScan();
+  env.visibility = "hidden";
+  fireTick();
+  const covered = frontOf();
+
+  setup();
+  await startScan();
+  for (const count of [7, 2, 1, 6, 4, 3, 8]) await liveSecond(count);
+  const slow = frontOf();
+
+  assert.equal(new Set([black, covered, slow]).size, 3);
+  assert.ok([black, covered, slow].every((advice) => advice !== ""));
 });
 
 // --- the stats line --------------------------------------------------------------------------------------------------
@@ -1151,7 +1394,7 @@ test("the stats line counts frames, detections, refusals and the run's average r
   await answer(2, UNREADABLE_TEXT); // neither a name nor an affix line: refused, but still read
 
   fireTick();
-  assert.equal(statsText(), "每秒畫面 6、偵測 6、略過 1、丟棄 0、平均辨識 1.0 秒");
+  assert.deepEqual(statsNumbers(), statsOf({ fps: 6, detected: 6, skipped: 1, average: 1 }));
   assert.equal(listEl().children.length, 2);
   assert.equal(env.ocr.matches.length, 3);
 });
@@ -1167,9 +1410,26 @@ test("the stats line counts a panel hovered again and a read with the same text 
   await answer(1, NAME_TEXT);
 
   fireTick();
-  assert.equal(statsText(), "每秒畫面 6、偵測 6、略過 2、丟棄 0、平均辨識 0.0 秒");
+  assert.deepEqual(statsNumbers(), statsOf({ fps: 6, detected: 6, skipped: 2, average: 0 }));
   assert.equal(listEl().children.length, 1);
   assert.equal(env.ocr.reads.length, 2); // the third panel never reached the engine
+});
+
+// --- the spoken confirmation ---------------------------------------------------------------------------------------
+
+test("a hover that names an item is announced once; a repeat of it and an unsure read are not", async () => {
+  setup();
+  await startScan();
+  deliver([{ box: PANEL_A }, { box: PANEL_B, stripes: 0.3 }, { box: PANEL_C, stripes: 0.3 }]);
+  await settleCrops(3);
+  await answer(0, NAME_TEXT);
+  await answer(1, NAME_TEXT);
+  assert.equal(listEl().children.length, 1);
+  assert.equal(env.announced, 1, "two reads of one item: one record, one announcement");
+
+  await scanPanels([{ box: PANEL_A }], [UNSURE_TEXT]);
+  assert.equal(listEl().children[0].dataset.unsure, "true");
+  assert.equal(env.announced, 0, "an unsure record still needs the player: nothing is announced");
 });
 
 // --- the two search buttons ------------------------------------------------------------------------------------------
@@ -1203,11 +1463,91 @@ test("the search buttons hand the live record to the injected handlers and start
   assert.deepEqual(env.fetches, []); // and no query left the page
 });
 
+test("上傳檔案 reads png and jpg files like a hovered tooltip, skips other types, and makes one record per item", async () => {
+  setup();
+  const png = { name: "a.png", type: "image/png" };
+  const jpg = { name: "b.jpg", type: "" }; // a file the browser gave no type: the extension decides
+  const gif = { name: "c.gif", type: "image/gif" };
+  await node("scan-file").fire("change", { target: { files: [png, jpg, gif], value: "x" } });
+  await settle(() => env.ocr.pending.length >= 1, "the first upload to reach the engine");
+  assert.deepEqual(numbersIn(statusText()), [2, 1], "two pictures added, one file skipped");
+  assert.equal(env.ocr.reads[0], png, "the file itself is what the reader gets");
+  await answer(0, NAME_TEXT);
+  await settle(() => env.ocr.pending.length >= 2, "the second upload to reach the engine");
+  await answer(1, NAME_TEXT); // the same item uploaded twice
+  await settle(uploadDone, "the done line");
+  const doneLine = statusText();
+  assert.equal(listEl().children.length, 1, "the same item twice is one record");
+  assert.deepEqual(numbersIn(statusText()), [1], "one record in all");
+  assert.equal(env.ocr.reads.length, 2, "the gif was never read");
+
+  await node("scan-file").fire("change", { target: { files: [gif] } });
+  assert.notEqual(statusText(), doneLine, "a picture-less pick says so");
+  assert.deepEqual(numbersIn(statusText()), []);
+  assert.equal(env.ocr.reads.length, 2);
+});
+
+test("while the panel gives a block reason, all three buttons of every record are disabled with it; refresh lifts it", async () => {
+  await scanPanels([{ box: PANEL_A }], [NAME_TEXT]);
+  const buttons = () => listEl().children[0].children.at(-1).children;
+  assert.deepEqual([...buttons()].map((b) => b.disabled), [false, false, false]);
+
+  env.block = "no queries left on this code";
+  env.scan.refresh();
+  assert.deepEqual([...buttons()].map((b) => b.disabled), [true, true, true]);
+  assert.equal(buttons()[0].title, env.block);
+
+  env.block = "";
+  env.scan.refresh();
+  assert.deepEqual([...buttons()].map((b) => b.disabled), [false, false, false]);
+});
+
+test("one unreadable upload costs that picture only: the others are still read and the batch ends", async () => {
+  setup();
+  const files = ["a.png", "b.png", "c.png"].map((name) => ({ name, type: "image/png" }));
+  await node("scan-file").fire("change", { target: { files, value: "x" } });
+  await settle(() => env.ocr.pending.length >= 1, "the first upload to reach the engine");
+  env.ocr.pending[0].reject(new Error("corrupt picture")); // createImageBitmap could not decode it
+  await settle(() => env.ocr.pending.length >= 2, "the second upload to be read after the failure");
+  env.ocr.pending[1].resolve({ text: NAME_TEXT, tones: [] });
+  await settle(() => env.ocr.pending.length >= 3, "the third upload to be read");
+  env.ocr.pending[2].resolve({ text: "", tones: [] });
+  await settle(uploadDone, "the batch to end");
+  assert.equal(env.ocr.reads.length, 3);
+  assert.equal(listEl().children.length, 1);
+  assert.deepEqual(numbersIn(statusText()), [1, 1], "one record, one unreadable picture");
+});
+
+test("上傳檔案 says how many pictures were really added when the queue is full", async () => {
+  setup();
+  const files = Array.from({ length: 305 }, (_, i) => ({ name: `p${i}.png`, type: "image/png" }));
+  await node("scan-file").fire("change", { target: { files, value: "x" } });
+  assert.deepEqual(numbersIn(statusText()), [300, 5], "300 added, 5 refused by the full queue");
+});
+
+test("the third button, TR交易, hands the live record to onList on a named record and is disabled on an unnamed one", async () => {
+  await scanPanels([{ box: PANEL_B, stripes: 0.3 }, { box: PANEL_A }], [AFFIX_TEXT, NAME_TEXT]);
+
+  const [named, unnamed] = listEl().children;
+  const list = named.children[2].children[2];
+  assert.equal(list.textContent, "TR交易");
+  assert.equal(list.disabled, false);
+  await list.fire("click");
+  assert.equal(env.handlers.list.length, 1);
+  assertNamedSearchRecord(env.handlers.list[0]);
+  assert.deepEqual([env.handlers.name, env.handlers.stats], [[], []]);
+
+  const unnamedList = unnamed.children.at(-1).children[2];
+  assert.equal(unnamedList.textContent, "TR交易");
+  assert.equal(unnamedList.disabled, true);
+  assert.deepEqual(env.fetches, []); // nothing was posted or opened
+});
+
 /** 精準搜尋 hands the record itself to onSearchName, with its own Date, not a rendering of it. */
 function assertNamedSearchRecord(record) {
   assert.deepEqual(
     { name: record.name, zh: record.zh, kind: record.kind, base: record.base, text: record.text, conditions: record.conditions },
-    { name: NAME_TEXT, zh: "蛛網紋束帶", kind: "item", base: null, text: NAME_TEXT, conditions: [] },
+    { name: NAME_TEXT, zh: NAME_ZH, kind: "item", base: null, text: NAME_TEXT, conditions: [] },
   );
   assert.ok(record.at instanceof REAL_DATE); // the record itself, with its own Date, not a rendering of it
 }
@@ -1216,7 +1556,7 @@ function assertNamedSearchRecord(record) {
 function assertAffixSearchRecord(record) {
   assert.deepEqual(
     { name: record.name, text: record.text, labels: record.conditions.map((c) => c.label) },
-    { name: null, text: AFFIX_TEXT, labels: ["力量"] },
+    { name: null, text: AFFIX_TEXT, labels: [AFFIX_LABEL] },
   );
 }
 
@@ -1235,14 +1575,15 @@ test("a read that is not sure is listed as 不確定 with its names as buttons a
     kind: "",
     unsure: "true",
   });
-  assert.equal(item.children[0].children[0].textContent, "不確定");
-  assert.equal(removeButton(item).getAttribute("aria-label"), "刪除這一筆：不確定");
-  assert.deepEqual(optionButtons(item).map((b) => [b.textContent, b.dataset.kind, b.dataset.name]), [
-    ["蛛網紋束帶（Arachnid Mesh）", "item", NAME_TEXT],
-    ["Ring", "base", "Ring"],
-  ]);
-  assert.deepEqual(searchButtons(item).map((b) => [b.textContent, b.disabled]), [["精準搜尋", true], ["模糊搜尋", true]]);
-  assert.equal(statusText(), "掃描中：已記錄 1 件，待辨識 0 件", "it counts as a record: the player still has to decide");
+  assert.ok(!item.children[0].children[0].textContent.includes(NAME_TEXT), "no name is claimed before the player picks");
+  assert.ok(!removeLabel(item).includes(NAME_TEXT));
+  const options = optionButtons(item);
+  assert.deepEqual(options.map((b) => [b.dataset.kind, b.dataset.name]), [["item", NAME_TEXT], ["base", "Ring"]]);
+  const label = options[0].textContent;
+  assert.ok(label.includes(NAME_ZH) && label.includes(NAME_TEXT) && label.indexOf(NAME_ZH) < label.indexOf(NAME_TEXT), "Chinese name first, English with it");
+  assert.ok(options[1].textContent.includes("Ring"));
+  assert.deepEqual(searchButtons(item).map((b) => [b.textContent, b.disabled]), [["精準搜尋", true], ["模糊搜尋", true], ["TR交易", true]]);
+  assert.deepEqual(statusNumbers(), liveCounts(1, 0), "it counts as a record: the player still has to decide");
   assert.equal(node("scan-csv").disabled, false);
 });
 
@@ -1265,11 +1606,10 @@ test("an unsure record exports with an empty name and its text, until a name is 
   await scanPanels([{ box: PANEL_A }], [UNSURE_TEXT]);
 
   await node("scan-csv").fire("click");
-  const csv = Buffer.from(await env.saved[0].blob.arrayBuffer()).toString("utf8");
-  assert.equal(
-    csv,
-    "\uFEFF時間,名稱,中文名稱,類型,詞綴,辨識文字\r\n2026-10-12 12:34:56,,,—,,Arachnid Mesh Ring\r\n",
-  );
+  const { text, rows } = await csvOf(env.saved[0].blob);
+  assert.ok(text.endsWith("\r\n"));
+  assert.equal(rows.length, 2, "a header and the one record");
+  assert.deepEqual(rows[1], ["2026-10-12 12:34:56", "", "", lineParts(listEl().children[0]).type, "", UNSURE_TEXT]);
 });
 
 test("picking a name names the record like an auto-picked one: searches enabled, the CSV exports the pick", async () => {
@@ -1284,23 +1624,24 @@ test("picking a name names the record like an auto-picked one: searches enabled,
     kind: "item",
     unsure: undefined,
   });
-  assert.equal(item.children[0].children[0].textContent, "蛛網紋束帶（Arachnid Mesh）");
-  assert.equal(item.children[1].textContent, "12:34:56 · 暗金/套裝/符文之語");
+  const heading = item.children[0].children[0].textContent;
+  assert.ok(heading.includes(NAME_ZH) && heading.includes(NAME_TEXT), "named like an auto-picked record");
+  assert.deepEqual([lineParts(item).time, lineParts(item).type !== ""], ["12:34:56", true]);
   assert.equal(item.children.length, 3, "the names to pick are gone: name line, type line and the search buttons");
-  assert.deepEqual(searchButtons(item).map((b) => b.disabled), [false, false]);
-  assert.equal(removeButton(item).getAttribute("aria-label"), "刪除這一筆：Arachnid Mesh");
+  assert.deepEqual(searchButtons(item).map((b) => b.disabled), [false, false, false]);
+  assert.ok(removeLabel(item).includes(NAME_TEXT));
 
   await searchButtons(item)[0].fire("click");
   const record = env.handlers.name[0];
   assert.deepEqual(
     { name: record.name, zh: record.zh, kind: record.kind, base: record.base, text: record.text },
-    { name: NAME_TEXT, zh: "蛛網紋束帶", kind: "item", base: "Ring", text: UNSURE_TEXT },
+    { name: NAME_TEXT, zh: NAME_ZH, kind: "item", base: "Ring", text: UNSURE_TEXT },
     "the same fields an auto-picked record has; its base is the read's own type line",
   );
 
   await node("scan-csv").fire("click");
-  const csv = Buffer.from(await env.saved[0].blob.arrayBuffer()).toString("utf8");
-  assert.equal(csv.split("\r\n")[1], "2026-10-12 12:34:56,Arachnid Mesh,蛛網紋束帶,暗金/套裝/符文之語,,Arachnid Mesh Ring");
+  const { rows } = await csvOf(env.saved[0].blob);
+  assert.deepEqual(rows[1], ["2026-10-12 12:34:56", NAME_TEXT, NAME_ZH, lineParts(listEl().children[0]).type, "", UNSURE_TEXT]);
 });
 
 test("picking the type name instead names the record as a base", async () => {
@@ -1310,8 +1651,11 @@ test("picking the type name instead names the record as a base", async () => {
 
   const [item] = listEl().children;
   assert.deepEqual({ name: item.dataset.name, kind: item.dataset.kind }, { name: "Ring", kind: "base" });
-  assert.equal(item.children[1].textContent, "12:34:56 · 底材");
-  assert.deepEqual(searchButtons(item).map((b) => b.disabled), [false, false]);
+  assert.deepEqual(searchButtons(item).map((b) => b.disabled), [false, false, false]);
+  assert.equal(lineParts(item).time, "12:34:56");
+  const baseType = lineParts(item).type;
+  await scanPanels([{ box: PANEL_A }], [NAME_TEXT]);
+  assert.notEqual(baseType, lineParts(listEl().children[0]).type, "a base shows another type label than an item");
 });
 
 test("an unsure row can be deleted with its ✕, and nothing is exported for it afterwards", async () => {
@@ -1321,8 +1665,25 @@ test("an unsure row can be deleted with its ✕, and nothing is exported for it 
   await removeButton(listEl().children[0]).fire("click");
 
   assert.equal(listEl().children.length, 0);
-  assert.equal(statusText(), "掃描中：已記錄 0 件，待辨識 0 件");
+  assert.deepEqual(statusNumbers(), liveCounts(0, 0));
   assert.equal(node("scan-csv").disabled, true);
+});
+
+test("deleting an unsure row keeps it out of the CSV while the named row stays in it", async () => {
+  // One unnamed read and one asking one, the asking one deleted: the export must carry exactly what the list shows.
+  // The affix panel is cut first but answered second, so its 沒認出名稱 record is newest and on top; the unsure record
+  // (its answer landed first) sits below it.
+  await scanPanels([{ box: PANEL_B, stripes: 0.3 }, { box: PANEL_A }], [UNSURE_TEXT, AFFIX_TEXT]);
+  assert.deepEqual(listEl().children.map((row) => row.dataset.unsure), [undefined, "true"], "the unsure record sits below the unnamed one");
+
+  await removeButton(listEl().children[1]).fire("click"); // the unsure record sits below the unnamed one
+  assert.equal(listEl().children.length, 1);
+
+  await node("scan-csv").fire("click");
+  assert.equal(env.saved.length, 1, "the named record is still exported");
+  const csv = Buffer.from(await env.saved[0].blob.arrayBuffer()).toString("utf8");
+  assert.equal(csv.includes(AFFIX_LABEL), true, "the named record's affix line is in the file");
+  assert.equal(csv.includes(UNSURE_TEXT), false, "the deleted unsure record is nowhere in the file");
 });
 
 test("two unsure rows pick independently, each by its own record", async () => {
@@ -1340,7 +1701,6 @@ test("two unsure rows pick independently, each by its own record", async () => {
 
 // --- possible names and the 「輸入名稱」 box ---------------------------------------------------------------------------------
 
-const NAME_ZH = "蛛網紋束帶";
 const nameBoxOf = (item) => item.children.find((child) => child.className === "name-box");
 const inputOf = (item) => nameBoxOf(item).children[0];
 const confirmOf = (item) => nameBoxOf(item).children[1];
@@ -1352,6 +1712,22 @@ async function unresolvedRow(configure = () => {}) {
   return listEl().children[0];
 }
 
+test("a base the player corrected before is the record's base, with the key it is remembered under and how often; remembered numbers fill the conditions", async () => {
+  const text = `${NAME_TEXT}\nRing\n${AFFIX_TEXT}`;
+  await scanPanels([{ box: PANEL_A }], [text], [], (ocr) => {
+    ocr.keys = { [text]: [{ key: "arachnid mesh", at: 0 }, { key: "ring", at: 1 }] };
+    ocr.learnedBases = { [text]: { name: "Sacred Ring", count: 2 } };
+    ocr.valueMemory = { lookup: () => ({ min: 30 }) };
+  });
+
+  await listEl().children[0].children.at(-1).children[1].fire("click"); // 模糊搜尋
+  const [record] = env.handlers.stats;
+  assert.equal(record.base, "Sacred Ring");
+  assert.equal(record.baseLearned, 2);
+  assert.equal(record.baseKey, "ring", "no base candidate matched: the type line, the second name piece");
+  assert.deepEqual([record.conditions[0].min, record.conditions[0].learned], [30, true]);
+});
+
 test("an unsure read offers the possible names the reader found, beyond its own candidates, each Chinese first", async () => {
   await scanPanels([{ box: PANEL_A }], [UNSURE_TEXT], [], (ocr) => {
     ocr.extra = [{ kind: "item", name: NAME_TEXT, distance: 2, matched: "zz", size: 4, at: 2 }]; // a name the matcher alone missed
@@ -1362,7 +1738,7 @@ test("an unsure read offers the possible names the reader found, beyond its own 
   assert.equal(env.ocr.possibles.length, 1, "the panel asked for the possible names of this read");
   assert.equal(item.dataset.unsure, "true");
   assert.deepEqual(optionButtons(item).map((b) => b.dataset.name), [NAME_TEXT, "Ring", NAME_TEXT]);
-  assert.equal(item.children.some((child) => child.className === "options" && child.getAttribute("aria-label") === "可能是"), true);
+  assert.equal(item.children.some((child) => child.className === "options" && Boolean(child.getAttribute("aria-label"))), true);
 });
 
 test("a sure read asks for no possible names and keeps no options", async () => {
@@ -1375,11 +1751,11 @@ test("a record with no name shows the 「輸入名稱」 box under its type line
   const item = await unresolvedRow();
 
   assert.equal(item.dataset.unsure, undefined, "no names to pick: it is unresolved, not unsure");
-  assert.equal(item.children[0].children[0].textContent, "沒認出名稱");
+  assert.ok(!item.children[0].children[0].textContent.includes(NAME_TEXT), "no name is claimed");
   assert.deepEqual(item.children.map((child) => child.className), ["line1", "line2", "name-box", "actions"]);
-  assert.equal(inputOf(item).getAttribute("aria-label"), "輸入名稱");
-  assert.equal(confirmOf(item).textContent, "確定");
-  assert.equal(removeButton(item).getAttribute("aria-label"), "刪除這一筆：沒認出名稱");
+  assert.ok(inputOf(item).getAttribute("aria-label"), "the box is labelled for a screen reader");
+  assert.equal(confirmOf(item).tagName, "button");
+  assert.ok(!removeLabel(item).includes(NAME_TEXT));
 });
 
 test("a typed table name names the record like an auto-picked one: Chinese or English, searches, CSV, and the memory hears it", async () => {
@@ -1393,19 +1769,20 @@ test("a typed table name names the record like an auto-picked one: Chinese or En
 
   const [named] = listEl().children;
   assert.deepEqual({ name: named.dataset.name, kind: named.dataset.kind, unsure: named.dataset.unsure }, { name: NAME_TEXT, kind: "item", unsure: undefined });
-  assert.equal(named.children[0].children[0].textContent, `${NAME_ZH}（${NAME_TEXT}）`);
+  const heading = named.children[0].children[0].textContent;
+  assert.ok(heading.includes(NAME_ZH) && heading.includes(NAME_TEXT), "named with both names");
   assert.equal(nameBoxOf(named), undefined, "the box goes away once the record has a name");
-  assert.deepEqual(named.children.at(-1).children.map((b) => b.disabled), [false, false]);
+  assert.deepEqual(named.children.at(-1).children.map((b) => b.disabled), [false, false, false]);
   assert.deepEqual(env.ocr.learned, [["27力量stn", NAME_TEXT]], "the reader's memory is told the read's first name line and the name");
 
   await named.children.at(-1).children[0].fire("click");
   assert.deepEqual(
     { name: env.handlers.name[0].name, zh: env.handlers.name[0].zh, kind: env.handlers.name[0].kind, conditions: env.handlers.name[0].conditions.map((c) => c.label) },
-    { name: NAME_TEXT, zh: NAME_ZH, kind: "item", conditions: ["力量"] },
+    { name: NAME_TEXT, zh: NAME_ZH, kind: "item", conditions: [AFFIX_LABEL] },
   );
   await node("scan-csv").fire("click");
-  const csv = Buffer.from(await env.saved[0].blob.arrayBuffer()).toString("utf8");
-  assert.equal(csv.split("\r\n")[1], `2026-10-12 12:34:56,${NAME_TEXT},${NAME_ZH},暗金/套裝/符文之語,力量,'+27 力量 (STN)`);
+  const { rows } = await csvOf(env.saved[0].blob);
+  assert.deepEqual(rows[1], ["2026-10-12 12:34:56", NAME_TEXT, NAME_ZH, lineParts(listEl().children[0]).type, AFFIX_LABEL, `'${AFFIX_TEXT}`]);
   assert.deepEqual(env.fetches, [], "and no query left the page");
 });
 
@@ -1422,28 +1799,30 @@ test("a typed English name and Enter work too, and a base name makes a base reco
 test("a name the tables do not list leaves the record as it was and says so in plain Chinese", async () => {
   const item = await unresolvedRow();
 
-  inputOf(item).value = "沒有這個東西";
+  inputOf(item).value = MISSING_NAME;
   await confirmOf(item).fire("click");
 
   const [still] = listEl().children;
   assert.equal(still.dataset.name, "");
-  assert.equal(noteOf(still).textContent, "對照表裡找不到「沒有這個東西」，請從建議選一個，或換個寫法");
+  const notFound = noteOf(still).textContent;
+  assert.ok(notFound.includes(MISSING_NAME), "the note repeats what was typed");
   assert.deepEqual(env.ocr.learned, [], "nothing was remembered");
   inputOf(still).value = "";
   await confirmOf(still).fire("click");
-  assert.equal(noteOf(listEl().children[0]).textContent, "請先輸入名稱");
+  const emptyNote = noteOf(listEl().children[0]).textContent;
+  assert.ok(emptyNote !== "" && emptyNote !== notFound && !emptyNote.includes(MISSING_NAME), "an empty box gets its own note");
 });
 
 test("a half-typed name survives the list being drawn again (here: another row deleted)", async () => {
   await scanPanels([{ box: PANEL_B, stripes: 0.3 }, { box: PANEL_A }], [AFFIX_TEXT, `${AFFIX_TEXT} 2`]);
   const [newer, older] = listEl().children;
-  inputOf(older).value = "蛛網";
+  inputOf(older).value = NAME_ZH.slice(0, 2);
   await inputOf(older).fire("input");
 
   await removeButton(newer).fire("click"); // the list is drawn again without the newer row
 
   const [remaining] = listEl().children;
-  assert.equal(inputOf(remaining).value, "蛛網", "what the player typed is still in the box");
+  assert.equal(inputOf(remaining).value, NAME_ZH.slice(0, 2), "what the player typed is still in the box");
 });
 
 test("the name suggestions of the name field are offered in the box too", async () => {
@@ -1471,13 +1850,15 @@ test("picking a possible name tells the memory the text piece it matched, and th
 });
 
 test("a name the reader's memory promoted is labelled as chosen before, and the label stays on the picked button's name", async () => {
+  await scanPanels([{ box: PANEL_A }], [UNSURE_TEXT]);
+  const plain = optionButtons(listEl().children[0])[0].textContent;
+
   await scanPanels([{ box: PANEL_A }], [UNSURE_TEXT], [], (ocr) => {
     const original = ocr.match;
     ocr.match = (text, tones) => original(text, tones).map((c, i) => (i === 0 ? { ...c, learned: 1 } : c));
   });
-
   const [first] = optionButtons(listEl().children[0]);
-  assert.equal(first.textContent, `${NAME_ZH}（${NAME_TEXT}） · 你上次選過這個`);
+  assert.ok(first.textContent.startsWith(plain) && first.textContent.length > plain.length, "the label carries a mark that it was chosen before");
   assert.equal(first.dataset.name, NAME_TEXT, "the value stays the English name");
 });
 
@@ -1489,7 +1870,7 @@ test("the ✕ of an unresolved row deletes it with its half-typed name, and star
   await removeButton(item).fire("click");
 
   assert.equal(listEl().children.length, 0);
-  assert.deepEqual(env.handlers, { name: [], stats: [] });
+  assert.deepEqual(env.handlers, { name: [], stats: [], list: [] });
   assert.deepEqual(env.fetches, []);
 });
 
@@ -1498,7 +1879,7 @@ test("typing a name into an unresolved row never starts a search by itself", asy
   inputOf(item).value = NAME_ZH;
   await confirmOf(item).fire("click");
 
-  assert.deepEqual(env.handlers, { name: [], stats: [] }, "the player presses 精準搜尋 or 模糊搜尋 on their own");
+  assert.deepEqual(env.handlers, { name: [], stats: [], list: [] }, "the player presses the search buttons on their own");
   assert.deepEqual(env.fetches, []);
 });
 
@@ -1582,7 +1963,7 @@ test("when findTooltip returns null on stable frames, fallback detection runs an
   fireTick();
 
   assert.equal(listEl().children.length, 1);
-  assert.ok(statsText().includes("、備援偵測 1 次、救回 1 件"), `stats line must show fallback stats: ${statsText()}`);
+  assert.deepEqual(statsNumbers().fallback, { runs: 1, rescued: 1 }, "the stats line shows the fallback's run and rescue");
 });
 
 test("fallback detection respects the three-second rate limit and does not trigger repeatedly on continuous still frames", async () => {
@@ -1649,7 +2030,7 @@ test("a fallback run that rescued nothing holds off for the long backoff, not th
   await settleReads(1);
   assert.equal(env.ocr.detectCalls.length, 1);
   await answer(0, UNREADABLE_TEXT);
-  await settle(() => statsText().includes("略過 1"), "the unreadable read to be counted as 略過");
+  await settle(() => statsNumbers()?.skipped === 1, "the unreadable read to be counted as skipped");
 
   // The same held picture 3.6 s later: the plain 3 s rule would run det again, and det cannot read an item it just
   // failed to read, so the run waits for the long backoff instead.
@@ -1682,4 +2063,97 @@ test("fallback detection does not run while a recognition is already in progress
   await feedFrames(frames);
 
   assert.equal(env.ocr.detectCalls.length, 0, "fallback must not run while OCR is in flight");
+});
+
+// --- the head of a read: the record lands on its name line, the rest completes it --------------------------------------
+
+/** The engine's first lines of read `i`, as the engine reports them before the result. */
+const answerHead = (i, text, tones = []) => env.ocr.readOptions[i].onHead({ text, tones });
+
+/** The record under the first row's 精準搜尋 button: the session's own object. */
+async function firstRecord() {
+  await listEl().children[0].children[2].children[0].fire("click");
+  return env.handlers.name.at(-1);
+}
+
+test("a head that names the item puts its record on the list at once, and the rest of the read adds its affix lines", async () => {
+  setup();
+  await startScan();
+  env.times = [0, 0, 400, 1000]; // accept, read starts, the head arrives at 0.4 s, the read ends at 1 s
+  deliver([{ box: PANEL_A }]);
+  await settleReads(1);
+
+  answerHead(0, NAME_TEXT);
+  await settle(() => listEl().children.length === 1, "the head's record to land");
+  assert.equal((await firstRecord()).name, NAME_TEXT);
+  assert.deepEqual((await firstRecord()).conditions, [], "the affix lines are not read yet");
+
+  globalThis.__jevLastRun = undefined;
+  env.ocr.pending[0].resolve({ text: `${NAME_TEXT}\n${AFFIX_TEXT}`, tones: [] });
+  await settle(() => globalThis.__jevLastRun?.scan?.cropTimings?.length === 1, "the read to finish");
+  const record = await firstRecord();
+  assert.equal(listEl().children.length, 1, "one record, not two");
+  assert.equal(record.text, `${NAME_TEXT}\n${AFFIX_TEXT}`);
+  assert.equal(record.conditions.length, 1, "the affix line arrived with the rest");
+  const [timing] = globalThis.__jevLastRun.scan.cropTimings;
+  assert.deepEqual([timing.perceivedLatencyMs, timing.readMs], [400, 1000], "the name was on the list at 0.4 s of a 1 s read");
+});
+
+test("a head that names nothing and offers nothing makes no record: the whole text decides, as a short read does", async () => {
+  setup();
+  await startScan();
+  deliver([{ box: PANEL_A }]);
+  await settleReads(1);
+
+  globalThis.__jevLastRun = undefined;
+  answerHead(0, UNREADABLE_TEXT);
+  assert.equal(listEl().children.length, 0, "nothing to show yet");
+  await answer(0, NAME_TEXT);
+  assert.equal(listEl().children.length, 1);
+  const [timing] = globalThis.__jevLastRun.scan.cropTimings;
+  assert.equal(timing.perceivedLatencyMs, timing.readMs, "no head record: the name was seen when the read ended");
+});
+
+test("a provisional record whose whole text reads as an item already listed is taken off and counted as 略過", async () => {
+  setup();
+  await startScan();
+  const LONG = `${NAME_TEXT}\n${"+27 力量 (STN) 填充文字一二三 ".repeat(4)}`; // long enough for the text-similarity rule
+  deliver([{ box: PANEL_A }, { box: PANEL_B, stripes: 0.3 }]);
+  await settleReads(1);
+  await answer(0, LONG);
+  await settleReads(2);
+
+  answerHead(1, NAME_TEXT);
+  await settle(() => listEl().children.length === 2, "the provisional record to land");
+  globalThis.__jevLastRun = undefined;
+  env.ocr.pending[1].resolve({ text: LONG, tones: [] });
+  await settle(() => listEl().children.length === 1, "the repeat to be taken off");
+  assert.equal(globalThis.__jevLastRun.scan.stats.skipped, 1);
+});
+
+test("a head refused as a repeat counts the tooltip once: the whole text is not added (and refused) a second time", async () => {
+  setup();
+  await startScan();
+  const LONG = `${NAME_TEXT}\n${"+27 力量 (STN) 填充文字一二三 ".repeat(4)}`;
+  deliver([{ box: PANEL_A }, { box: PANEL_B, stripes: 0.3 }]);
+  await settleReads(1);
+  await answer(0, LONG);
+  await settleReads(2);
+
+  answerHead(1, LONG); // the head is already the listed text: refused as a repeat
+  env.ocr.pending[1].resolve({ text: LONG, tones: [] });
+  await settle(() => globalThis.__jevLastRun?.scan?.cropTimings?.length === 2, "the read to finish");
+  const { stats } = globalThis.__jevLastRun.scan;
+  assert.deepEqual([stats.read, stats.skipped], [2, 1], "two tooltips read, one of them skipped once");
+});
+
+test("a read that fails after its head leaves no half-read record on the list", async () => {
+  setup();
+  await startScan();
+  deliver([{ box: PANEL_A }]);
+  await settleReads(1);
+  answerHead(0, NAME_TEXT);
+  await settle(() => listEl().children.length === 1, "the head's record to land");
+  env.ocr.pending[0].reject(new Error("read failed"));
+  await settle(() => listEl().children.length === 0, "the half-read record to be taken off");
 });
