@@ -87,6 +87,22 @@ test("a refused read is an error that names the last good copy, and the old copy
   await assert.rejects(loadProperties({ tab: new FakeTab({ status: 200, body: { properties: [] } }), scripts, store: new FakeStore(), now: NOW }), /無法取得 Traderie 屬性清單/u);
 });
 
+test("two cache misses in the same instant share one read: one tab, one fetch, both callers answered", async () => {
+  const store = new FakeStore();
+  const tabs = [];
+  const openTab = async () => (tabs.push(new FakeTab({ status: 200, body: API })), tabs.at(-1));
+  const first = ensureProperties({ openTab, scripts, store, now: NOW });
+  const second = loadProperties({ openTab, scripts, store, now: NOW });
+  const [a, b] = await Promise.all([first, second]);
+  assert.deepEqual(a, { properties: PROPERTIES, cacheHit: false });
+  assert.deepEqual(b, { properties: PROPERTIES, cacheHit: false });
+  assert.equal(tabs.length, 1, "only one Traderie tab is opened for the shared read");
+  assert.equal(store.writes, 1, "and the list is fetched and stored once");
+  // The shared read is spent: a later miss opens a tab of its own again.
+  const third = await ensureProperties({ openTab, scripts, store, now: NOW + 1 });
+  assert.equal(third.cacheHit, true);
+});
+
 test("ensureProperties uses a fresh copy without opening a Traderie tab", async () => {
   const store = new FakeStore(cached(NOW - 3 * DAY));
   let opened = 0;

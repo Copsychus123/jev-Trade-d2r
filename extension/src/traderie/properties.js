@@ -91,8 +91,15 @@ async function storedCopy(store, now) {
 async function propertiesList({ tab, openTab, scripts, store, now }) {
   const { saved, fresh } = await storedCopy(store, now);
   if (fresh) return { properties: fresh.properties, cacheHit: true };
-  return fetchAndStore({ tab, openTab, scripts, store, now, saved });
+  // Two callers can miss the cache in the same instant (the affix form's warm-up and the query the player started
+  // from a scan record): share one in-flight read so only one Traderie tab opens and the list is fetched once. The
+  // promise is cleared in a finally of its own, so a failed read does not poison the next call.
+  if (inFlight) return inFlight;
+  inFlight = fetchAndStore({ tab, openTab, scripts, store, now, saved }).finally(() => { inFlight = null; });
+  return inFlight;
 }
+
+let inFlight = null;
 
 /**
  * The list for a query and whether the stored copy was used (`cacheHit`): the stored one while it is younger than a
