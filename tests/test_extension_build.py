@@ -34,6 +34,8 @@ def test_the_shipped_table_keeps_only_what_the_build_declares():
     assert set(shipped) == set(build.SHIPPED_TABLE_KEYS)
     assert len(shipped["products"]) == len(source["products"])
     assert all(set(product) == set(build.SHIPPED_PRODUCT_KEYS) for product in shipped["products"])
+    # The listing form's rune picker reads the category: a build that dropped it shipped a picker with no runes.
+    assert "category" in build.SHIPPED_PRODUCT_KEYS
     for key in ("zh", "bases", "game_only", "generated_at"):
         assert shipped[key] == source[key]
 

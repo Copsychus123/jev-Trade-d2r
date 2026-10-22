@@ -19,15 +19,21 @@ from .traderie.auth import cookie_specs
 browser_harness.helpers.DEFAULT_IPC_RESPONSE_TIMEOUT_SECONDS = 30.0
 browser_harness.helpers.IPC_CONNECT_TIMEOUT_SECONDS = 30.0
 
+
+def _page_script(name):
+    return Path(__file__).with_name(name).read_text(encoding="utf-8").strip()
+
+
 # Atomically read visible content and controls, preserving actual DOM node identity.
 READ_STATE = Path(__file__).with_name("snapshot.js").read_text(encoding="utf-8")
 MARKER = f"(() => {{ const state={READ_STATE}; return state?.marker ?? null; }})()"
-AFTER_INPUT = Path(__file__).with_name("after_input.js").read_text(encoding="utf-8").strip()
-RESOLVE_TARGET = Path(__file__).with_name("resolve_target.js").read_text(encoding="utf-8").strip()
-SETTLE = Path(__file__).with_name("settle.js").read_text(encoding="utf-8").strip()
+AFTER_INPUT = _page_script("after_input.js")
+RESOLVE_TARGET = _page_script("resolve_target.js")
+SETTLE = _page_script("settle.js")
 
 # How often `observe` re-reads a document that navigated under the previous read before it gives up.
 _STALE_READ_RETRIES = 10
+
 
 def _inject_traderie_auth(call):
     for spec in cookie_specs(get_settings()):
@@ -235,28 +241,35 @@ def _type_into_target(call, text, select_all_modifier):
     call("Input.insertText", text=text)
 
 
+def _click_target(call, evaluate, request):
+    """Resolve the observed element and click it, typing `request["text"]` into a field. A target that cannot be
+    resolved is a stale page (or, for a dropdown, an execution that was not confirmed)."""
+    action = request["action"]
+    kind = action["kind"]
+    if type(action["node"]) is not int:
+        raise ValueError("Invalid observed node")
+    # Code-owned node IDs refer to actual observed elements, never model-generated selectors.
+    target = evaluate(f"{RESOLVE_TARGET}({json.dumps(action)})")
+    if target is None:
+        if kind == "select":
+            raise RuntimeError("Dropdown execution was not confirmed; inspect before retrying.")
+        raise StalePage("Target changed or is covered. Observe again.")
+    if kind == "select":
+        return
+    for event in ("mousePressed", "mouseReleased"):
+        call("Input.dispatchMouseEvent", type=event, x=target["x"], y=target["y"], button="left", clickCount=1)
+    if kind == "fill":
+        _type_into_target(call, request["text"], 4 if sys.platform == "darwin" else 2)
+
+
 def _act_operation(call, evaluate, request):
-    """Run one input operation on its resolved target. `call`/`evaluate` are the session-bound helpers; a target
-    that cannot be resolved is a stale page (or, for a dropdown, an execution that was not confirmed)."""
+    """Run one input operation. `call`/`evaluate` are the session-bound helpers."""
     action = request["action"]
     kind = action["kind"]
     if kind == "scroll":
         call("Input.dispatchMouseEvent", type="mouseWheel", x=550, y=650, deltaX=0, deltaY=action["delta"])
     elif kind != "wait":
-        if type(action["node"]) is not int:
-            raise ValueError("Invalid observed node")
-        # Code-owned node IDs refer to actual observed elements, never model-generated selectors.
-        target = evaluate(f"{RESOLVE_TARGET}({json.dumps(action)})")
-        if target is None:
-            if kind == "select":
-                raise RuntimeError("Dropdown execution was not confirmed; inspect before retrying.")
-            raise StalePage("Target changed or is covered. Observe again.")
-        if kind != "select":
-            x, y = target["x"], target["y"]
-            for event in ("mousePressed", "mouseReleased"):
-                call("Input.dispatchMouseEvent", type=event, x=x, y=y, button="left", clickCount=1)
-            if kind == "fill":
-                _type_into_target(call, request["text"], 4 if sys.platform == "darwin" else 2)
+        _click_target(call, evaluate, request)
     return {"executed": action["id"]}
 
 

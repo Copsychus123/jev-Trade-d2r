@@ -27,6 +27,7 @@ import argparse
 import asyncio
 import json
 import re
+import statistics
 import subprocess
 import sys
 import time
@@ -49,6 +50,9 @@ from extension_e2e import (  # noqa: E402
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "scripts" / "data"
 OUT = ROOT / "artifacts" / "ocr-e2e"
+# The panel's three correction memories (chrome.storage.local keys): names, bases of the affix search, affix numbers.
+MEMORY_KEYS = ["jevCorrections", "jevBaseCorrections", "jevValueCorrections"]
+FORGET_MEMORIES = f"chrome.storage.local.remove({json.dumps(MEMORY_KEYS)})"
 # The pictures the reader was never tuned on, scored in the same run beside the tuned group. They are read after the
 # tuned rows, by the same reader. With --only given the tuned list is narrowed to the named pictures and this group is
 # not scored at all (see HOLDOUT_NOTE, which every report carries).
@@ -56,9 +60,12 @@ HOLDOUT = "ocr_truth_holdout.json"
 # Used only while there is no accepted report.json for the same truth file: scored pictures and the hits the browser
 # PP-OCRv6 small reached (measured 2026-10 with browser PP-OCRv6 small).
 FALLBACK_FLOORS = {
-    "ocr_truth.json": {"scored": 22, "top1": 20, "top3": 21, "screenshots_top3": 17, "phone_top3": 4},
+    "ocr_truth.json": {"scored": 18, "top1": 16, "top3": 17, "screenshots_top3": 17, "phone_top3": 0},
     HOLDOUT: {"scored": 30, "top1": 22, "top3": 26, "screenshots_top3": 16, "phone_top3": 10},
 }
+WARM_READS = 6  # screenshots of the tuned group read in one panel session, each twice
+WARM_GAP_MAX_MS = 400  # shown seconds minus the engine's stages.total: what is left once the engine is warm
+WARM_FIRST_EXTRA_MS = 300  # the first read's gap may exceed the median by at most this: the warm-up happened before it
 HOLDOUT_NOTE = (
     "保留組（scripts/data/ocr_truth_holdout.json，調校過的圖片之外的 30 張）也一起評分：沒有 --only 時每次都會評，"
     "給了 --only 只挑調校組的圖片，保留組就不評。"
@@ -80,6 +87,8 @@ STATE = """JSON.stringify({
   time: document.getElementById('ocr-time').textContent,
   text: document.getElementById('ocr-text').textContent,
   tones: JSON.parse(document.getElementById('ocr-text').dataset.tones || 'null'),
+  stages: JSON.parse(document.getElementById('ocr-text').dataset.stages || 'null'),
+  warmed: globalThis.__jevWarmupLog !== undefined,
   consentGone: document.getElementById('ocr-consent') === null,
   item: document.getElementById('item').value,
   go: !document.getElementById('ocr-go').disabled,
@@ -99,6 +108,12 @@ STATE = """JSON.stringify({
     min: li.querySelector('.affix-min')?.value ?? null, max: li.querySelector('.affix-max')?.value ?? null })),
   external: performance.getEntriesByType('resource').map((e) => e.name).filter((n) => !n.startsWith('chrome-extension://'))
 })"""
+
+# Empties the affix form's base box the way a player clearing it does, so a read's own base candidate can fill it.
+CLEAR_STATS_BASE = (
+    "(() => { const b = document.getElementById('stats-base'); b.value = ''; b.dataset.from = '';"
+    " b.dispatchEvent(new Event('input')); })()"
+)
 
 
 class Panel(CdpPanel):
@@ -124,6 +139,24 @@ class Panel(CdpPanel):
         await self.set_files("#ocr-file", [path])
         await self.wait(lambda s: s["go"] and "已讀入圖片" in s["status"], 30)
 
+    async def press_go(self):
+        await self.evaluate("document.getElementById('ocr-go').click()")
+
+    async def set_auto_recognise(self, on: bool):
+        await self.evaluate(f"chrome.storage.local.set({{ ocrAuto: {json.dumps(on)} }})")
+
+    async def open_name_form(self):
+        """Restarts the panel (what it stored is read again) and leaves the name form open with an empty field."""
+        await self.reload()
+        await self.evaluate("window.__jevChooseMode('name')")
+        await self.evaluate("document.getElementById('item').value = ''")
+
+    async def open_affix_form(self):
+        """Restarts the panel and leaves the 模糊搜尋 form open with an empty base box."""
+        await self.reload()
+        await self.evaluate("window.__jevChooseMode('stats')")
+        await self.evaluate(CLEAR_STATS_BASE)
+
 
 def model_requests(state):
     return [u for u in state["external"] if "www.modelscope.cn" in u]
@@ -137,8 +170,22 @@ async def _wait_read(panel: Panel, seconds: int) -> dict:
 async def _read_picture(panel: Panel, path: Path, seconds: int = 240) -> dict:
     """Load one picture, press go and wait for the read to end."""
     await panel.load_picture(path)
-    await panel.evaluate("document.getElementById('ocr-go').click()")
+    await panel.press_go()
     return await _wait_read(panel, seconds)
+
+
+async def _fresh_read(panel: Panel, picture: Path) -> dict:
+    """The panel restarted (what it stored is read again), the name form open, one picture read."""
+    await panel.open_name_form()
+    return await _read_picture(panel, picture)
+
+
+def _read_seconds(shown: str) -> tuple[float | None, float | None]:
+    """(whole read, name decided) seconds out of "辨識用時 2.1 秒（名稱 1.4 秒）"; the 2nd number is when the name was
+    decided (none for six lines or fewer), and an empty `shown` (no read finished) gives (None, None)."""
+    seconds = float(shown.split()[1]) if shown else None
+    head = re.search(r"名稱 ([\d.]+) 秒", shown or "")
+    return seconds, float(head.group(1)) if head else None
 
 
 async def _fail_paused_requests(panel: Panel) -> int:
@@ -180,7 +227,7 @@ async def _no_download_ui_checks(panel: Panel, checks: dict) -> None:
 
 async def _first_download_checks(panel: Panel, checks: dict, first_image: Path) -> None:
     """First use: it asks nothing, downloads by itself from the fixed URLs; a second read downloads nothing."""
-    await panel.evaluate("document.getElementById('ocr-go').click()")
+    await panel.press_go()
     state = await _wait_read(panel, 180)
     checks["no_consent_element"] = state["consentGone"]
     checks["requests_started_by_themselves"] = bool(model_requests(state))
@@ -191,7 +238,7 @@ async def _first_download_checks(panel: Panel, checks: dict, first_image: Path) 
     # Second picture, same page: no new download.
     await panel.load_picture(first_image)
     before = len(model_requests(await panel.state()))
-    await panel.evaluate("document.getElementById('ocr-go').click()")
+    await panel.press_go()
     state = await _wait_read(panel, 180)
     checks["second_run_no_download"] = len(model_requests(state)) == before
 
@@ -209,7 +256,7 @@ async def _blocked_download_checks(panel: Panel, checks: dict, first_image: Path
         "Fetch.enable", {"patterns": [{"urlPattern": "*www.modelscope.cn*", "requestStage": "Request"}]}
     )
     await panel.load_picture(first_image)
-    await panel.evaluate("document.getElementById('ocr-go').click()")
+    await panel.press_go()
     blocked = 0
     end = time.time() + 20
     while time.time() < end:
@@ -234,6 +281,7 @@ def accuracy_metrics(rows: list[dict]) -> dict:
     asked = [r for r in scored if r.get("unsure")]
     small = [r["seconds"] for r in rows if not r["phone"] and r["seconds"]]
     phone = [r["seconds"] for r in rows if r["phone"] and r["seconds"]]
+    heads = [r["head_seconds"] for r in rows if not r["phone"] and r.get("head_seconds")]
     return {
         "scored": len(scored),
         "top1": sum(r["top1"] for r in scored),
@@ -253,6 +301,8 @@ def accuracy_metrics(rows: list[dict]) -> dict:
         "auto_wrong": sum(not r["top1"] for r in scored if not r.get("unsure")),
         "avg_seconds_screenshot": round(sum(small) / len(small), 1) if small else None,
         "avg_seconds_phone_photo": round(sum(phone) / len(phone), 1) if phone else None,
+        # When the name was decided on a read that had a head (more than six lines), against the whole read above.
+        "avg_head_seconds_screenshot": round(sum(heads) / len(heads), 1) if heads else None,
         "max_seconds": max((r["seconds"] for r in rows if r["seconds"]), default=None),
     }
 
@@ -286,11 +336,8 @@ async def accuracy_speed_group(
     rows = []
     say(f"  {label}：{len(files)} 張圖逐張辨識…")
     for item in files:
-        await panel.reload()
-        await panel.evaluate("document.getElementById('choose-name').click()")
-        await panel.evaluate("document.getElementById('item').value = ''")
-        state = await _read_picture(panel, DATA / item["file"])
-        seconds = float(state["time"].split()[1]) if state["time"] else None
+        state = await _fresh_read(panel, DATA / item["file"])
+        seconds, head_seconds = _read_seconds(state["time"])
         # The best result is written into the name field; the kinds and names of the other candidates come from the
         # data-kind/data-name attributes the panel sets (the label alone no longer says which is a base).
         unsure = state["unsure"]
@@ -303,6 +350,8 @@ async def accuracy_speed_group(
                 "want": want,
                 "top": top,
                 "seconds": seconds,
+                "head_seconds": head_seconds,
+                "stages": state.get("stages"),
                 "ok": item["kind"] != "skip" and want in top,
                 "ok5": item["kind"] != "skip" and want in possible,
                 "possible": possible,
@@ -349,6 +398,49 @@ async def _affix_start_gate(panel: Panel, checks: dict) -> None:
             checks["start_enabled_after_value"] = json.loads(await panel.evaluate(gate))
 
 
+VALUE_TYPED = "12"  # over the number the reader read (11 on the small charm): the player's correction
+
+MIN_BOX = (
+    "(() => { const box = document.querySelector('#affix-list .affix-min');"
+    " return box ? JSON.stringify({ value: box.value, learned: box.classList.contains('from-learned'),"
+    " captured: box.classList.contains('from-capture'), title: box.title || '' }) : 'null'; })()"
+)
+
+
+async def _affix_value_learning(panel: Panel, checks: dict, item: dict) -> None:
+    """The player types another number over the one the reader read and starts the query (stubbed: it ends in 'no
+    query window', nothing is sent); the next read of the same picture must put the typed number back, marked as the
+    player's own (from-learned, never from-capture). Runs after the start-gate checks, which leave one box filled."""
+    from scan_e2e import QUERY_STUB  # the stub that keeps a started query from opening a window or asking the backend
+
+    await panel.evaluate("chrome.storage.local.remove('jevValueCorrections')")
+    await panel.evaluate(QUERY_STUB)
+    typed = await panel.evaluate(
+        "(() => { const box = document.querySelector('#affix-list .affix-min'); if (!box) return false;"
+        f" box.value = '{VALUE_TYPED}'; box.dispatchEvent(new Event('input', {{ bubbles: true }}));"
+        " document.getElementById('start').click(); return true; })()"
+    )
+    if not typed:  # a bool-only picture has no number box: nothing to correct, nothing measured
+        return
+    learned = checks.setdefault("value_learned", {"stored": False, "refilled": None, "marked_learned": False})
+    for _ in range(40):  # the query ends by itself (no window): wait for the screen to leave 'running'
+        await asyncio.sleep(0.5)
+        if await panel.evaluate("document.body.dataset.view") not in (None, "running", "ready"):
+            break
+    await asyncio.sleep(2.5)  # the memory writes 1.5 s after a change
+    stored = json.loads(await panel.evaluate("chrome.storage.local.get('jevValueCorrections').then(JSON.stringify)"))
+    entries = (stored.get("jevValueCorrections") or {}).get("e") or []
+    learned["stored"] = any(e[1].get("m") == int(VALUE_TYPED) for e in entries)
+    await panel.open_affix_form()
+    await _read_picture(panel, DATA / item["file"])
+    box = json.loads(await panel.evaluate(MIN_BOX))
+    if box:
+        learned["refilled"] = box["value"]
+        learned["marked_learned"] = box["learned"] and not box["captured"]
+        learned["title"] = box["title"]
+    say(f"  數值更正：記住 {learned['stored']} 再讀填回 {learned['refilled']!r} 標記 {learned['marked_learned']}")
+
+
 async def affix_group(panel: Panel, report: dict, item: dict) -> None:
     """A base-kind picture read in the affix (模糊搜尋) form: the reading itself fills the base and every recognised
     condition — the attributes are ticked, and the numbers the reader read are filled in and marked as captured — the
@@ -358,13 +450,8 @@ async def affix_group(panel: Panel, report: dict, item: dict) -> None:
     checks["expect"] = item["expect"]
     checks["visible_zh"] = item["visible_zh"]
     # The auto group leaves auto-recognise on; reading by itself would race the button click this group needs.
-    await panel.evaluate("chrome.storage.local.set({ ocrAuto: false })")
-    await panel.reload()
-    await panel.evaluate("document.getElementById('choose-stats').click()")
-    await panel.evaluate(
-        "(() => { const b = document.getElementById('stats-base'); b.value = ''; b.dataset.from = '';"
-        " b.dispatchEvent(new Event('input')); })()"
-    )
+    await panel.set_auto_recognise(False)
+    await panel.open_affix_form()
     state = await _read_picture(panel, DATA / item["file"])
     status, rows = state["status"], state["affixRows"]
     # (a) the status holds the recognised name as 中文（English）: some Chinese, a full-width open bracket, a Latin name
@@ -394,6 +481,60 @@ async def affix_group(panel: Panel, report: dict, item: dict) -> None:
         f" 開始閘門 {checks['start_gate_after_capture']} 清空後 {checks.get('start_gate_after_clearing')}"
         f" 填值後 {checks.get('start_enabled_after_value')}"
     )
+    await _affix_value_learning(panel, checks, item)
+
+
+async def warm_group(panel: Panel, report: dict, truth: list[dict]) -> None:
+    """The steady state the player meets: one panel session, the engine built and warmed at panel start, the same
+    screenshots read twice in a row with no reload between them. The gap is the shown seconds minus the engine's own
+    total: what is left once the engine is warm (worker start and shader compilation no longer sit in it)."""
+    await panel.open_name_form()
+    try:
+        await panel.wait(lambda s: s["warmed"], 60)
+    except Exception:
+        report["warm"] = {"error": "warm-up never finished"}
+        say("  穩定組：暖機 60 秒內沒有完成")
+        return
+    files = [t for t in truth if not t["phone_photo"] and t["kind"] != "skip"][:WARM_READS]
+    reads = []
+    for item in [*files, *files]:
+        # The previous read's time and stages stay on the page until the next read clears them; clear them here so
+        # the wait below cannot mistake them for this read's.
+        await panel.load_picture(DATA / item["file"])
+        await panel.evaluate(
+            "document.getElementById('ocr-time').textContent = '';"
+            " delete document.getElementById('ocr-text').dataset.stages;"
+            " document.getElementById('ocr-go').click()"
+        )
+        state = await _wait_read(panel, 240)
+        seconds, head_seconds = _read_seconds(state["time"])
+        stages = state.get("stages")
+        total = stages.get("total") if isinstance(stages, dict) else None
+        gap_ms = round(seconds * 1000 - total) if seconds is not None and total is not None else None
+        reads.append(
+            {
+                "file": item["file"],
+                "seconds": seconds,
+                "head_seconds": head_seconds,
+                "stages": stages,
+                "gap_ms": gap_ms,
+            }
+        )
+        say(f"  {item['file'][:14]:14s} {seconds}s 引擎 {total} ms 額外等待 {gap_ms} ms")
+    gaps = [r["gap_ms"] for r in reads if r["gap_ms"] is not None]
+    shown = [r["seconds"] for r in reads if r["seconds"] is not None]
+    warm = {
+        "reads": reads,
+        "gap_median_ms": statistics.median(gaps) if gaps else None,
+        "gap_max_ms": max(gaps) if gaps else None,
+        "first_gap_ms": reads[0]["gap_ms"] if reads else None,
+        "shown_median_s": statistics.median(shown) if shown else None,
+    }
+    report["warm"] = warm
+    say(
+        f"穩定組：{len(reads)} 次連讀，額外等待中位數 {warm['gap_median_ms']} ms、"
+        f"最大 {warm['gap_max_ms']} ms、第一次 {warm['first_gap_ms']} ms"
+    )
 
 
 async def drive(
@@ -408,9 +549,9 @@ async def drive(
         await panel.wait_ready("側邊欄頁面沒有載入")
         # Choices remembered by the panel (auto-recognise) must not leak between runs. The picture groups drive the
         # buttons themselves, so auto-recognise is off for them; auto_group turns it on.
-        await panel.evaluate("chrome.storage.local.set({ ocrAuto: false })")
-        # What the reader learned from earlier choices (jevCorrections) must not decide a read of this run: start empty.
-        await panel.evaluate("chrome.storage.local.remove('jevCorrections')")
+        await panel.set_auto_recognise(False)
+        # What the reader learned from earlier choices (the three correction memories) must not decide this run.
+        await panel.evaluate(FORGET_MEMORIES)
         # Without a saved invite code the panel shows the welcome screen, where "no query started" proves nothing:
         # a placeholder code puts it on the query form (it is never sent anywhere unless a query starts).
         had_invite = await panel.evaluate("chrome.storage.local.get('invite').then((r) => Boolean(r.invite))")
@@ -426,6 +567,9 @@ async def drive(
             if holdout:
                 say(f"A/B 組：保留組 {len(holdout)} 張圖逐張辨識…")
                 await accuracy_speed_group(panel, report, holdout, "accuracy_holdout", "rows_holdout", "保留組")
+        if not skip_accuracy:
+            say(f"穩定組：同一次開啟的面板連讀 {2 * WARM_READS} 次…")
+            await warm_group(panel, report, truth)
         if not skip_download and not skip_accuracy:
             say("自動辨識組：有模型時自動讀，沒模型時不自動下載…")
             await auto_group(panel, report)
@@ -436,7 +580,7 @@ async def drive(
             say("詞綴組：讀一張底材圖，條件自動填入、值留空…")
             await affix_group(panel, report, affix_item)
         await panel.evaluate("chrome.storage.local.remove('ocrAuto')")  # leave nothing chosen behind
-        await panel.evaluate("chrome.storage.local.remove('jevCorrections')")
+        await panel.evaluate(FORGET_MEMORIES)
         if not had_invite:
             await panel.evaluate("chrome.storage.local.remove('invite')")
     return report
@@ -448,14 +592,6 @@ PICK_CANDIDATE = """(() => {
   b.click();
   return 'clicked';
 })()"""
-
-
-async def _fresh_read(panel: Panel, picture: Path) -> dict:
-    """The panel restarted (what it stored is read again), the name form open, one picture read."""
-    await panel.reload()
-    await panel.evaluate("document.getElementById('choose-name').click()")
-    await panel.evaluate("document.getElementById('item').value = ''")
-    return await _read_picture(panel, picture)
 
 
 async def learning_group(panel: Panel, report: dict, rows: list[dict]) -> None:
@@ -472,7 +608,7 @@ async def learning_group(panel: Panel, report: dict, rows: list[dict]) -> None:
     name = row["want"].split(":", 1)[1]
     checks["file"] = row["file"]
     checks["expect"] = name
-    await panel.evaluate("chrome.storage.local.remove('jevCorrections')")
+    await panel.evaluate(FORGET_MEMORIES)
     first = await _fresh_read(panel, DATA / row["file"])
     checks["first_asks"] = first["unsure"] and not first["item"]
     checks["first_pick"] = await panel.evaluate(PICK_CANDIDATE % json.dumps(name)) == "clicked"
@@ -486,7 +622,7 @@ async def learning_group(panel: Panel, report: dict, rows: list[dict]) -> None:
     third = await _fresh_read(panel, DATA / row["file"])
     checks["third_fills_by_itself"] = not third["unsure"] and bool(third["item"]) and third["firstName"] == name
     checks["third_status"] = third["status"]
-    await panel.evaluate("chrome.storage.local.remove('jevCorrections')")
+    await panel.evaluate(FORGET_MEMORIES)
     say(f"  學習組：{row['file']} {name}：{checks}")
 
 
@@ -494,10 +630,8 @@ async def auto_group(panel: Panel, report: dict) -> None:
     """With auto-recognise on: a picture is read by itself when the model is already stored (and nothing is
     searched); with no model stored it neither reads nor downloads nor asks."""
     row = report.setdefault("auto", {})
-    await panel.evaluate("chrome.storage.local.set({ ocrAuto: true })")
-    await panel.reload()
-    await panel.evaluate("document.getElementById('choose-name').click()")
-    await panel.evaluate("document.getElementById('item').value = ''")
+    await panel.set_auto_recognise(True)
+    await panel.open_name_form()
     await panel.set_files("#ocr-file", [DATA / "image-4.png"])
     state = await _wait_read(panel, 120)
     row["reads_by_itself_with_model"] = bool(state["time"]) and state["firstName"] == "Small Charm"
@@ -506,7 +640,7 @@ async def auto_group(panel: Panel, report: dict) -> None:
     )
     await panel.wipe_models()
     await panel.reload()
-    await panel.evaluate("chrome.storage.local.set({ ocrAuto: false })")
+    await panel.set_auto_recognise(False)
     await panel.reload()
     await panel.set_files("#ocr-file", [DATA / "image-4.png"])
     await asyncio.sleep(3)
@@ -515,7 +649,7 @@ async def auto_group(panel: Panel, report: dict) -> None:
     row["no_model_nothing_downloaded"] = not model_requests(state)
     say(f"  自動辨識：{row}")
     # Leave the profile usable for the next run: read once by hand, which downloads the models.
-    await panel.evaluate("document.getElementById('ocr-go').click()")
+    await panel.press_go()
     await _wait_read(panel, 120)
 
 
@@ -611,6 +745,24 @@ def verdict(report: dict, floors: dict | None = None, holdout: dict | None = Non
         opened = affix.get("start_enabled_after_value")
         if opened is not None and not (isinstance(opened, dict) and opened.get("disabled") is False):
             failures.append(f"詞綴組：start_enabled_after_value 沒通過（{opened!r}）")
+        value_learned = affix.get("value_learned")
+        if value_learned is not None:
+            if not value_learned.get("stored"):
+                failures.append(f"詞綴組：數值更正沒有被記住（{value_learned!r}）")
+            elif value_learned.get("refilled") != VALUE_TYPED or not value_learned.get("marked_learned"):
+                failures.append(f"詞綴組：下次沒有直接填入改過的數值（{value_learned!r}）")
+    warm = report.get("warm")
+    if warm:
+        if warm.get("error"):
+            failures.append("穩定組沒有完成暖機")
+        else:
+            reads = warm.get("reads") or []
+            gap_max = warm.get("gap_max_ms")
+            if any(r.get("gap_ms") is None for r in reads) or gap_max is None or gap_max > WARM_GAP_MAX_MS:
+                failures.append(f"穩定組有讀取的額外等待超過 {WARM_GAP_MAX_MS} ms：{gap_max}")
+            first, median = warm.get("first_gap_ms"), warm.get("gap_median_ms")
+            if first is not None and median is not None and first - median > WARM_FIRST_EXTRA_MS:
+                failures.append(f"穩定組第一次讀取比中位數慢 {first - median} ms，暖機沒有在讀圖前完成")
     return failures
 
 

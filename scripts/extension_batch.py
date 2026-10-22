@@ -26,14 +26,17 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _cdp import Environment, Panel, attach  # noqa: E402
+from _cdp import Environment, attach  # noqa: E402
 from extension_e2e import (  # noqa: E402
     DONE,
+    LAYER_LABELS,
     OPEN_URLS,
     SNAPSHOT,
+    SidePanel,
     build_extension,
     cleanup,
     environment_failure,
+    fill_query_form_js,
     free_profile,
     launch_chrome,
     load_extension,
@@ -45,19 +48,19 @@ from extension_e2e import (  # noqa: E402
 ROOT = Path(__file__).resolve().parents[1]
 CASES = ROOT / "scripts" / "e2e_cases.json"
 OUT = ROOT / "artifacts" / "e2e-100"
-LAYER_LABELS = {"table": "查表直接開啟", "search": "站內搜尋", "base": "底材清單"}
+RESULTS = OUT / "results.jsonl"
 CASE_TIMEOUT = 240
 PAUSE_SECONDS = 4
 JEV_CALL_LIMIT = 30  # extension/src/agent.js JEV_CALL_LIMIT; services/jevsvc/app.py MAX_MODEL_CALLS
 
 
-class BatchPanel(Panel):
+class BatchPanel(SidePanel):
     async def reload(self):
         await self.evaluate("location.reload()")
         for _ in range(60):
             await asyncio.sleep(0.5)
             try:
-                if await self.evaluate("document.readyState === 'complete' && !!document.getElementById('start')"):
+                if await self.evaluate(self.READY_JS):
                     await asyncio.sleep(0.5)
                     return
             except Exception:
@@ -82,14 +85,7 @@ async def run_case(panel: BatchPanel, case: dict, invites: dict) -> dict:
         code = ""
         await panel.evaluate("chrome.storage.local.remove('invite')")
         await panel.reload()
-    await panel.evaluate(
-        f"(() => {{ if ({json.dumps(code)}) {{ document.getElementById('welcome-invite').value = {json.dumps(code)};"
-        " document.getElementById('welcome-go').click(); }"
-        " document.getElementById('choose-name').click();"
-        f" document.getElementById('item').value = {json.dumps(case['input'])};"
-        f" for (let i = 0; i < {case['load_more']}; i++) document.getElementById('more-plus').click();"
-        " })()"
-    )
+    await panel.evaluate(fill_query_form_js(code, case["input"], case["load_more"]))
     started = time.time()
     await panel.evaluate("document.getElementById('start').click()")
     if case.get("double_click"):
@@ -163,6 +159,26 @@ def judge(case: dict, result: dict, last_used: int | None) -> tuple[str, str]:
     return ("FAIL", "；".join(problems)) if problems else ("PASS", "")
 
 
+async def run_attempts(
+    panel: BatchPanel, case: dict, invites: dict, reruns: int, last_used: int | None
+) -> tuple[list[dict], int | None]:
+    """Run the case, and again after each FAIL (with a screenshot first) up to `reruns` more times.
+    Returns every attempt and the latest quota count the panel showed."""
+    attempts = []
+    for attempt in range(1 + reruns):
+        result = await run_case(panel, case, invites)
+        verdict, reason = judge(case, result, last_used)
+        attempts.append({"verdict": verdict, "reason": reason, "result": result})
+        used = quota_used(result["quota"])
+        if used is not None:
+            last_used = used
+        if verdict != "FAIL":
+            break
+        await panel.screenshot(OUT / f"{case['id']}-try{attempt + 1}.png")
+        await asyncio.sleep(PAUSE_SECONDS)
+    return attempts, last_used
+
+
 async def drive(ws_url: str, cases: list[dict], invites: dict, done: dict, reruns: int) -> int:
     OUT.mkdir(parents=True, exist_ok=True)
     blocked = False
@@ -171,18 +187,7 @@ async def drive(ws_url: str, cases: list[dict], invites: dict, done: dict, rerun
         for number, case in enumerate(cases, 1):
             if case["id"] in done:
                 continue
-            attempts = []
-            for attempt in range(1 + reruns):
-                result = await run_case(panel, case, invites)
-                verdict, reason = judge(case, result, last_used)
-                attempts.append({"verdict": verdict, "reason": reason, "result": result})
-                used = quota_used(result["quota"])
-                if used is not None:
-                    last_used = used
-                if verdict != "FAIL":
-                    break
-                await panel.screenshot(OUT / f"{case['id']}-try{attempt + 1}.png")
-                await asyncio.sleep(PAUSE_SECONDS)
+            attempts, last_used = await run_attempts(panel, case, invites, reruns, last_used)
             final = attempts[-1]
             flaky = final["verdict"] == "PASS" and len(attempts) > 1
             record = {
@@ -190,9 +195,9 @@ async def drive(ws_url: str, cases: list[dict], invites: dict, done: dict, rerun
                 "verdict": final["verdict"],
                 "reason": final["reason"],
                 "flaky": flaky,
-                "attempts": [dict(attempt) for attempt in attempts],
+                "attempts": attempts,
             }
-            with (OUT / "results.jsonl").open("a", encoding="utf-8") as f:
+            with RESULTS.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
             say(
                 f"[{number:3d}/{len(cases)}] {case['id']} {final['verdict']:7s}{'（不穩定）' if flaky else ''} "
@@ -206,10 +211,9 @@ async def drive(ws_url: str, cases: list[dict], invites: dict, done: dict, rerun
 
 
 def load_done() -> dict:
-    path = OUT / "results.jsonl"
-    if not path.exists():
+    if not RESULTS.exists():
         return {}
-    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    rows = [json.loads(line) for line in RESULTS.read_text(encoding="utf-8").splitlines() if line.strip()]
     return {r["case"]["id"]: r for r in rows if r["verdict"] != "BLOCKED"}
 
 
@@ -240,8 +244,8 @@ def main() -> int:
     if not main_invite:
         say("環境問題：請用環境變數 JEV_INVITE 提供額度夠大的邀請碼（J 類另需 JEV_TINY_INVITE：額度已用完的邀請碼）")
         return 2
-    if not args.resume and (OUT / "results.jsonl").exists():
-        (OUT / "results.jsonl").rename(OUT / f"results-{int(time.time())}.jsonl")
+    if not args.resume and RESULTS.exists():
+        RESULTS.rename(OUT / f"results-{int(time.time())}.jsonl")
     invites = {"main": main_invite, "tiny": os.environ.get("JEV_TINY_INVITE", ""), "wrong": "inv-wrong0000000000000000"}
     chrome = None
     try:

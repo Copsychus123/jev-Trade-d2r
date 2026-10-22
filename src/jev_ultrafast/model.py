@@ -150,6 +150,7 @@ def validate_choice(answer, ids):
 
 MAX_SAME_NAME_ELEMENTS = 2
 
+
 def action_space(actions):
     """One index per observed element; each operation has its own valid target choices."""
     elements, indices, targets, controls = [], {}, {}, {}
@@ -295,19 +296,19 @@ def _reask_without_operation(state, goal, history, elements, targets, controls, 
     target."""
     usage = dict(result.get("usage") or {})
     target = decision["target"]
-    if target is not None and decision["target_probabilities"][target] < MIN_TARGET_PROBABILITY:
-        one_call = HTTP_TIMEOUT_SECONDS if timeout is None else timeout
-        if deadline is not None and deadline - time.monotonic() < one_call:
-            raise RuntimeError("Jev was unsure of the target and there is no time to ask again; no action executed.")
-        reasked = {"operation": decision["operation"], "target_probability": decision["target_probabilities"][target]}
-        remaining = {name: found for name, found in targets.items() if name != decision["operation"]}
-        body, result, decision = _ask_once(
-            state, goal, history, elements, remaining, controls, allow_blocked, key=key, limits=limits
-        )
-        for name, value in (result.get("usage") or {}).items():
-            usage[name] = usage.get(name, 0) + value
-        return body, result, decision, usage, reasked
-    return body, result, decision, usage, None
+    if target is None or decision["target_probabilities"][target] >= MIN_TARGET_PROBABILITY:
+        return body, result, decision, usage, None
+    one_call = HTTP_TIMEOUT_SECONDS if timeout is None else timeout
+    if deadline is not None and deadline - time.monotonic() < one_call:
+        raise RuntimeError("Jev was unsure of the target and there is no time to ask again; no action executed.")
+    reasked = {"operation": decision["operation"], "target_probability": decision["target_probabilities"][target]}
+    remaining = {name: found for name, found in targets.items() if name != decision["operation"]}
+    body, result, decision = _ask_once(
+        state, goal, history, elements, remaining, controls, allow_blocked, key=key, limits=limits
+    )
+    for name, value in (result.get("usage") or {}).items():
+        usage[name] = usage.get(name, 0) + value
+    return body, result, decision, usage, reasked
 
 
 def choose(state, goal, history, typed=None, allow_blocked=True, *, timeout=None, deadline=None):

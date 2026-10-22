@@ -52,7 +52,6 @@ const escape = (value) =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
   );
 const percent = (value) => `${(value * 100).toFixed(value < 0.01 ? 1 : 0)}%`;
-const statusDot = $("status-dot");
 const dash = (value) =>
   value === null || value === undefined || value === "" ? "—" : String(value);
 function saveText(filename, text, type) {
@@ -80,7 +79,7 @@ const formatNumber = (value) => Number(value || 0).toLocaleString("en-US");
 // The plain dollar amount, without the "約 … 美分" note for values below one cent.
 const usdShort = (value) => (!(value > 0) ? "$0" : `$${value.toFixed(value >= 0.01 ? 2 : 4)}`);
 const formatUsd = (value) =>
-  usdShort(value) + (!(value > 0) || value >= 0.01 ? "" : `（約 ${(value * 100).toFixed(2)} 美分）`);
+  usdShort(value) + (value > 0 && value < 0.01 ? `（約 ${(value * 100).toFixed(2)} 美分）` : "");
 
 // Every cell is written with textContent: labels and page text are untrusted.
 function renderUsage(usage) {
@@ -107,6 +106,7 @@ function renderUsage(usage) {
 
 function renderPlan() {
   const labels = state.phase_labels || [];
+  const plan = state.plan || [];
   $("plan").replaceChildren(
     ...labels.map((label, i) => {
       const step = element("div", `plan-step ${i === state.plan_index ? "current" : ""}`);
@@ -116,8 +116,8 @@ function renderPlan() {
     }),
   );
   // The plan entries share the goal and differ only in a final "Current phase" line: show the shared part once.
-  $("goal-full").textContent = (state.plan || []).length ? state.plan[0].split("\nCurrent phase")[0] : "";
-  $("goal-details").hidden = !(state.plan || []).length;
+  $("goal-full").textContent = plan.length ? plan[0].split("\nCurrent phase")[0] : "";
+  $("goal-details").hidden = !plan.length;
 }
 
 // The phase's display label, `undefined` when the phase is unknown.
@@ -145,8 +145,7 @@ function decisionRow(decision, i, next, executedSteps) {
   const finishes = decision.operation === "DONE" || decision.operation === "BLOCKED";
   const alternatives = (decision.alternatives || []).slice(0, 2);
   const phaseLabel = phaseLabelAt(decision.phase);
-  const what =
-    finishes && decision.operation === "DONE" ? phaseLabel || "完成階段" : decision.label || decision.choice;
+  const what = decision.operation === "DONE" ? phaseLabel || "完成階段" : decision.label || decision.choice;
   const chosen =
     decision.probability == null
       ? null
@@ -407,32 +406,28 @@ async function fetchReport() {
 
 function renderReport() {
   const section = $("report-section");
-  if (!section) return;
-  const reasonEl = $("release-check-reason");
   if (!state?.report_ready) reportText = null;
   else if (reportText === null && !reportFetching) fetchReport();
-  const reportMd = reportText;
   const verification = state?.market?.verification;
-  if (reportMd) {
+  let failedReason = "";
+  if (reportText) {
     section.hidden = false;
     $("report-title").textContent = `${state.item_name} 市場資料`;
-    $("report-content").textContent = reportMd;
+    $("report-content").textContent = reportText;
     $("download-report").hidden = false;
-    reasonEl.hidden = true;
-    reasonEl.textContent = "";
   } else if (verification && !verification.passed) {
     section.hidden = false;
     $("report-title").textContent = "報告未產生";
     $("report-content").textContent = "";
     $("download-report").hidden = true;
     const reasons = Object.values(verification.view_reasons || {});
-    reasonEl.hidden = false;
-    reasonEl.textContent = `檢查未通過：${[...reasons, ...explainChecks(verification.failed_checks)].filter(Boolean).join("；")}`;
+    failedReason = `檢查未通過：${[...reasons, ...explainChecks(verification.failed_checks)].filter(Boolean).join("；")}`;
   } else {
     section.hidden = true;
-    reasonEl.hidden = true;
-    reasonEl.textContent = "";
   }
+  const reasonEl = $("release-check-reason");
+  reasonEl.hidden = !failedReason;
+  reasonEl.textContent = failedReason;
 }
 
 async function call(name, body = {}) {
@@ -456,7 +451,7 @@ async function refreshState() {
 
 function controls() {
   $("start").disabled = busy;
-  if ($("goal")) $("goal").disabled = busy;
+  $("goal").disabled = busy;
   $("load-more").disabled = busy;
   $("stop").hidden = !automatic;
   $("download").disabled = !state?.history?.length;
@@ -512,23 +507,20 @@ function renderStatus() {
       : "Agent 已完成 · 檢查未通過",
     blocked: "探索已停止 · 無可用的下一步",
   };
-  statusDot.dataset.state = state.status || "idle";
+  $("status-dot").dataset.state = state.status || "idle";
   if (busy) return;
-  const rawBlockedReason = state.scope_blocked_reason;
-  if (state.status === "blocked" && rawBlockedReason) {
-    $("status").textContent = `探索停止 · ${rawBlockedReason}`;
-  } else {
-    $("status").textContent = labels[state.status] || labels.idle;
-  }
+  $("status").textContent =
+    state.status === "blocked" && state.scope_blocked_reason
+      ? `探索停止 · ${state.scope_blocked_reason}`
+      : labels[state.status] || labels.idle;
 }
 
 function renderPageHeader(page) {
+  const screenshot = $("screenshot");
+  screenshot.hidden = !page.screenshot_id;
   if (page.screenshot_id) {
-    $("screenshot").hidden = false;
     const src = `/api/screenshot?v=${page.screenshot_id}`;
-    if ($("screenshot").getAttribute("src") !== src) $("screenshot").src = src;
-  } else {
-    $("screenshot").hidden = true;
+    if (screenshot.getAttribute("src") !== src) screenshot.src = src;
   }
   $("url").textContent = page.url || "—";
   $("page-title").textContent = page.title || "—";
@@ -722,10 +714,6 @@ function downloadTrace() {
 
 $("download").addEventListener("click", downloadTrace);
 
-refreshState().catch(() => {
-  $("status").textContent = "無法連線至本機 Demo 伺服器";
-});
-
 // Save the markdown the server generated for a finished run.
 async function downloadReportFile() {
   try {
@@ -761,3 +749,7 @@ function renderLoadMoreEstimate() {
 }
 $("load-more").addEventListener("change", renderLoadMoreEstimate);
 renderLoadMoreEstimate();
+
+refreshState().catch(() => {
+  $("status").textContent = "無法連線至本機 Demo 伺服器";
+});

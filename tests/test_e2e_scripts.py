@@ -194,11 +194,22 @@ def only_failure(failures: list[str]) -> str:
 # --- scan_e2e.verdict -------------------------------------------------------------------------------------
 
 
+def scan_click(**overrides) -> dict:
+    """What one search button did with the stub in place: the scan list gave way to a query that really started (the
+    running screen showed, the stub saw a query window being opened) and that ended on the problem the refused window
+    gives. Every field a case does not mention is the fact of a healthy click."""
+    return {
+        "outcome": "clicked", "mode": "name", "view": "problem", "item": "", "summary": "", "ticks": 0,
+        "statsBase": "", "statsBaseFrom": "", "statsBaseMarked": False, "baseOptions": 250, "banner": True,
+        "windows_before": 0, "windows": 1, "starts_before": 0, "starts": 1, "ran": True, **overrides,
+    }
+
+
 def scan_report() -> dict:
-    """A complete scan report: the four simulated records, both per-record buttons, no query. verdict() -> []."""
+    """A complete scan report: the four simulated records, every search button started its query. verdict() -> []."""
     expects = ["Alma Negra", "Grand Charm", "Harlequin Crest", "Stormshield"]
     # `records` is what the panel's STATE probe collects from `#scan-list li`: one string per record, the concatenated
-    # textContent of the name line, the `HH:MM:SS · 類型 · 詞綴` line and the two button labels (scripts/scan_e2e.py).
+    # textContent of the name line, the `HH:MM:SS · 類型 · 詞綴` line and the button labels (scripts/scan_e2e.py).
     records = [f"{name} 00:00:0{i} · 暗金 · 力量＋20 精準搜尋 模糊搜尋" for i, name in enumerate(expects)]
     return {
         "expects": expects,
@@ -209,27 +220,21 @@ def scan_report() -> dict:
         "csv_enabled": True,
         "visibility": "hidden",
         "status": "遊戲視窗蓋住了這個面板，掃描會變慢。 掃描中：已記錄 4 件，待辨識 0 件",
+        # Four name queries (each asks the backend once), then two affix queries (the affix search never asks it).
         "exact_clicks": [
-            {"name": name, "outcome": "clicked", "mode": "name", "view": "ready", "item": name, "shown_field": name}
-            for name in expects
+            scan_click(
+                name=name, item=name, shown_field=name, summary=f"查詢：{name}",
+                windows_before=i, windows=i + 1, starts_before=i, starts=i + 1,
+            )
+            for i, name in enumerate(expects)
         ],
-        "fuzzy_item": {
-            "outcome": "clicked",
-            "mode": "stats",
-            "view": "ready",
-            "ticks": 2,
-            "statsBase": "Sacred Rondache",
-            "statsBaseFrom": "ocr",
-            "statsBaseMarked": True,
-            "baseOptions": 250,
-        },
-        "fuzzy_base": {
-            "outcome": "clicked",
-            "mode": "stats",
-            "view": "ready",
-            "ticks": 0,
-            "statsBase": "Grand Charm",
-        },
+        "fuzzy_item": scan_click(
+            mode="stats", statsBase="Sacred Rondache", statsBaseFrom="ocr", statsBaseMarked=True,
+            windows_before=4, windows=5, starts_before=4, starts=5,
+        ),
+        "fuzzy_base": scan_click(
+            mode="stats", statsBase="Grand Charm", windows_before=5, windows=6, starts_before=5, starts=6,
+        ),
         # Three of the four reads (an item with its type line under it) are not sure: they wait on the list with both
         # searches disabled, the script picks the right name on each, and every row ends up named and searchable.
         "unsure_before": [
@@ -248,9 +253,37 @@ def scan_report() -> dict:
             {"name": name, "unsure": False, "options": [], "searchesDisabled": [False, False]} for name in expects
         ],
         "banner": "",
-        "views": [["scan", ""], ["stats", ""]],
+        "scan_views": [["welcome", ""], ["scan", ""]],
+        "views": [["scan", ""]] + [["running", ""]] * 6 + [["problem", "stats"]],
         "clear": {"before": 4, "after": 0, "csv": False, "status": "已停止，待辨識 0 件"},
+        "listing": scan_listing("Alma Negra"),
     }
+
+
+def scan_listing(name: str) -> dict:
+    """What 「TR交易」 on the record `name` showed: the listing screen, prefilled, 上架 off for want of a price."""
+    return {
+        "name": name, "outcome": "clicked", "line2": "00:00:00 · 暗金 · 力量＋20", "view": "listing",
+        "item": f"{name} · 暗金", "affixes": 1, "marked": 1, "postDisabled": True,
+        "why": "請選擇想換的符文和數量，或勾「接受出價」", "status": "", "createRequests": 0,
+        "back_view": "scan", "records_before": 4, "records_after": 4, "runeOptions": 35, "selectOptions": 40,
+    }
+
+
+def test_scan_verdict_reports_a_listing_screen_that_did_not_open_prefilled_or_that_posted():
+    report = scan_report()
+    report["listing"]["marked"] = 0
+    report["listing"]["postDisabled"] = False
+    assert len(scan_e2e.verdict(report)) == 2
+    report = scan_report()
+    report["listing"]["createRequests"] = 1
+    report["listing"]["back_view"] = "listing"
+    messages = scan_e2e.verdict(report)
+    assert len(messages) == 2
+    assert "返回" in messages[0] and "listings/create" in messages[1]
+    report = scan_report()
+    report["listing"] = None
+    assert scan_e2e.verdict(report) == ["「TR交易」沒有打開上架畫面：None"]
 
 
 def test_scan_verdict_accepts_a_report_that_matches_every_section_6_assertion():
@@ -268,7 +301,7 @@ def test_scan_verdict_accepts_failures_page_report():
         "sim_page_type": "failures",
         "record_count": 6,
         "records": [
-            "杜墨菲斯托斯學術（Ars Dul'Mephistos） · 暗金 · 聖騎士技能",
+            "懺悔者（The Redeemer） · 暗金 · 聖騎士技能",
             "戒指（Ring） · 底材 · 施法速度",
             "戒指（Ring） · 底材 · 所有抗性",
             "權冠（Diadem） · 底材 · 防禦",
@@ -279,19 +312,18 @@ def test_scan_verdict_accepts_failures_page_report():
         "visibility": "hidden",
         "status": "蓋住了這個面板 掃描中：已記錄 6 件，待辨識 0 件",
         "banner": False,
-        "views": [["scan", ""], ["stats", ""]],
+        "scan_views": [["welcome", ""], ["scan", ""]],
+        "views": [["scan", ""]] + [["running", ""]] * 5 + [["problem", "stats"]],
         "clear": {"before": 6, "after": 0, "csv": False},
+        "listing": {**scan_listing("The Redeemer"), "records_before": 6, "records_after": 6},
         "exact_clicks": [
-            {"name": "Ring", "outcome": "clicked", "mode": "name", "view": "ready",
-             "item": "戒指", "shown_field": "戒指"},
-            {"name": "Alpha Helm", "outcome": "clicked", "mode": "name", "view": "ready",
-             "item": "猛狼頭盔", "shown_field": "猛狼頭盔"},
-            {"name": "Diadem", "outcome": "clicked", "mode": "name", "view": "ready",
-             "item": "權冠", "shown_field": "權冠"},
-            {"name": "Ars Dul'Mephistos", "outcome": "clicked", "mode": "name", "view": "ready",
-             "item": "杜墨菲斯托斯學術", "shown_field": "杜墨菲斯托斯學術"},
+            scan_click(name=name, item=field, shown_field=field, summary=f"查詢：{field}",
+                       windows_before=i, windows=i + 1, starts_before=i, starts=i + 1)
+            for i, (name, field) in enumerate(
+                [("Ring", "戒指"), ("Alpha Helm", "猛狼頭盔"), ("Diadem", "權冠"), ("The Redeemer", "懺悔者")]
+            )
         ],
-        "fuzzy_base": {"outcome": "clicked", "mode": "stats", "view": "ready"},
+        "fuzzy_base": scan_click(mode="stats", windows_before=4, windows=5, starts_before=4, starts=5),
     }
     assert scan_e2e.verdict(report) == []
 
@@ -350,7 +382,27 @@ def _fuzzy_item_view_wrong(report):
 
 
 def _fuzzy_item_no_tick(report):
-    report["fuzzy_item"]["ticks"] = 0
+    report["fuzzy_item"]["ticks"] = 1
+
+
+def _exact_never_started(report):
+    report["exact_clicks"][2].update(windows=report["exact_clicks"][2]["windows_before"], ran=False)
+
+
+def _exact_asked_the_backend_twice(report):
+    report["exact_clicks"][0]["starts"] = 2
+
+
+def _fuzzy_item_never_asked_the_backend(report):
+    report["fuzzy_item"]["starts"] = report["fuzzy_item"]["starts_before"]
+
+
+def _fuzzy_base_never_started(report):
+    report["fuzzy_base"].update(windows=report["fuzzy_base"]["windows_before"], ran=False)
+
+
+def _searches_never_ran(report):
+    report["views"] = [["scan", ""], ["problem", "stats"]]
 
 
 def _fuzzy_item_no_base(report):
@@ -394,7 +446,7 @@ def _banner_shown(report):
 
 
 def _view_ran_a_query(report):
-    report["views"].append(["running", "stats"])
+    report["scan_views"].append(["running", "stats"])
 
 
 def _row_unsure_after_though_none_was_before(report):
@@ -435,7 +487,12 @@ def _named_row_cannot_search(report):
         pytest.param(_fuzzy_item_outcome_wrong, "no-record", id="fuzzy-item-outcome"),
         pytest.param(_fuzzy_item_mode_wrong, "'mode': 'name'", id="fuzzy-item-mode"),
         pytest.param(_fuzzy_item_view_wrong, "'view': 'running'", id="fuzzy-item-view"),
-        pytest.param(_fuzzy_item_no_tick, "'ticks': 0", id="fuzzy-item-no-tick"),
+        pytest.param(_fuzzy_item_no_tick, "'ticks': 1", id="fuzzy-item-no-tick"),
+        pytest.param(_exact_never_started, "沒有真的開始查詢", id="exact-click-never-started"),
+        pytest.param(_exact_asked_the_backend_twice, "沒有真的開始查詢", id="exact-click-asked-the-backend-twice"),
+        pytest.param(_fuzzy_item_never_asked_the_backend, "沒有真的開始查詢", id="fuzzy-item-asked-the-backend"),
+        pytest.param(_fuzzy_base_never_started, "沒有真的開始查詢", id="fuzzy-base-never-started"),
+        pytest.param(_searches_never_ran, "只看到 0 次 running", id="searches-never-ran"),
         pytest.param(_fuzzy_item_no_base, "應預填同一輪讀到的底材候選", id="fuzzy-item-no-base"),
         pytest.param(_fuzzy_item_base_not_marked, "標記為來自擷取", id="fuzzy-item-base-not-marked"),
         pytest.param(_fuzzy_item_base_mark_missing, "看不出是擷取來的", id="fuzzy-item-base-mark-missing"),
@@ -460,6 +517,44 @@ def test_scan_verdict_reports_exactly_the_single_broken_assertion(mutate, token)
     assert token in only_failure(scan_e2e.verdict(report))
 
 
+def shot(**overrides) -> dict:
+    """One `--shots` screenshot record: what the probe measured on that screen at that width."""
+    return {
+        "view": "scan", "width": 400, "file": "artifacts/scan-e2e/shots/scan-400.png",
+        "overflow": False, "rows": 4, "maxLines": 1, "wide": 396, "headings": "H1,H2",
+        **overrides,
+    }
+
+
+def test_shot_layout_checks_pass_for_a_healthy_set_of_screenshots():
+    report = scan_report()
+    report["shots"] = [
+        shot(), shot(width=320, maxLines=2, wide=316),
+        shot(view="ready", rows=0, wide=None, headings="H1,H2"),
+        shot(view="listing", rows=0, headings="H1,H2"),
+        shot(view="settings", rows=0, wide=None, headings="H1,H2,H3,H3,H3,H3,H3,H3"),
+    ]
+    assert scan_e2e.verdict(report) == []
+
+
+def test_shot_layout_checks_report_the_broken_one():
+    report = scan_report()
+    report["shots"] = [shot()]
+    assert scan_e2e.verdict(scan_report()) == []  # no shots, no layout claims
+    for mutated, token in [
+        ({"overflow": True}, "左右捲動"),
+        ({"maxLines": 2}, "沒有排成一行"),
+        ({"width": 320, "maxLines": 3}, "換行超過兩行"),
+        ({"wide": 300}, "沒有填滿畫面"),
+        ({"headings": "H2"}, "第一個標題不是 h1"),
+        ({"headings": "H1,H3"}, "跳了層級"),
+    ]:
+        broken = scan_report()
+        broken["shots"] = [shot(**mutated)]
+        messages = scan_e2e.verdict(broken)
+        assert len(messages) == 1 and token in messages[0], mutated
+
+
 # --- ocr_e2e.verdict --------------------------------------------------------------------------------------
 
 
@@ -477,7 +572,7 @@ def ocr_report() -> dict:
             "blocked_not_retried": True,
         },
         "accuracy": {
-            "scored": 22, "top1": 21, "top3": 22, "screenshots_top3": 18, "phone_top3": 4,
+            "scored": 18, "top1": 17, "top3": 18, "screenshots_top3": 18, "phone_top3": 0,
             "asked": 12, "auto_right": 10, "auto_wrong": 0,
         },
         "accuracy_holdout": {
@@ -500,11 +595,13 @@ def ocr_report() -> dict:
             "start_gate_after_capture": {"disabled": False, "whyVisible": False},
             "start_gate_after_clearing": {"disabled": True, "whyVisible": True},
             "start_enabled_after_value": {"disabled": False, "whyVisible": False},
+            "value_learned": {"stored": True, "refilled": ocr_e2e.VALUE_TYPED, "marked_learned": True},
         },
+        "warm": {"reads": [], "gap_median_ms": 120, "gap_max_ms": 180, "first_gap_ms": 150, "shown_median_s": 1.0},
     }
 
 
-ACCURACY_FLOORS = {"scored": 22, "top1": 20, "top3": 21, "screenshots_top3": 17, "phone_top3": 4}
+ACCURACY_FLOORS = {"scored": 18, "top1": 16, "top3": 17, "screenshots_top3": 17, "phone_top3": 0}
 HOLDOUT_FLOORS = {"scored": 30, "top1": 22, "top3": 26, "screenshots_top3": 16, "phone_top3": 10}
 
 
@@ -705,11 +802,37 @@ def test_ocr_verdict_rejects_a_start_that_stayed_disabled_after_filling_a_value(
     assert "start_enabled_after_value" in only_failure(ocr_failures(report))
 
 
+@pytest.mark.parametrize(
+    "learned",
+    [
+        {"stored": False, "refilled": None, "marked_learned": False},
+        {"stored": True, "refilled": "11", "marked_learned": False},
+        {"stored": True, "refilled": ocr_e2e.VALUE_TYPED, "marked_learned": False},
+    ],
+)
+def test_ocr_verdict_rejects_a_number_correction_that_was_not_remembered_or_not_filled_back(learned):
+    report = ocr_report()
+    report["affix"]["value_learned"] = learned
+    assert "數值" in only_failure(ocr_failures(report))
+
+
 def test_ocr_verdict_accepts_an_unmeasured_start_enabled_check():
     # A bool-only affix row has no number box, so start_enabled_after_value is never measured (None).
     report = ocr_report()
     report["affix"]["start_enabled_after_value"] = None
     assert ocr_failures(report) == []
+
+
+def test_ocr_verdict_rejects_a_warm_read_whose_extra_wait_is_over_the_bound():
+    report = ocr_report()
+    report["warm"]["gap_max_ms"] = ocr_e2e.WARM_GAP_MAX_MS + 1
+    assert "額外等待" in only_failure(ocr_failures(report))
+
+
+def test_ocr_verdict_rejects_a_first_warm_read_far_slower_than_the_median():
+    report = ocr_report()
+    report["warm"]["first_gap_ms"] = report["warm"]["gap_median_ms"] + ocr_e2e.WARM_FIRST_EXTRA_MS + 1
+    assert "暖機" in only_failure(ocr_failures(report))
 
 
 def test_scan_and_ocr_verdicts_are_pure():

@@ -27,6 +27,23 @@ LOCK = threading.Lock()
 AGENT = None
 OUTPUT_DIR = TRADERIE_LATEST_DIR
 RUN: dict = {}  # demo-owned fields; AGENT.state is only changed through AGENT.command
+# The demo page loads only its own files and writes page text through textContent; this keeps it that way (no scripts
+# from elsewhere, no framing: a page that frames the demo could trick a click on 「開始查詢」).
+SECURITY_HEADERS = {
+    "Content-Security-Policy": (
+        "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; "
+        "connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    ),
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+}
+
+STATIC_FILES = {
+    "/": ("index.html", "text/html"),
+    "/app.js": ("app.js", "text/javascript"),
+    "/csv.js": ("csv.js", "text/javascript"),
+    "/style.css": ("style.css", "text/css"),
+}
 
 
 def _pick(source, keys):
@@ -194,20 +211,16 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(content)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
+        for name, value in SECURITY_HEADERS.items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(content)
 
     def _serve_static(self, path):
         """The demo page itself: index.html and its assets, with this run's token substituted in."""
-        files = {
-            "/": ("index.html", "text/html"),
-            "/app.js": ("app.js", "text/javascript"),
-            "/csv.js": ("csv.js", "text/javascript"),
-            "/style.css": ("style.css", "text/css"),
-        }
-        if path not in files:
+        if path not in STATIC_FILES:
             return self.send(404, "找不到", "text/plain")
-        name, mime = files[path]
+        name, mime = STATIC_FILES[path]
         content = (ROOT / "static" / name).read_text(encoding="utf-8").replace("__TOKEN__", TOKEN)
         self.send(200, content, mime + "; charset=utf-8")
 
@@ -221,7 +234,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.forbidden():
             return self.send(403, "只接受本機的示範頁面", "text/plain")
-        path = urlparse(self.path).path
+        url = urlparse(self.path)
+        path = url.path
         if path == "/api/state":
             with LOCK:
                 return self.send(200, json.dumps(response_state()))
@@ -232,7 +246,7 @@ class Handler(BaseHTTPRequestHandler):
                 "尚無畫面",
             )
         if path == "/api/raw":
-            view = parse_qs(urlparse(self.path).query).get("view", [""])[0]
+            view = parse_qs(url.query).get("view", [""])[0]
             return self._send_locked(
                 lambda: (RUN.get("market", {}).get(view) or {}).get("text") if view in VIEW_NAMES else None,
                 "text/plain; charset=utf-8",

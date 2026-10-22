@@ -141,7 +141,8 @@ def serve(port: int = 0) -> tuple[ThreadingHTTPServer, int]:
         def log_message(self, *_args):
             pass
 
-        def _send(self, body: bytes, mime: str) -> None:
+        def _send(self, text: str, mime: str) -> None:
+            body = text.encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", mime + "; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -153,14 +154,14 @@ def serve(port: int = 0) -> tuple[ThreadingHTTPServer, int]:
             if path in static:
                 name, mime = static[path]
                 text = (ROOT / "src" / "jev_ultrafast" / "static" / name).read_text(encoding="utf-8")
-                return self._send(text.replace("__TOKEN__", "demo-e2e").encode("utf-8"), mime)
+                return self._send(text.replace("__TOKEN__", "demo-e2e"), mime)
             if path == "/api/state":
-                return self._send(json.dumps(scan_state()).encode("utf-8"), "application/json")
+                return self._send(json.dumps(scan_state()), "application/json")
             if path == "/api/report":
                 body = json.dumps({"report": "# Harlequin Crest 市場資料\n\n| 賣家 |\n| --- |\n"})
-                return self._send(body.encode("utf-8"), "application/json")
+                return self._send(body, "application/json")
             if path == "/api/raw":
-                return self._send(json.dumps({"text": TEXT}).encode("utf-8"), "application/json")
+                return self._send(json.dumps({"text": TEXT}), "application/json")
             self.send_error(404)
 
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)

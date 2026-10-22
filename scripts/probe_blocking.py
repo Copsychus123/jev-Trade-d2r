@@ -15,18 +15,19 @@ Jev quota (the affix path never calls Jev) and changes no product behaviour.
 import argparse
 import asyncio
 import json
-import statistics
 import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from statistics import median
 from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _cdp import Panel, open_dedicated_tab  # noqa: E402
+import _probe  # noqa: E402
+from _cdp import open_dedicated_tab  # noqa: E402
 
 from jev_ultrafast.chrome import BLOCKED_HOSTS, blocked_url_patterns, close_chrome  # noqa: E402
 
@@ -36,7 +37,6 @@ OUT = ROOT / "artifacts" / "blocking"
 QUIET_MS, SETTLE_CAP_MS, MIN_CHARS = 600, 15000, 100
 GRACE_MS = 500  # NAVIGATE_INTERACTIVE_GRACE_MS (extension/src/cdp.js): how long "interactive" may last
 SETTLE_JS = (ROOT / "src" / "jev_ultrafast" / "settle.js").read_text(encoding="utf-8").strip()
-FETCH_JSON = (ROOT / "src" / "jev_ultrafast" / "traderie" / "fetch_json.js").read_text(encoding="utf-8").strip()
 # Every resource the document loaded, with its start and duration relative to navigation start (page clock).
 RESOURCE_JS = (
     "JSON.stringify(performance.getEntriesByType('resource').map(e => "
@@ -45,7 +45,7 @@ RESOURCE_JS = (
 PAGE_JS = "JSON.stringify({u: location.href, n: (document.body ? document.body.innerText : '').length})"
 
 
-class Tab(Panel):
+class Tab(_probe.Tab):
     async def navigate(self, url: str, grace_ms: int = GRACE_MS, timeout_s: float = 30.0) -> dict:
         """`Page.navigate` then poll `readyState`; returns {"how", "ms"} like the product's `navigate`."""
         started = time.monotonic()
@@ -74,9 +74,6 @@ class Tab(Panel):
 
     async def page(self) -> dict:
         return json.loads(await self.evaluate(PAGE_JS))
-
-    async def fetch_json(self, path: str) -> dict:
-        return await self.evaluate(f"({FETCH_JSON})({json.dumps(path)})")
 
 
 def host_of(url: str) -> str:
@@ -140,15 +137,13 @@ async def measure(tab: Tab, url: str, pairs: int) -> list[dict]:
     for blocked in [flag for _ in range(pairs) for flag in (True, False)]:
         row = await run_once(tab, url, blocked)
         rows.append(row)
-        print(f"  {'ON ' if blocked else 'OFF'} navigate {row['navigate_ms']:>5} ms"
-              f"  settle {row['settle_ms']:>5} ms{' (cap)' if row['settle_capped'] else ''}"
-              f"  total {row['total_ms']:>5} ms  ad_blocked {row['ad_blocked']:>2}  ad_served {row['ad_served']:>2}"
-              f"  ad_last {row['ad_last_ms']}  own_last {row['own_last_ms']}")
+        print(
+            f"  {'ON ' if blocked else 'OFF'} navigate {row['navigate_ms']:>5} ms"
+            f"  settle {row['settle_ms']:>5} ms{' (cap)' if row['settle_capped'] else ''}"
+            f"  total {row['total_ms']:>5} ms  ad_blocked {row['ad_blocked']:>2}  ad_served {row['ad_served']:>2}"
+            f"  ad_last {row['ad_last_ms']}  own_last {row['own_last_ms']}"
+        )
     return rows
-
-
-def median(values: list) -> float:
-    return statistics.median(values)
 
 
 def summarize(rows: list[dict], blocked: bool) -> dict:
@@ -263,8 +258,8 @@ async def probe(pairs: int) -> int:
             await tab.send("Network.setBlockedURLs", {"urls": []})
             await tab.navigate(HOME)
             await tab.settle()
-            reply = await tab.fetch_json("/api/diablo2resurrected/properties?global=true")
-            props = reply["body"].get("properties", []) if isinstance(reply.get("body"), dict) else []
+            reply = await tab.fetch_json(_probe.PROPERTIES_PATH)
+            props = _probe.property_list(reply)
             numbers = [p for p in props if p.get("type") == "number"]
             if reply["status"] != 200 or not numbers:
                 print(f"沒有讀到數值屬性清單（status {reply['status']}）；先跑 scripts/login.py？")
@@ -290,7 +285,7 @@ async def probe(pairs: int) -> int:
                 "verdict": {"result": verdict_line[0], "why": verdict_line[1]},
             }
             stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-            (OUT / f"ab-{stamp}.json").write_text(json.dumps(record, ensure_ascii=False, indent=1), encoding="utf-8")
+            _probe.write_json(OUT / f"ab-{stamp}.json", record)
             print(f"\nraw record: artifacts/blocking/ab-{stamp}.json")
             return 0
     finally:

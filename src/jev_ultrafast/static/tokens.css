@@ -1,9 +1,11 @@
-/* One vocabulary for the two surfaces, so a colour has a name instead of a literal at every site.
+/* The design tokens of the two surfaces: colour and metric (spacing, radius, control height), so a value has a name
+ * instead of a literal at every site.
  *
  * These are the side panel's values: the panel is the shipped surface (the local demo is the inspector), so it owns
  * the defaults. A surface with its own skin overrides the names in its own stylesheet - the demo's warm light
- * palette is declared that way in `src/jev_ultrafast/static/style.css`. Naming a role here does not change how
- * anything looks: the panel's stylesheet uses these names for exactly the values it had.
+ * palette is declared that way in `src/jev_ultrafast/static/style.css`. The panel's stylesheet may use only these
+ * names for colour, and the spacing/radius/control names for its metrics; `tests/test_ui_tokens.py` keeps them the
+ * only source.
  *
  * extension/build.py copies this file into the built extension next to `sidepanel.css`, the same way it copies the
  * page scripts; `tests/test_ui_tokens.py` keeps the three files in step.
@@ -29,6 +31,20 @@
   --toast-muted: #ccc;
   --line: rgba(128, 128, 128, 0.35);
   --muted: color-mix(in srgb, CanvasText 62%, Canvas);
+  --surface: color-mix(in srgb, CanvasText 4%, Canvas);
+  --line-strong: color-mix(in srgb, CanvasText 30%, Canvas);
+  --ok-wash: color-mix(in srgb, var(--ok) 10%, Canvas);
+  /* A 4 px scale for gaps and padding, one corner radius, and the two heights of a control (a 320-400 px side panel
+   * is touched with a finger as often as with a mouse). */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --radius: 6px;
+  --radius-pill: 999px;
+  --control-h: 36px;
+  --control-h-lg: 40px;
 }
 
 @media (prefers-color-scheme: dark) {

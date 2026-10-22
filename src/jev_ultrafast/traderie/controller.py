@@ -77,7 +77,7 @@ def _parse_view(view: str, text: str, item_name: str) -> dict[str, Any]:
     else:
         parsed = parse_recent_trades(text)
         if parsed["code"] in ("login_required", "login_or_no_data"):
-            return {"blocked": (parsed["code"], parsed["reason"])}
+            return {"blocked": parsed["reason"]}
         rows = parsed["trades"]
         markers = sum(1 for line in lines if is_trade_start(line))
         empty_text, empty_reason, fallback_reason = EMPTY_RECENT, "目前沒有成交紀錄", parsed["reason"]
@@ -149,8 +149,7 @@ def read_view(browser, item_name: str, view: str) -> dict[str, Any]:
 
     parsed_view = _parse_view(view, text, item_name)
     if parsed_view.get("blocked"):
-        code, reason = parsed_view["blocked"]
-        return _fail(result, "login_required", reason, "BLOCKED")
+        return _fail(result, "login_required", parsed_view["blocked"], "BLOCKED")
     return _cross_check_rows(parsed_view, result, browser)
 
 

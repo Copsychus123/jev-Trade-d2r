@@ -23,7 +23,6 @@ import asyncio
 import json
 import re
 import sys
-import time
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
@@ -31,7 +30,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _cdp import Panel, open_dedicated_tab  # noqa: E402
+from _cdp import open_dedicated_tab  # noqa: E402
+from _probe import GAMES_PATH, PROPERTIES_PATH, Tab, game_features, property_list, write_json  # noqa: E402
 
 from jev_ultrafast.chrome import close_chrome  # noqa: E402
 from jev_ultrafast.traderie.parsing import SIGN_IN_PROMPT, TRADE_MARKERS  # noqa: E402
@@ -42,7 +42,6 @@ HOME = "https://www.traderie.com/diablo2resurrected"
 OUT = ROOT / "artifacts" / "probe"
 TEXT_FIXTURE = ROOT / "tests" / "fixtures" / "home_stats.txt"
 PROPERTIES_FIXTURE = ROOT / "extension" / "test" / "fixtures" / "properties.json"
-FETCH_JSON = (ROOT / "src" / "jev_ultrafast" / "traderie" / "fetch_json.js").read_text(encoding="utf-8").strip()
 QUALITY_NAME = re.compile(r"^(rare|magic|normal|quality)", re.I)
 ITEM_LINE = re.compile(r"^\d+\s*X\s+(.+)$", re.I)
 ABSURD_MIN = 99999
@@ -53,29 +52,8 @@ LINKS_JS = (
 RECENT_LINK = re.compile(r"recent|成交|sold|trade history", re.I)
 
 
-class Tab(Panel):
-    async def settled_text(self, seconds: float = 40) -> tuple[str, str]:
-        """(url, visible text) once the text stopped changing for two reads 1.5 s apart."""
-        deadline = time.monotonic() + seconds
-        last = None
-        while time.monotonic() < deadline:
-            await asyncio.sleep(1.5)
-            state = await self.evaluate(
-                "JSON.stringify({u: location.href, r: document.readyState, "
-                "t: document.body ? document.body.innerText : ''})"
-            )
-            page = json.loads(state)
-            if page["r"] == "complete" and page["t"] == last and len(page["t"]) > 200:
-                return page["u"], page["t"]
-            last = page["t"]
-        raise TimeoutError("頁面沒有穩定下來")
-
-    async def fetch_json(self, path: str) -> dict:
-        return await self.evaluate(f"({FETCH_JSON})({json.dumps(path)})")
-
-
-def write_json(path: Path, value) -> None:
-    path.write_text(json.dumps(value, ensure_ascii=False, indent=1), encoding="utf-8")
+def save_text(name: str, text: str) -> None:
+    (OUT / name).write_text(text, encoding="utf-8")
 
 
 def listing_count(text: str) -> int:
@@ -149,7 +127,7 @@ async def settled_or_now(tab: Tab, name: str) -> tuple[str, str, bool]:
     except TimeoutError:
         url, text = await page_now(tab)
         settled = False
-    (OUT / f"{name}.txt").write_text(text, encoding="utf-8")
+    save_text(f"{name}.txt", text)
     return url, text, settled
 
 
@@ -166,7 +144,7 @@ def pick_properties(props: list[dict]) -> tuple[dict, dict]:
 async def visit(tab: Tab, name: str, query: str, expected: dict[str, str]) -> dict:
     await tab.goto(f"{HOME}{query}")
     url, text = await tab.settled_text()
-    (OUT / f"page_{name}.txt").write_text(text, encoding="utf-8")
+    save_text(f"page_{name}.txt", text)
     return {"url": url, "text": text, "count": listing_count(text), "kept": keeps(url, expected)}
 
 
@@ -195,42 +173,43 @@ async def visit_filter_pages(tab: Tab, k1: str, k2: str, rarity: dict | None) ->
     return pages
 
 
+def _control_fields(prefix: str, final_url: str, text: str, settled: bool, kept_filter: bool | None = None) -> dict:
+    """The result keys one control page is recorded under: what the page settled to and which marker words it has."""
+    signs = trade_signs(text)
+    fields: dict = {f"{prefix}_settled": settled, f"{prefix}_final_url": final_url}
+    if kept_filter is not None:
+        fields[f"{prefix}_kept_filter"] = kept_filter
+    fields.update(
+        {
+            f"{prefix}_listings": listing_count(text),
+            f"{prefix}_text_head": text[:200],
+            f"{prefix}_trade_markers": signs["trade_markers"],
+            f"{prefix}_listing_markers": signs["listing_markers"],
+            f"{prefix}_sign_in_prompt": signs["sign_in_prompt"],
+        }
+    )
+    return fields
+
+
 async def _recent_tab_controls(tab: Tab, query: str, expected: dict[str, str]) -> tuple[dict, str]:
     """No home-page Recent Trades tab exists. As labelled controls, first open the section suffix the site itself uses
     on product pages (/recent) on the same filter address, then a real product's Recent Trades page — the second shows
     what a trade record's own text looks like and that the marker words recognise it. Returns the result keys to record
     and the verdict the section-form control leads to."""
-    updates: dict = {}
-    control = f"{HOME}/recent{query}"
-    updates["section_form_control_url"] = control
-    await tab.goto(control)
-    c_url, c_text, c_settled = await settled_or_now(tab, "recent_tab_section")
-    signs = trade_signs(c_text)
-    updates.update(
-        section_form_settled=c_settled,
-        section_form_final_url=c_url,
-        section_form_kept_filter=keeps(c_url, expected),
-        section_form_listings=listing_count(c_text),
-        section_form_text_head=c_text[:200],
-        section_form_trade_markers=signs["trade_markers"],
-        section_form_listing_markers=signs["listing_markers"],
-        section_form_sign_in_prompt=signs["sign_in_prompt"],
-    )
-    product_control = f"{HOME}/product/harlequin-crest/recent"
-    updates["product_recent_control_url"] = product_control
-    await tab.goto(product_control)
-    p_url, p_text, p_settled = await settled_or_now(tab, "recent_tab_product")
-    p_signs = trade_signs(p_text)
-    updates.update(
-        product_recent_settled=p_settled,
-        product_recent_final_url=p_url,
-        product_recent_listings=listing_count(p_text),
-        product_recent_text_head=p_text[:200],
-        product_recent_trade_markers=p_signs["trade_markers"],
-        product_recent_listing_markers=p_signs["listing_markers"],
-        product_recent_sign_in_prompt=p_signs["sign_in_prompt"],
-    )
-    if signs["trade_markers"] and not signs["listing_markers"]:
+    section_url = f"{HOME}/recent{query}"
+    await tab.goto(section_url)
+    url, text, settled = await settled_or_now(tab, "recent_tab_section")
+    section = _control_fields("section_form", url, text, settled, kept_filter=keeps(url, expected))
+    product_url = f"{HOME}/product/harlequin-crest/recent"
+    await tab.goto(product_url)
+    url, text, settled = await settled_or_now(tab, "recent_tab_product")
+    updates = {
+        "section_form_control_url": section_url,
+        **section,
+        "product_recent_control_url": product_url,
+        **_control_fields("product_recent", url, text, settled),
+    }
+    if section["section_form_trade_markers"] and not section["section_form_listing_markers"]:
         verdict = "可用（與首頁 UI 無關）：/recent 寫法讀得到成交紀錄"
     else:
         verdict = (
@@ -297,6 +276,18 @@ async def probe_recent_tab(tab: Tab, query: str, expected: dict[str, str]) -> di
     return result
 
 
+def _print_control(label: str, recent_tab: dict, prefix: str) -> None:
+    """One control page of the recent-tab probe: its address, the start of its text and which marker words it has."""
+    print(f"  {label} URL: {recent_tab[f'{prefix}_final_url']}")
+    print(f"  {label}前 200 字: {recent_tab[f'{prefix}_text_head']!r}")
+    print(
+        f"  {label}字串: "
+        f"成交={recent_tab[f'{prefix}_trade_markers']} "
+        f"掛單={recent_tab[f'{prefix}_listing_markers']} "
+        f"要登入={recent_tab[f'{prefix}_sign_in_prompt']}"
+    )
+
+
 def _print_recent_tab(recent_tab: dict) -> None:
     """What the recent-tab probe found, printed under the JSON report: its filter page, then whichever control ran."""
     print(f"\n近期成交分頁（帶 filter）：{recent_tab['conclusion']}")
@@ -306,33 +297,15 @@ def _print_recent_tab(recent_tab: dict) -> None:
         print(f"  分頁 URL: {recent_tab['tab_url']}")
         print(f"  分頁前 200 字: {recent_tab['tab_text_head']!r}")
     if recent_tab.get("section_form_final_url"):
-        print(f"  /recent 控制 URL: {recent_tab['section_form_final_url']}")
-        print(f"  /recent 控制前 200 字: {recent_tab['section_form_text_head']!r}")
-        print(
-            "  /recent 控制字串: "
-            f"成交={recent_tab['section_form_trade_markers']} "
-            f"掛單={recent_tab['section_form_listing_markers']} "
-            f"要登入={recent_tab['section_form_sign_in_prompt']}"
-        )
+        _print_control("/recent 控制", recent_tab, "section_form")
     if recent_tab.get("product_recent_final_url"):
-        print(f"  商品頁成交控制 URL: {recent_tab['product_recent_final_url']}")
-        print(f"  商品頁成交控制前 200 字: {recent_tab['product_recent_text_head']!r}")
-        print(
-            "  商品頁成交控制字串: "
-            f"成交={recent_tab['product_recent_trade_markers']} "
-            f"掛單={recent_tab['product_recent_listing_markers']} "
-            f"要登入={recent_tab['product_recent_sign_in_prompt']}"
-        )
+        _print_control("商品頁成交控制", recent_tab, "product_recent")
 
 
 def _write_properties_fixture(props: list[dict]) -> None:
     """The property list reduced to the fields the extension keeps, stored as a test fixture."""
     kept = ("id", "name", "type", "options", "format")
-    reduced = [{k: p.get(k) for k in kept} for p in props]
-    PROPERTIES_FIXTURE.parent.mkdir(parents=True, exist_ok=True)
-    PROPERTIES_FIXTURE.write_text(
-        json.dumps({"properties": reduced}, ensure_ascii=False, indent=1), encoding="utf-8"
-    )
+    write_json(PROPERTIES_FIXTURE, {"properties": [{k: p.get(k) for k in kept} for p in props]})
 
 
 def _decisions(report: dict, rarity: dict | None, quality_values: dict[str, str]) -> dict:
@@ -361,26 +334,21 @@ async def probe(redact: str | None) -> int:
         async with open_dedicated_tab(Tab) as tab:
             await tab.goto(HOME)
             url, text = await tab.settled_text()
-            (OUT / "home.txt").write_text(text, encoding="utf-8")
-            (OUT / "home.url").write_text(url, encoding="utf-8")
+            save_text("home.txt", text)
+            save_text("home.url", url)
             report: dict = {"logged_in": not await tab.evaluate(LOGGED_OUT_JS), "home_url": url}
             if "just a moment" in text.lower():
                 raise SystemExit("Cloudflare 擋住了首頁。請先執行 uv run python scripts/login.py，再試一次")
 
-            games = await tab.fetch_json("/api/games?game=diablo2resurrected")
+            games = await tab.fetch_json(GAMES_PATH)
             write_json(OUT / "games.json", games)
-            features = []
-            if isinstance(games.get("body"), dict):
-                body = games["body"]
-                found = body.get("games", body)
-                features = (found.get("features") if isinstance(found, dict) else None) or []
             report["games_status"] = games["status"]
-            report["stats_flag"] = "LISTINGS:STATS" in features
+            report["stats_flag"] = "LISTINGS:STATS" in game_features(games.get("body"))
 
-            props_reply = await tab.fetch_json("/api/diablo2resurrected/properties?global=true")
+            props_reply = await tab.fetch_json(PROPERTIES_PATH)
             write_json(OUT / "properties.json", props_reply)
             report["properties_status"] = props_reply["status"]
-            props = props_reply["body"].get("properties", []) if isinstance(props_reply.get("body"), dict) else []
+            props = property_list(props_reply)
             report["properties_count"] = len(props)
             if props_reply["status"] != 200 or not props:
                 report["decision"] = "STOP: no property list"

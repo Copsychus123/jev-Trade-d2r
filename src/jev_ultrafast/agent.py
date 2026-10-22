@@ -186,7 +186,12 @@ class Agent:
         decision and now, and the controller reads and checks the live page itself right after, so no freshness gate."""
         if selected != "DONE":
             self._block(state)
-        elif not self._advance_phase(state):
+        else:
+            self._end_phase(state)
+
+    def _end_phase(self, state):
+        """The phase is over: hand off to the next one, or finish the run after the last."""
+        if not self._advance_phase(state):
             self._finish_run(state)
 
     def _advance_phase(self, state):
@@ -248,8 +253,7 @@ class Agent:
         state["rule_events"].append(
             {"step": len(state["history"]), "phase": state["phase"], "label": label, "count": limit}
         )
-        if not self._advance_phase(state):
-            self._finish_run(state)
+        self._end_phase(state)
         return True
 
     def snapshot(self):
@@ -450,8 +454,10 @@ class Agent:
         )
         if self._stop_if_off_scope(state):
             return
-        state["status"] = "blocked" if self._no_progress(state) else "ready"
-        if state["status"] == "ready":
+        if self._no_progress(state):
+            state["status"] = "blocked"
+        else:
+            state["status"] = "ready"
             self._finish_phase_by_rule(state)
 
     def close(self):

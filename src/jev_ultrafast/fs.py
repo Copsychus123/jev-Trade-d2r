@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from contextlib import suppress
 from pathlib import Path
 
 
@@ -15,8 +16,5 @@ def write_text(path: Path | str, text: str) -> None:
         temp.write_text(text, encoding="utf-8")
         os.replace(temp, target)
     finally:
-        if temp.exists():
-            try:
-                temp.unlink()
-            except OSError:
-                pass
+        with suppress(OSError):
+            temp.unlink(missing_ok=True)

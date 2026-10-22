@@ -161,27 +161,24 @@ def _item_line(clean_prefix: list[str], item_name: str | None) -> tuple[str | No
     return item_line, item_idx
 
 
+def _is_rating(line: str) -> bool:
+    """A rating line such as "(98%)": wrapped in parentheses."""
+    return line.startswith("(") and line.endswith(")")
+
+
 def _home_seller(clean_prefix: list[str], item_idx: int) -> tuple[str | None, str | None]:
     """The seller and rating of a home-page card, scanned backwards from the item line."""
-    seller = None
-    rating = None
     for i in range(item_idx - 1, -1, -1):
-        entry = clean_prefix[i]
-        if entry.startswith("(") and entry.endswith(")"):
-            rating = entry
-            seller = clean_prefix[i - 1] if i > 0 else None
-            break
-    return seller, rating
+        if _is_rating(clean_prefix[i]):
+            return (clean_prefix[i - 1] if i > 0 else None), clean_prefix[i]
+    return None, None
 
 
 def _card_stats(mid_lines: list[str], defense: int | None) -> list[str]:
     """The stat lines of a card: its defense line when it has one, then the middle lines that are item stats."""
-    stats_list = [f"{defense} Defense"] if defense is not None else []
-    for entry in mid_lines:
-        low = entry.lower()
-        if any(term in low for term in STAT_TERMS):
-            stats_list.append(entry)
-    return stats_list
+    stats = [f"{defense} Defense"] if defense is not None else []
+    stats += [entry for entry in mid_lines if any(term in entry.lower() for term in STAT_TERMS)]
+    return stats
 
 
 def _ask_fields(clean_prefix: list[str], trade_idx: int, card: list[str]) -> tuple[str, str | None]:
@@ -207,12 +204,8 @@ def _tag_text(line: str) -> str:
 
 def _card_affixes(mid_lines: list[str]) -> list[str]:
     """affixes: mid_lines excluding env/tag/quality words (mirrors the JS logic)"""
-    affixes_list: list[str] = []
-    for entry in mid_lines:
-        cleaned = _tag_text(entry)
-        if cleaned and cleaned.lower() not in CARD_ENV_TAGS:
-            affixes_list.append(cleaned)
-    return affixes_list
+    cleaned_lines = (_tag_text(entry) for entry in mid_lines)
+    return [cleaned for cleaned in cleaned_lines if cleaned and cleaned.lower() not in CARD_ENV_TAGS]
 
 
 def _trade_idx(clean_prefix: list[str]) -> int:
@@ -235,14 +228,11 @@ def _card_seller_rating(
         if seller is None or rating is None:
             return None
         return seller, rating
-    seller = clean_prefix[0]
-    rating = None
-    if len(clean_prefix) > 1 and clean_prefix[1].startswith("(") and clean_prefix[1].endswith(")"):
-        rating = clean_prefix[1]
-    return seller, rating
+    rating = clean_prefix[1] if len(clean_prefix) > 1 and _is_rating(clean_prefix[1]) else None
+    return clean_prefix[0], rating
 
 
-def _card_data(card: list[str], item_name: str) -> dict | None:
+def _card_data(card: list[str], item_name: str | None) -> dict | None:
     """Parse one card's raw lines into ListingCard keyword fields, or None when this card is not a listing."""
     clean_prefix = [entry for entry in card if entry.lower() not in LISTING_NOISE_LINES]
     if not clean_prefix:
@@ -343,18 +333,9 @@ def parse_trading_txt(text_content: str, *, item_name: str | None = "Harlequin C
     item_name = item_name or None
 
     lines = [line.replace("\xa0", " ") for line in _text_lines(text_content)]
-
     start, end = _listing_bounds(lines)
-    cards_raw = _split_cards(lines[start:end])
-
-    listings: list[ListingCard] = []
-
-    for card in cards_raw:
-        data = _card_data(card, item_name)
-        if data is not None:
-            listings.append(ListingCard(**data))
-
-    return listings
+    card_fields = (_card_data(card, item_name) for card in _split_cards(lines[start:end]))
+    return [ListingCard(**data) for data in card_fields if data is not None]
 
 
 def _answer_token(line: str) -> str | None:

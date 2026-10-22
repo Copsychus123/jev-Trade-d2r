@@ -40,7 +40,7 @@ E2E_DIST = ROOT / "extension" / "dist-e2e"  # never extension/dist: that one is 
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _cdp import Environment, attach, new_tab_ws  # noqa: E402
+from _cdp import Environment, Panel, attach, new_tab_ws  # noqa: E402
 from stub_backend import STUB_SERVER  # noqa: E402
 
 from jev_ultrafast.chrome import CHROME_PORT, PROFILE_DIR, chrome_binary  # noqa: E402
@@ -49,6 +49,14 @@ DEBUG_PORT = 9356
 BACKEND_PORT = 8788
 LOCAL_API = f"http://127.0.0.1:{BACKEND_PORT}"
 DONE = "查詢完成，兩段資料都通過檢查"
+PERF_DIR = ROOT / "artifacts" / "perf"
+LAYER_LABELS = {"table": "查表直接開啟", "search": "站內搜尋", "base": "底材清單"}  # as in SNAPSHOT's `labels`
+
+
+class SidePanel(Panel):
+    """The extension's side-panel page: ready once its document is complete and the start button exists."""
+
+    READY_JS = "document.readyState === 'complete' && !!document.getElementById('start')"
 
 
 def say(message: str) -> None:
@@ -71,7 +79,7 @@ def _version(port: int) -> dict | None:
         return None
 
 
-async def _cdp(port: int, method: str, params: dict | None = None, wait: float = 10):
+async def _browser_command(port: int, method: str, params: dict | None = None, wait: float = 10):
     version = _version(port)
     if version is None:
         return None
@@ -192,7 +200,7 @@ def free_profile() -> None:
     if _version(CHROME_PORT) is None:
         return
     say("關閉專用 Chrome（它和測試共用登入資料夾）…")
-    asyncio.run(_cdp(CHROME_PORT, "Browser.close", wait=3))
+    asyncio.run(_browser_command(CHROME_PORT, "Browser.close", wait=3))
     for _ in range(20):
         if _version(CHROME_PORT) is None:
             time.sleep(1)
@@ -243,7 +251,7 @@ def launch_chrome(headed: bool, extra_args: tuple[str, ...] = ()) -> subprocess.
 
 def load_extension() -> str:
     path = str(E2E_DIST.resolve())
-    response = asyncio.run(_cdp(DEBUG_PORT, "Extensions.loadUnpacked", {"path": path}))
+    response = asyncio.run(_browser_command(DEBUG_PORT, "Extensions.loadUnpacked", {"path": path}))
     if not response or "result" not in response:
         raise Environment("Chrome 無法載入擴充功能（headless 可能不支援，請加 --headed）")
     return response["result"]["id"]
@@ -308,8 +316,6 @@ SNAPSHOT = """(() => {
   });
 })()"""
 
-PERF_DIR = ROOT / "artifacts" / "perf"
-
 
 def timing_rows(run: dict | None) -> list[tuple[str, int]]:
     """(stage, ms) for each timeline entry of the panel's last query, in order."""
@@ -333,7 +339,9 @@ def report_timing(run: dict | None) -> None:
     path.write_text(json.dumps(run, ensure_ascii=False, indent=2), encoding="utf-8")
     say(f"計時資料：{path.relative_to(ROOT)}")
 
+
 ROW_SELECTOR = {"trading": "#trading-list li", "recent-trades": "#recent-trades-list li"}
+VIEWS = (("trading", "目前掛單"), ("recent-trades", "近期成交"))  # the two result tabs: element prefix, label
 
 PROGRESS_KEYS = ("view", "status", "step", "pills", "rows", "quota", "locked")
 
@@ -415,6 +423,7 @@ async def check_filter(evaluate) -> dict:
         "csv_lines": len(lines) if text else 0,
         "cleared_count": cleared,
     }
+
 
 # The pages each tab was read from, taken from what 前往網站 would open (opening is intercepted, nothing opens).
 OPEN_URLS = """(async () => {
@@ -504,26 +513,28 @@ async def _collect_csv(evaluate, prefixes) -> dict:
     return csv
 
 
+def fill_query_form_js(code: str, item: str, load_more: int) -> str:
+    """JS that enters the invite code (when there is one), picks the name search and sets the item and Load More count.
+    The code is only held in memory by the panel until the backend accepts it (first successful start)."""
+    return (
+        f"(() => {{ if ({json.dumps(code)}) {{ document.getElementById('welcome-invite').value = {json.dumps(code)};"
+        " document.getElementById('welcome-go').click(); }"
+        " window.__jevChooseMode('name');"
+        f" document.getElementById('item').value = {json.dumps(item)};"
+        # loadMore is remembered by the panel: start every run from 0
+        " for (let i = 0; i < 5; i++) document.getElementById('more-minus').click();"
+        f" for (let i = 0; i < {load_more}; i++) document.getElementById('more-plus').click();"
+        " })()"
+    )
+
+
 async def drive(ws_url: str, code: str, item: str, load_more: int, timeout: int) -> dict:
-    async with attach(ws_url) as panel:
+    async with attach(ws_url, SidePanel) as panel:
         evaluate = panel.evaluate
 
-        for _ in range(40):  # the panel page must be loaded before it can be driven
-            if await evaluate("document.readyState === 'complete' && !!document.getElementById('start')"):
-                break
-            await asyncio.sleep(0.5)
-        else:
-            raise Environment("側邊欄頁面沒有載入")
+        await panel.wait_ready("側邊欄頁面沒有載入")  # the panel page must be loaded before it can be driven
         await evaluate(HOOKS)
-        # The code is only held in memory until the backend accepts it (first successful start).
-        await evaluate(
-            f"(() => {{ document.getElementById('welcome-invite').value = {json.dumps(code)};"
-            " document.getElementById('welcome-go').click();"
-            " document.getElementById('choose-name').click();"
-            f" document.getElementById('item').value = {json.dumps(item)};"
-            f" for (let i = 0; i < {load_more}; i++) document.getElementById('more-plus').click();"
-            " })()"
-        )
+        await evaluate(fill_query_form_js(code, item, load_more))
         await evaluate("document.getElementById('start').click()")
         say("查詢中…")
         result, locked, samples_ok, samples_failed = await _sample_until_idle(evaluate, timeout)
@@ -544,13 +555,63 @@ async def drive(ws_url: str, code: str, item: str, load_more: int, timeout: int)
         return result
 
 
+def _paging_failures(result: dict) -> list[str]:
+    """Each tab with more than one page must show 10 rows, reach page 2 with another first row, and come back."""
+    failures = []
+    for index, (prefix, label) in enumerate(VIEWS):
+        total, paging = result["rows"][index], result["paging"].get(prefix)
+        if total > 10:
+            if result["shown"][index] != 10:
+                failures.append(f"{label} 第一頁顯示 {result['shown'][index]} 筆，應為 10 筆")
+            if not paging["page2"]["page"].startswith("第 2 /") or not paging["page2"]["prev"]:
+                failures.append(f"{label} 下一頁沒有切到第 2 頁：{paging['page2']['page']}")
+            if paging["page2"]["first"] == paging["first"]:
+                failures.append(f"{label} 第 2 頁的第一筆和第 1 頁相同")
+            if not paging["back"].startswith("第 1 /"):
+                failures.append(f"{label} 上一頁沒有回到第 1 頁：{paging['back']}")
+    return failures
+
+
+def _csv_failures(result: dict, item: str) -> list[str]:
+    """Each filled tab's CSV file (rows plus header, file name) and its copied text (same rows, same column count)."""
+    failures = []
+    safe_name = "".join(c if c.isascii() and (c.isalnum() or c in " _-") else "_" for c in item).strip()
+    for (prefix, label), rows in zip(VIEWS, result["rows"], strict=True):
+        if not rows:
+            continue
+        csv = result["csv"][prefix]
+        lines = csv_lines(csv["text"])
+        if len(lines) != rows + 1:
+            failures.append(f"{label} CSV 有 {len(lines)} 行，應為 {rows + 1}")
+        copied = csv["copied"].rstrip("\n").split("\n") if csv["copied"] else []
+        if len(copied) != rows + 1 or len({line.count("\t") for line in copied}) != 1:
+            failures.append(f"{label} 複製內容不對：{len(copied)} 行，應為 {rows + 1} 行且欄數一致")
+        if csv["name"] != f"traderie-{safe_name}-{label}.csv":
+            failures.append(f"{label} CSV 檔名不對：{csv['name']}")
+    return failures
+
+
+def _filter_failures(flt: dict) -> list[str]:
+    """The display filter: kept rows never exceed the read ones, and the count, CSV and cleared count agree."""
+    failures = []
+    if flt["kept"] > flt["read"]:
+        failures.append(f"篩選後的筆數 {flt['kept']} 比讀到的 {flt['read']} 還多")
+    if flt["active_count"] != f"{flt['kept']}/{flt['read']}":
+        failures.append(f"篩選中分頁筆數應為「{flt['kept']}/{flt['read']}」，實際：{flt['active_count']!r}")
+    expected = flt["kept"] + 1 if flt["kept"] else 0  # nothing kept: the download button is off, no file
+    if flt["csv_lines"] != expected:
+        failures.append(f"篩選後 CSV 有 {flt['csv_lines']} 行，應為 {expected}")
+    if flt["cleared_count"] != str(flt["read"]):
+        failures.append(f"清除篩選後筆數應回到 {flt['read']}，實際：{flt['cleared_count']!r}")
+    return failures
+
+
 def check(
     result: dict, item: str, load_more: int, expect_layer: str | None = None, expect_not_found: bool = False
 ) -> list[str]:
     failures = []
-    labels = {"table": "查詢方式：查表直接開啟", "search": "查詢方式：站內搜尋", "base": "查詢方式：底材清單"}
-    if expect_layer and labels[expect_layer] not in result["lookup"]:
-        failures.append(f"查詢方式不對，預期 {labels[expect_layer]}，實際：{result['lookup']!r}")
+    if expect_layer and f"查詢方式：{LAYER_LABELS[expect_layer]}" not in result["lookup"]:
+        failures.append(f"查詢方式不對，預期 查詢方式：{LAYER_LABELS[expect_layer]}，實際：{result['lookup']!r}")
     if expect_not_found:
         if "找不到這個裝備" not in result["status"]:
             failures.append(f"預期「找不到這個裝備」，實際狀態：{result['status']}")
@@ -567,17 +628,7 @@ def check(
         failures.append(f"表格是空的：{result['rows']}")
     if load_more and not result["rows"][0] > 50:
         failures.append(f"載入更多 {load_more} 批，掛單只有 {result['rows'][0]} 筆")
-    for index, (prefix, label) in enumerate((("trading", "目前掛單"), ("recent-trades", "近期成交"))):
-        total, paging = result["rows"][index], result["paging"].get(prefix)
-        if total > 10:
-            if result["shown"][index] != 10:
-                failures.append(f"{label} 第一頁顯示 {result['shown'][index]} 筆，應為 10 筆")
-            if not paging["page2"]["page"].startswith("第 2 /") or not paging["page2"]["prev"]:
-                failures.append(f"{label} 下一頁沒有切到第 2 頁：{paging['page2']['page']}")
-            if paging["page2"]["first"] == paging["first"]:
-                failures.append(f"{label} 第 2 頁的第一筆和第 1 頁相同")
-            if not paging["back"].startswith("第 1 /"):
-                failures.append(f"{label} 上一頁沒有回到第 1 頁：{paging['back']}")
+    failures += _paging_failures(result)
     if result["locked_while_running"] is not True:
         failures.append("查詢中輸入欄、載入批數或設定沒有被鎖住")
     if result["locked_after"]:
@@ -585,31 +636,9 @@ def check(
     roots = [re.sub(r"/recent/?$", "", url or "") for url in result["urls"]]
     if not roots[0] or roots[0] != roots[1]:
         failures.append(f"兩段讀的不是同一個商品頁：{result['urls']}")
-    safe_name = "".join(c if c.isascii() and (c.isalnum() or c in " _-") else "_" for c in item).strip()
-    views = (("trading", "目前掛單", result["rows"][0]), ("recent-trades", "近期成交", result["rows"][1]))
-    for prefix, label, rows in views:
-        if not rows:
-            continue
-        csv = result["csv"][prefix]
-        lines = csv_lines(csv["text"])
-        if len(lines) != rows + 1:
-            failures.append(f"{label} CSV 有 {len(lines)} 行，應為 {rows + 1}")
-        copied = csv["copied"].rstrip("\n").split("\n") if csv["copied"] else []
-        if len(copied) != rows + 1 or len({line.count("\t") for line in copied}) != 1:
-            failures.append(f"{label} 複製內容不對：{len(copied)} 行，應為 {rows + 1} 行且欄數一致")
-        if csv["name"] != f"traderie-{safe_name}-{label}.csv":
-            failures.append(f"{label} CSV 檔名不對：{csv['name']}")
-    flt = result.get("filter")
-    if flt:
-        if flt["kept"] > flt["read"]:
-            failures.append(f"篩選後的筆數 {flt['kept']} 比讀到的 {flt['read']} 還多")
-        if flt["active_count"] != f"{flt['kept']}/{flt['read']}":
-            failures.append(f"篩選中分頁筆數應為「{flt['kept']}/{flt['read']}」，實際：{flt['active_count']!r}")
-        expected = flt["kept"] + 1 if flt["kept"] else 0  # nothing kept: the download button is off, no file
-        if flt["csv_lines"] != expected:
-            failures.append(f"篩選後 CSV 有 {flt['csv_lines']} 行，應為 {expected}")
-        if flt["cleared_count"] != str(flt["read"]):
-            failures.append(f"清除篩選後筆數應回到 {flt['read']}，實際：{flt['cleared_count']!r}")
+    failures += _csv_failures(result, item)
+    if result.get("filter"):
+        failures += _filter_failures(result["filter"])
     return failures
 
 
@@ -623,7 +652,7 @@ def check_flags(args) -> None:
 
 def cleanup(chrome, backend) -> None:
     for step in (
-        lambda: asyncio.run(_cdp(DEBUG_PORT, "Browser.close", wait=3)),
+        lambda: asyncio.run(_browser_command(DEBUG_PORT, "Browser.close", wait=3)),
         lambda: chrome and chrome.wait(timeout=10),
     ):
         try:
