@@ -15,7 +15,7 @@
     </header>
 
     <main id="ocr-drop">
-      <div id="banner" class="banner" role="alert" hidden>
+      <div id="banner" class="banner notice" data-tone="bad" role="alert" hidden>
         <p id="banner-message" class="banner-message"></p>
         <p id="banner-hint" class="banner-hint" hidden></p>
         <div class="row">
@@ -31,84 +31,90 @@
         <label for="welcome-invite">邀請碼</label>
         <input id="welcome-invite" type="password" autocomplete="off" placeholder="貼上邀請碼" />
         <button id="welcome-go" type="submit" class="primary wide">確認並開始使用</button>
-        <p class="muted">沒有邀請碼？請向管理員索取</p>
+        <p class="help">沒有邀請碼？請向管理員索取</p>
       </form>
 
       <!-- 設定 -->
       <section id="part-settings" hidden>
-        <button id="settings-back" type="button" class="link">← 返回</button>
-        <h2>設定</h2>
-
-        <h3>邀請碼</h3>
-        <div class="row between">
-          <span id="invite-masked" class="masked"></span>
-          <button id="invite-change" type="button">更換</button>
-        </div>
-        <form id="invite-edit" class="row" hidden>
-          <input id="invite-new" type="password" autocomplete="off" placeholder="新的邀請碼" aria-label="新的邀請碼" />
-          <button id="invite-new-ok" type="submit">確認</button>
-        </form>
-        <p id="invite-note" class="muted" hidden></p>
-        <p id="invite-quota" class="muted" hidden></p>
-
-        <h3>篩選（只影響畫面、複製和 CSV）</h3>
-        <p class="muted small">網站讀完之後才篩，改篩選不會重新查詢，也不會用掉次數。網站沒標示的資料，篩選時會被隱藏。</p>
-        <div id="filter-fields"></div>
-        <div class="row pair">
-          <button id="filter-preset" type="button">常用：PC · Softcore · Ladder</button>
-          <button id="filter-clear" type="button">清除</button>
+        <div class="screen-head">
+          <button id="settings-back" type="button" class="link back">← 返回</button>
+          <h2 class="screen-title">設定</h2>
         </div>
 
-        <h3>截圖辨識</h3>
-        <p class="muted small">辨識引擎：PP-OCRv6（同一個模型支援中、英、日、韓等多種語言，會自動判斷，不必選語言）。</p>
-        <label class="check"><input id="ocr-auto" type="checkbox" checked /> 放入圖片後自動辨識</label>
-        <p class="muted small">第一次使用需下載辨識模型（約 31.8 MB），只下載一次，存在這個瀏覽器裡，之後可離線使用；模型已經下載好時，放入圖片才會自動辨識。</p>
+        <section class="settings-group" aria-labelledby="set-invite">
+          <h3 id="set-invite">邀請碼</h3>
+          <div class="row between">
+            <span id="invite-masked" class="masked"></span>
+            <button id="invite-change" type="button">更換</button>
+          </div>
+          <form id="invite-edit" class="row" hidden>
+            <input id="invite-new" type="password" autocomplete="off" placeholder="新的邀請碼" aria-label="新的邀請碼" />
+            <button id="invite-new-ok" type="submit">確認</button>
+          </form>
+          <p id="invite-note" class="help" hidden></p>
+          <p id="invite-quota" class="help" hidden></p>
+        </section>
 
-        <h3>學習紀錄</h3>
-        <p class="muted small">你在截圖辨識或裝備掃描裡點選過、或自己輸入過的名稱，會記在這台電腦上；下次同樣的辨識結果出現時，會把你選過的名稱排在第一個。選過兩次以上才會自動填入，只選過一次還是會問你。只存在這台電腦，不會傳到任何地方，也不會存圖片或整段辨識文字。</p>
-        <p id="learn-count" class="muted"></p>
-        <div class="row">
-          <button id="learn-clear" type="button" hidden>清除學習紀錄</button>
-          <span id="learn-confirm" class="row" hidden>
-            <span>確定全部清除嗎？</span>
-            <button id="learn-clear-yes" type="button">確定清除</button>
-            <button id="learn-clear-no" type="button">取消</button>
-          </span>
-        </div>
-        <details id="learn-details" hidden>
-          <summary>看看記住了什麼</summary>
-          <ul id="learn-list" class="listings"></ul>
+        <section class="settings-group" aria-labelledby="set-listing">
+          <h3 id="set-listing">上架預設</h3>
+          <div id="listing-defaults" class="fields">
+            <label for="listing-platform">平台</label>
+            <select id="listing-platform"></select>
+            <label for="listing-mode">模式</label>
+            <select id="listing-mode"></select>
+            <label for="listing-ladder">天梯</label>
+            <select id="listing-ladder"></select>
+            <label for="listing-version">版本</label>
+            <select id="listing-version"></select>
+          </div>
+        </section>
+
+        <details id="settings-advanced" class="settings-group settings-fold">
+          <summary>進階</summary>
+          <h3 id="set-filter">篩選</h3>
+          <div id="filter-fields" class="fields"></div>
+          <div class="row pair">
+            <button id="filter-preset" type="button">常用：PC · Softcore · Ladder</button>
+            <button id="filter-clear" type="button">清除</button>
+          </div>
+          <div id="more-box">
+            <h3 id="set-query">名稱查詢</h3>
+            <div class="stepper-row">
+              <span id="more-label">多讀幾批</span>
+              <div class="stepper" role="group" aria-labelledby="more-label">
+                <button id="more-minus" type="button" aria-label="少讀一批">−</button>
+                <output id="more-value" aria-live="polite">0</output>
+                <button id="more-plus" type="button" aria-label="多讀一批">+</button>
+              </div>
+            </div>
+          </div>
         </details>
-      </section>
 
-      <!-- 第一步：選查法 -->
-      <section id="part-choose" class="choose" aria-labelledby="choose-title" hidden>
-        <h2 id="choose-title">今天想搜尋什麼？</h2>
-        <button id="choose-name" type="button" class="choice" aria-labelledby="choose-name-title" aria-describedby="choose-name-sub choose-name-eg">
-          <span id="choose-name-title" class="choice-title">精準搜尋</span>
-          <span id="choose-name-sub" class="choice-sub">暗金、套裝等有固定名稱的裝備，輸入名稱就能查</span>
-          <span id="choose-name-eg" class="choice-eg">例：諧角之冠、Shako、塔拉夏的守護</span>
-        </button>
-        <button id="choose-stats" type="button" class="choice" aria-labelledby="choose-stats-title" aria-describedby="choose-stats-sub choose-stats-eg">
-          <span id="choose-stats-title" class="choice-title">模糊搜尋</span>
-          <span id="choose-stats-sub" class="choice-sub">名稱隨機的裝備，用底材和詞綴條件找</span>
-          <span id="choose-stats-eg" class="choice-eg">例：戒指＋施法速度 10 以上</span>
-        </button>
-        <button id="choose-scan" type="button" class="choice" aria-labelledby="choose-scan-title" aria-describedby="choose-scan-sub choose-scan-eg">
-          <span id="choose-scan-title" class="choice-title">裝備掃描</span>
-          <span id="choose-scan-sub" class="choice-sub">分享遊戲視窗，滑鼠停在每件裝備上，自動辨識並記錄（只存這一次）</span>
-          <span id="choose-scan-eg" class="choice-eg">例：整理倉庫、一次估一整頁的價</span>
-        </button>
-        <p class="muted help">也可以直接貼上或拖入裝備截圖，程式會依辨識結果幫你選。</p>
+        <section class="settings-group settings-danger" aria-labelledby="set-reset">
+          <h3 id="set-reset">重置</h3>
+          <p id="learn-count" class="muted"></p>
+          <div class="row">
+            <button id="learn-clear" type="button" class="danger" hidden>重置</button>
+            <span id="learn-confirm" class="row" hidden>
+              <span>確定重置嗎？</span>
+              <button id="learn-clear-yes" type="button" class="danger">確定重置</button>
+              <button id="learn-clear-no" type="button">取消</button>
+            </span>
+          </div>
+          <details id="learn-details" hidden>
+            <summary>看看會被重置的內容</summary>
+            <ul id="learn-list" class="listings"></ul>
+          </details>
+        </section>
       </section>
 
       <!-- 輸入裝備名稱 -->
       <section id="part-form" hidden>
-        <div class="mode-chosen">
-          <span id="mode-title" class="mode-title"></span>
-          <button id="mode-change" type="button" class="link">← 返回</button>
+        <div class="screen-head">
+          <button id="mode-change" type="button" class="link back">← 返回</button>
+          <h2 id="mode-title" class="screen-title"></h2>
         </div>
-        <p id="mode-help" class="muted help"></p>
+        <p id="mode-help" class="help"></p>
 
         <label id="item-label" for="item">裝備名稱</label>
         <div class="field">
@@ -119,7 +125,7 @@
           <button id="ocr-pick" type="button" class="field-icon" aria-label="用截圖查名稱">📷<i id="ocr-dot" hidden></i></button>
           <div id="ocr-hint" class="tooltip" hidden>用截圖查名稱<br /><small>或按 Ctrl+V、拖圖進來</small></div>
         </div>
-        <p id="item-help" class="muted help">中文或英文都可以，也可貼上截圖</p>
+        <p id="item-help" class="help">中文或英文都可以，也可貼上截圖</p>
         <span id="ocr-tag" class="tag" hidden>● 來自截圖，請確認</span>
         <div id="ocr-dropzone" class="dropzone" hidden>把圖片拖到這裡放開</div>
         <input id="ocr-file" type="file" accept="image/*" hidden />
@@ -138,62 +144,112 @@
               <pre id="ocr-text"></pre>
             </details>
           </div>
-          <p id="ocr-time" class="muted small"></p>
+          <p id="ocr-time" class="help"></p>
         </div>
 
         <div id="part-stats" hidden>
           <fieldset id="quality-group" class="quality">
             <legend>品質</legend>
           </fieldset>
-          <h2>詞綴條件 <small class="muted">有勾選的必填</small></h2>
+          <h3>詞綴條件 <small class="muted">有勾選的必填</small></h3>
           <div class="row pair">
             <button id="affix-fill" type="button" disabled>從截圖填入</button>
             <select id="affix-select" aria-label="新增條件"></select>
           </div>
           <ul id="affix-list" class="affixes"></ul>
-          <p id="affix-empty" class="muted help">（還沒有條件）</p>
-          <p class="muted help">搜尋之前請確認，OCR可能讀錯。</p>
-        </div>
-
-        <div id="more-box">
-          <div class="stepper-row">
-            <span id="more-label">多讀幾批</span>
-            <div class="stepper" role="group" aria-labelledby="more-label">
-              <button id="more-minus" type="button" aria-label="少讀一批">−</button>
-              <output id="more-value" aria-live="polite">0</output>
-              <button id="more-plus" type="button" aria-label="多讀一批">+</button>
-            </div>
-          </div>
-          <p class="muted help">每多一批，約多等 8 秒</p>
+          <p id="affix-empty" class="help">（還沒有條件）</p>
+          <p class="help">搜尋之前請確認，OCR可能讀錯。</p>
         </div>
       </section>
 
-      <!-- 裝備掃描：分享遊戲視窗，滑鼠停在每件裝備上 -->
+      <!-- 裝備掃描（首頁）：分享遊戲視窗，滑鼠停在每件裝備上 -->
       <section id="part-scan" hidden>
-        <div class="mode-chosen">
-          <span class="mode-title">裝備掃描</span>
-          <button id="scan-change" type="button" class="link">← 返回</button>
+        <div class="screen-head">
+          <h2 id="scan-title" class="screen-title" tabindex="-1">裝備掃描</h2>
         </div>
-        <p class="muted help">在遊戲裡把滑鼠移到每件裝備上，停約半秒。遊戲請用「視窗化全螢幕」或視窗模式。程式不會操作遊戲，只看畫面；完全相同的兩件只記一筆。</p>
+        <p class="help">在遊戲裡把滑鼠停在裝備上約半秒，程式只看畫面，不會操作遊戲。</p>
+        <p id="scan-block" class="notice" data-tone="bad" role="status" hidden></p>
         <button id="scan-start" type="button" class="primary wide">選擇遊戲視窗並開始</button>
-        <button id="scan-stop" type="button" hidden>停止掃描</button>
+        <button id="scan-stop" type="button" class="wide" hidden>停止掃描</button>
+        <label class="help"><input id="scan-stop-first" type="checkbox" checked /> 識別到 1 件就自動結束掃描</label>
+        <button id="scan-upload" type="button" class="wide">上傳檔案</button>
+        <input id="scan-file" type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" multiple hidden />
         <p id="scan-status" role="status"></p>
-        <div class="actions" role="group" aria-label="掃描紀錄">
+        <div class="actions" role="group" aria-label="匯出或清除掃描紀錄">
           <button id="scan-csv" type="button" class="primary" disabled>下載 CSV</button>
           <button id="scan-clear" type="button" disabled>清除紀錄</button>
         </div>
-        <ul id="scan-list" class="listings" hidden></ul>
+        <ul id="scan-list" class="listings" aria-label="掃描紀錄" hidden></ul>
+        <p id="scan-empty" class="empty" role="status">還沒有紀錄。按上面的按鈕分享遊戲視窗批量掃描，或上傳單張裝備截圖（png、jpg）。遊戲請用「視窗化全螢幕」或視窗模式。</p>
         <details>
           <summary class="muted">掃描統計</summary>
-          <p id="scan-stats" class="muted small"></p>
+          <p id="scan-stats" class="help"></p>
         </details>
       </section>
 
-      <!-- 查詢中／查完之後：一行摘要 -->
-      <div id="part-summary" class="summary" hidden>
-        <span id="summary-text" class="summary-text"></span>
+      <!-- TR交易：把掃描到的裝備掛到 Traderie -->
+      <section id="part-listing" hidden>
+        <div class="screen-head">
+          <button id="listing-change" type="button" class="link back">← 返回</button>
+          <h2 class="screen-title">TR交易</h2>
+        </div>
+        <div class="listing-card">
+          <p id="listing-item" class="listing-item"></p>
+          <div id="listing-rarity-row" class="fields" hidden>
+            <label for="listing-rarity">品質</label>
+            <select id="listing-rarity"></select>
+          </div>
+        </div>
+
+        <h3 class="listing-step"><span class="step-no">1</span> 想換什麼</h3>
+        <fieldset id="listing-price">
+          <legend class="sr">想換什麼</legend>
+          <div id="listing-groups"></div>
+          <button id="listing-group-add" type="button" class="link">＋ 再加一組（或）</button>
+          <label class="check"><input id="listing-make-offer" type="checkbox" /> 不標價，接受出價</label>
+          <div class="fields">
+            <label for="listing-amount">賣幾件</label>
+            <input id="listing-amount" type="number" min="1" step="1" value="1" />
+          </div>
+        </fieldset>
+
+        <h3 class="listing-step"><span class="step-no">2</span> 屬性</h3>
+        <p class="help">虛線框是從截圖讀到的數字，請確認；不要的屬性取消勾選。</p>
+        <ul id="listing-affixes" class="listings affixes" aria-label="上架屬性"></ul>
+        <select id="listing-affix-select" aria-label="新增上架屬性"></select>
+
+        <details id="listing-env-box" class="listing-env">
+          <summary><span class="step-no">3</span> 環境：<span id="listing-env-summary"></span></summary>
+          <div class="fields">
+            <label for="listing-env-platform">平台</label>
+            <select id="listing-env-platform"></select>
+            <label for="listing-env-mode">模式</label>
+            <select id="listing-env-mode"></select>
+            <label for="listing-env-ladder">天梯</label>
+            <select id="listing-env-ladder"></select>
+            <label for="listing-env-version">版本</label>
+            <select id="listing-env-version"></select>
+          </div>
+          <p class="help">預設值可在「設定」裡改。</p>
+        </details>
+
+        <div class="action-bar">
+          <p id="listing-why" class="help" role="status" hidden></p>
+          <button id="listing-post" type="button" class="primary wide">上架</button>
+          <p id="listing-status" class="listing-status" role="status"></p>
+          <a id="listing-profile-link" class="listing-profile-link" href="#" target="_blank" rel="noopener" hidden></a>
+          <button id="listing-open-site" type="button" hidden>到 Traderie 手動上架</button>
+        </div>
+      </section>
+
+      <!-- 查詢中／查完之後：返回掃描清單和一行摘要 -->
+      <div id="part-summary" class="screen-head" hidden>
+        <button id="summary-back" type="button" class="link back">← 掃描清單</button>
+        <h2 id="summary-text" class="screen-title"></h2>
+      </div>
+      <div id="part-requery-row" class="actions">
         <button id="part-requery" type="button" hidden>重新查詢</button>
-        <button id="fuzzy-handoff" type="button" hidden>用詞綴找同類</button>
+        <button id="fuzzy-handoff" type="button" hidden></button>
       </div>
       <p id="part-stopped" class="stopped" role="status" hidden>已停止</p>
 
@@ -201,17 +257,17 @@
       <div id="part-run" hidden>
         <button id="start" type="button" class="primary wide">開始查詢</button>
         <button id="stop" type="button" class="wide" hidden>停止</button>
-        <p id="start-why" class="muted help" role="status" hidden></p>
+        <p id="start-why" class="help" role="status" hidden></p>
       </div>
 
       <section id="part-progress" hidden>
         <ol id="steps" class="steps"></ol>
         <p id="progress-status" class="muted" role="status"></p>
-        <p class="keep-open">請不要關閉這個側邊欄，也不要關掉最小化的查詢視窗</p>
+        <p class="keep-open notice" data-tone="warn">請不要關閉這個側邊欄，也不要關掉最小化的查詢視窗</p>
       </section>
 
       <div id="part-trust" hidden>
-        <div id="trust" class="trust">
+        <div id="trust" class="trust notice" data-tone="ok">
           <p id="trust-line"></p>
           <details id="trust-more">
             <summary id="trust-head"></summary>
@@ -219,12 +275,12 @@
           </details>
         </div>
       </div>
-      <p id="part-notes" class="notes" hidden></p>
+      <p id="part-notes" class="notes notice" data-tone="info" hidden></p>
 
       <!-- 結果：兩個分頁 -->
       <section id="part-results" hidden>
         <p id="results-caption" class="muted" hidden></p>
-        <div id="filter-line" class="filter-line" role="status" hidden>
+        <div id="filter-line" class="filter-line notice" data-tone="info" role="status" hidden>
           <span id="filter-text"></span>
           <button id="filter-edit" type="button" class="link" aria-label="改篩選">改</button>
         </div>
@@ -241,7 +297,7 @@
           <button id="result-copy" type="button" disabled>複製</button>
           <button id="result-open" type="button" disabled>前往網站</button>
         </div>
-        <p id="result-note" class="muted small" role="status" hidden></p>
+        <p id="result-note" class="help" role="status" hidden></p>
         <div id="trading-panel" role="tabpanel" aria-labelledby="trading-tab" tabindex="0">
           <p id="trading-meta" class="muted meta"></p>
           <button id="trading-clear" type="button" class="link" hidden>清除篩選</button>
