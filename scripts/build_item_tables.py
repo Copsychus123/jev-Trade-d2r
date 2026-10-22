@@ -30,6 +30,7 @@ import json
 import re
 import sys
 import time
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -421,24 +422,24 @@ def base_item_for_ambiguous(names: set[str], by_name: dict) -> str | None:
     return None
 
 
+def is_plausible_name(chinese: str) -> bool:
+    """Page text such as a reader's comment or a category heading is not an item name."""
+    if re.search(r"\s|\d|發表於", chinese):
+        return False
+    # A bare category word ("腰帶") is a heading on these pages, followed by some item: it never names that item.
+    # The few that are real item types are listed in EXTRA_ZH.
+    return chinese not in GENERIC_WORDS
+
+
 def combine(products: list[dict], pairs: list[tuple[str, str]]) -> tuple[dict, dict]:
     by_key = by_normalized_name(products)
     by_name = {p["name"]: p for p in products}
     zh: dict[str, str] = {}
     unmatched: dict[str, str] = {}
     ambiguous: dict[str, set[str]] = {}
-
-    def plausible_name(chinese: str) -> bool:
-        """Page text such as a reader's comment or a category heading is not an item name."""
-        if re.search(r"\s|\d|發表於", chinese):
-            return False
-        # A bare category word ("腰帶") is a heading on these pages, followed by some item: it never names that item.
-        # The few that are real item types are listed in EXTRA_ZH.
-        return chinese not in GENERIC_WORDS
-
     for chinese, english in pairs:
         product = find_product(english, by_key)
-        if product is not None and not plausible_name(chinese):
+        if product is not None and not is_plausible_name(chinese):
             continue
         if product is None:
             if len(english) >= MIN_GAME_NAME_CHARS:
@@ -507,16 +508,10 @@ def build_table(
     return data, report
 
 
-def category_counts(products: list[dict]) -> dict[str, int]:
-    counts: dict[str, int] = {}
-    for product in products:
-        counts[product["category"]] = counts.get(product["category"], 0) + 1
-    return counts
-
-
 def shrink_problems(old_products: list[dict], new_products: list[dict]) -> list[str]:
     """A category that vanished or lost more than MAX_SHRINK of its products against the committed table."""
-    before, after = category_counts(old_products), category_counts(new_products)
+    before = Counter(product["category"] for product in old_products)
+    after = Counter(product["category"] for product in new_products)
     problems = []
     for category, was in sorted(before.items()):
         now = after.get(category, 0)

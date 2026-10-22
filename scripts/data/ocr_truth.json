@@ -138,34 +138,5 @@
   "expect": "Ring",
   "visible_zh": "戒指",
   "phone_photo": false
- },
- {
-  "file": "6C7899AD-A65C-4F2F-B9E6-8E0C4C4AECE8.jpg",
-  "kind": "base",
-  "expect": "Coronet",
-  "visible_zh": "寶冠",
-  "phone_photo": true
- },
- {
-  "file": "IMG_0340.jpg",
-  "kind": "item",
-  "expect": "Mara's Kaleidoscope",
-  "visible_zh": "馬拉的萬花筒",
-  "phone_photo": true
- },
- {
-  "file": "IMG_0379.jpg",
-  "kind": "item",
-  "expect": "Arreat's Face",
-  "visible_zh": "亞瑞特的面容",
-  "phone_photo": true
- },
- {
-  "file": "IMG_0401.jpg",
-  "kind": "item",
-  "expect": "Crown Of Thieves",
-  "visible_zh": "盜賊皇冠／莊嚴王冠【卓越】",
-  "phone_photo": true,
-  "note": "corrected 2026-10-13: the picture prints 盜賊皇冠 with a unique's [12LL|200ED|100EG] roll tag (Crown of Thieves, a unique Grand Crown); the old label base:Grand Crown named only the type line"
  }
 ]
