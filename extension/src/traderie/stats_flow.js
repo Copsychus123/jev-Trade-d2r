@@ -13,7 +13,7 @@ import { readStatsView, verifyStats } from "./controller.js";
 import { loadItemTypes } from "./item-types.js";
 import { ensureProperties, loadProperties, numberConditionLabels } from "./properties.js";
 import { TRADERIE_D2R_URL, detectGuard } from "./site.js";
-import { timed } from "../timeline.js";
+import { openDetails, timed } from "../timeline.js";
 import {
   MAX_CONDITIONS,
   buildStatsUrl,
@@ -26,9 +26,6 @@ import {
 } from "./stats.js";
 
 const HOME_READS = 4;
-
-/** What Tab.open measured (navigate, settle, visibility), for the timeline entry of an open. */
-const openDetails = (tab) => tab?.openTiming ?? {};
 
 /**
  * Step 1's real read: open the D2R home page and read its Item Type list. Returns `{ itemTypes }`, or `{ guard: true }`

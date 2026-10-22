@@ -52,12 +52,12 @@ export async function cachedProperties(store = chrome.storage.local) {
   return saved;
 }
 
-/** The stored copy while it is younger than a week and carries properties, else null. */
-const usableCopy = (saved, now) =>
-  saved && now - saved.fetchedAt < PROPERTIES_TTL_MS && saved.properties.length ? saved : null;
+/** The stored copy while it is younger than `ttlMs` and its `field` list has entries, else null (item-types.js too). */
+export const usableCopy = (saved, now, ttlMs, field) =>
+  saved && now - saved.fetchedAt < ttlMs && saved[field].length ? saved : null;
 
 /** "（上次取得：YYYY-MM-DD）" for a failed read while an old copy exists, or "" when there is none. */
-const ageNote = (saved) => (saved ? `（上次取得：${isoDay(saved.fetchedAt)}）` : "");
+export const ageNote = (saved) => (saved ? `（上次取得：${isoDay(saved.fetchedAt)}）` : "");
 
 /**
  * A fresh read stored for later; a failure is an error that names the last good copy. `openTab` (optional) opens the
@@ -80,7 +80,7 @@ async function fetchAndStore({ tab, openTab, scripts, store, now, saved }) {
 /** The stored copy and whether it is still usable, read once for the two entry points below. */
 async function storedCopy(store, now) {
   const saved = await cachedProperties(store);
-  return { saved, fresh: usableCopy(saved, now) };
+  return { saved, fresh: usableCopy(saved, now, PROPERTIES_TTL_MS, "properties") };
 }
 
 /**

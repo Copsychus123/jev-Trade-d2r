@@ -18,6 +18,7 @@ const PRODUCT_PATH =
 const SEARCH_PATH = /^\/diablo2resurrected\/(?:search|products)\/?$/u;
 const ROOT_PATH = "/diablo2resurrected";
 const LOGIN_REASON = "需要登入：請先在這個 Chrome 登入 Traderie 再重新開始";
+const CHALLENGE_REASON = "防護頁/驗證碼";
 
 // Same netloc/path split as Python's urllib.parse.urlparse.
 const URL_PARTS = /^(?:[a-zA-Z][a-zA-Z0-9+.-]*:)?(?:\/\/([^/?#]*))?([^?#]*)/u;
@@ -85,13 +86,13 @@ export async function detectGuard(page, tab) {
   const challengeWord = text.includes("captcha") && text.length < CHALLENGE_TEXT_MAX && !hasListingMarkers(text);
   if ((page.title ?? "").toLowerCase().includes("just a moment") || text.includes("verify you are human") ||
       challengeWord) {
-    return "防護頁/驗證碼";
+    return CHALLENGE_REASON;
   }
   // Positive evidence, and the only probe that can still see a challenge whose text is long or carries markers. Kept
   // last because it costs a CDP round-trip while the text checks are local, and because it can fail; the order cannot
   // change which pages are guarded, since every branch returns the same reason.
   if (await tab.evaluate(`!!document.querySelector(${JSON.stringify(CHALLENGE_FRAMES)})`)) {
-    return "防護頁/驗證碼";
+    return CHALLENGE_REASON;
   }
   return null;
 }

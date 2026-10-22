@@ -1,5 +1,6 @@
 // Port of the reading/verification half of src/jev_ultrafast/traderie/controller.py. Same status, same reason_code
 // for the same page; see the module docstring there for the codes.
+import { sleep } from "../cdp.js";
 import { AbortedError, StalePage, TimeoutError } from "../errors.js";
 import { timed } from "../timeline.js";
 import { isTradeStart, parseRecentTrades, parseTradingTxt, splitLines } from "./parsing.js";
@@ -158,25 +159,16 @@ const VIEW_READERS = {
 };
 
 /**
- * The rows of one view from its page text, with the page's own row-marker count and the parsed recent-trades answer.
- * @returns {{rows: object[], markers: number, parsed: object|null}}
- */
-function parseView(reader, lines, text, itemName) {
-  const { rows, parsed } = reader.parse(text, itemName);
-  return { rows, markers: reader.markers(lines), parsed };
-}
-
-/**
  * Parses one view's page text into `result`: the login verdict first, then the row-count reconcile, else PASSED.
  */
 async function readRows(reader, result, text, itemName, tab) {
   const lines = splitLines(text).map((line) => line.trim());
-  const read = parseView(reader, lines, text, itemName);
-  if (read.parsed?.code === "login_required" || read.parsed?.code === "login_or_no_data") {
-    return fail(result, "login_required", read.parsed.reason, "BLOCKED");
+  const { rows, parsed } = reader.parse(text, itemName);
+  if (parsed?.code === "login_required" || parsed?.code === "login_or_no_data") {
+    return fail(result, "login_required", parsed.reason, "BLOCKED");
   }
-  const reconciled = reconcile(result, reader, read, lines);
-  return reconciled ?? Object.assign(result, { status: "PASSED", rows: read.rows, has_more: await hasMore(tab) });
+  const reconciled = reconcile(result, reader, { rows, markers: reader.markers(lines), parsed }, lines);
+  return reconciled ?? Object.assign(result, { status: "PASSED", rows, has_more: await hasMore(tab) });
 }
 
 /** The row-count check: the finished result when the read is inconclusive, or null when the rows and the page agree. */
@@ -227,8 +219,6 @@ async function readStatsOnce(tab, expectedUrl) {
   const reader = VIEW_READERS.stats;
   return readRows(reader, result, text, null, tab);
 }
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Reads the list. The page text stops changing a moment before the cards, and the sidebar's "Active Filters", are

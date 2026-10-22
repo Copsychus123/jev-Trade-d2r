@@ -81,6 +81,7 @@ export function indexTables(data) {
   return {
     ...indexProducts(data.products),
     ...indexChinese(data.zh),
+    products: data.products, // the raw list, for the listing form's rune choices (category "runes")
     bases: data.bases,
     baseByKey: new Map(data.bases.map((name) => [normalizeName(name), name])),
     gameOnly: new Set(data.game_only.map(normalizeName)),
@@ -97,29 +98,24 @@ export function baseOptions(tables) {
   return [...new Set(tables?.bases ?? [])];
 }
 
-/**
- * Up to `limit` names from the item tables for what is typed so far, best first; never the typed name itself.
- * Chinese: table names (separators ignored) that start with it, then those containing it; { label, hint: English }.
- * English (at least 2 letters after normalizeName): product names that start with it, then those with a word that
- * starts with it; { label: product.name, hint: "" }. Shorter names first within each group.
- */
-export function suggestNames(raw, tables, limit = 5) {
-  const typed = cleanName(raw);
-  if (!typed) return [];
-  if (hasChinese(typed)) {
-    const k = chineseKey(typed);
-    const matched = [];
-    for (const entry of tables.zhNames) {
-      if (entry.key === k) continue; // never suggest what was typed
-      let rank;
-      if (entry.key.startsWith(k)) rank = 0;
-      else if (entry.key.includes(k)) rank = 1;
-      else continue;
-      matched.push({ entry, rank });
-    }
-    matched.sort((a, b) => a.rank - b.rank || a.entry.name.length - b.entry.name.length);
-    return matched.slice(0, limit).map((m) => ({ label: m.entry.name, hint: m.entry.english }));
+/** Chinese side of suggestNames: table names whose separator-free key starts with / contains the typed key. */
+function suggestChinese(typed, tables, limit) {
+  const k = chineseKey(typed);
+  const matched = [];
+  for (const entry of tables.zhNames) {
+    if (entry.key === k) continue; // never suggest what was typed
+    let rank;
+    if (entry.key.startsWith(k)) rank = 0;
+    else if (entry.key.includes(k)) rank = 1;
+    else continue;
+    matched.push({ entry, rank });
   }
+  matched.sort((a, b) => a.rank - b.rank || a.entry.name.length - b.entry.name.length);
+  return matched.slice(0, limit).map((m) => ({ label: m.entry.name, hint: m.entry.english }));
+}
+
+/** English side of suggestNames: product names that start with / have a word starting with the typed key. */
+function suggestEnglish(typed, tables, limit) {
   const k = normalizeName(typed);
   if (k.length < 2) return [];
   const matched = [];
@@ -133,6 +129,18 @@ export function suggestNames(raw, tables, limit = 5) {
   }
   matched.sort((a, b) => a.rank - b.rank || a.len - b.len);
   return matched.slice(0, limit).map(({ label, hint }) => ({ label, hint }));
+}
+
+/**
+ * Up to `limit` names from the item tables for what is typed so far, best first; never the typed name itself.
+ * Chinese: table names (separators ignored) that start with it, then those containing it; { label, hint: English }.
+ * English (at least 2 letters after normalizeName): product names that start with it, then those with a word that
+ * starts with it; { label: product.name, hint: "" }. Shorter names first within each group.
+ */
+export function suggestNames(raw, tables, limit = 5) {
+  const typed = cleanName(raw);
+  if (!typed) return [];
+  return hasChinese(typed) ? suggestChinese(typed, tables, limit) : suggestEnglish(typed, tables, limit);
 }
 
 /**

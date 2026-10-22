@@ -17,10 +17,7 @@ import {
   titleIsItem,
 } from "./lookup.js";
 import { TRADERIE_D2R_URL, detectGuard, productRootUrl } from "./site.js";
-import { timed } from "../timeline.js";
-
-/** What Tab.open measured (navigate, settle, visibility), for the timeline entry of an open. */
-const openDetails = (tab) => tab?.openTiming ?? {};
+import { openDetails, timed } from "../timeline.js";
 
 const NAME_NOTES = {
   game_only: "遊戲裡有這個物品，但 Traderie 目錄沒有收錄，或名稱寫法不同",

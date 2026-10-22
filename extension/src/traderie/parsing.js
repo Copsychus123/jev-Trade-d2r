@@ -10,11 +10,11 @@ export const TRADE_START = "They Give";
 const TRADE_DONE_MARKERS = ["Sold For", "Traded For", "Closed For"];
 // Both trade parsers compare these markers against a line case-insensitively; lower them once instead.
 const TRADE_START_LOWER = TRADE_START.toLowerCase();
+const TRADE_DONE_MARKERS_LOWER = TRADE_DONE_MARKERS.map((marker) => marker.toLowerCase());
 
 /** Whether a page line opens a finished trade's "They Give" block (the marker is matched case-insensitively).
  *  The parser and the controller's marker count share it, so the two cannot disagree on where a trade begins. */
 export const isTradeStart = (line) => line.toLowerCase() === TRADE_START_LOWER;
-const TRADE_DONE_MARKERS_LOWER = TRADE_DONE_MARKERS.map((marker) => marker.toLowerCase());
 
 const LISTING_NOISE_LINES = new Set([
   "join akrew pro for an ad free experience!",
@@ -102,33 +102,23 @@ function cardPlatform(midLower) {
   return null;
 }
 
+/** A seller's rating line: its text in parentheses. */
+const isRatingLine = (line) => line.startsWith("(") && line.endsWith(")");
+
 /**
  * The card line naming the item and its index in `cleanPrefix` (the given name and -1 when not found).
  * @returns {{itemLine: string|null, itemIdx: number}}
  */
 function itemLine(cleanPrefix, itemName, itemLower) {
-  let nameLine = itemName;
-  let itemIdx = -1;
   if (itemLower !== null) {
-    for (let i = 0; i < cleanPrefix.length; i += 1) {
-      const low = cleanPrefix[i].toLowerCase();
-      if (low.includes(itemLower)) {
-        nameLine = cleanPrefix[i];
-        itemIdx = i;
-        break;
-      }
-    }
-  } else {
-    for (let i = 0; i < cleanPrefix.length; i += 1) {
-      const quantityMatch = /^(\d+)\s*[xX]\s+(.+)$/.exec(cleanPrefix[i]);
-      if (quantityMatch) {
-        nameLine = quantityMatch[2];
-        itemIdx = i;
-        break;
-      }
-    }
+    const itemIdx = cleanPrefix.findIndex((line) => line.toLowerCase().includes(itemLower));
+    return { itemLine: itemIdx === -1 ? itemName : cleanPrefix[itemIdx], itemIdx };
   }
-  return { itemLine: nameLine, itemIdx };
+  for (let i = 0; i < cleanPrefix.length; i += 1) {
+    const quantityMatch = /^(\d+)\s*[xX]\s+(.+)$/.exec(cleanPrefix[i]);
+    if (quantityMatch) return { itemLine: quantityMatch[2], itemIdx: i };
+  }
+  return { itemLine: itemName, itemIdx: -1 };
 }
 
 /**
@@ -136,17 +126,10 @@ function itemLine(cleanPrefix, itemName, itemLower) {
  * @returns {{seller: string|null, rating: string|null}}
  */
 function homeSeller(cleanPrefix, itemIdx) {
-  let seller = null;
-  let rating = null;
   for (let i = itemIdx - 1; i >= 0; i -= 1) {
-    const entry = cleanPrefix[i];
-    if (entry.startsWith("(") && entry.endsWith(")")) {
-      rating = entry;
-      seller = i > 0 ? cleanPrefix[i - 1] : null;
-      break;
-    }
+    if (isRatingLine(cleanPrefix[i])) return { seller: i > 0 ? cleanPrefix[i - 1] : null, rating: cleanPrefix[i] };
   }
-  return { seller, rating };
+  return { seller: null, rating: null };
 }
 
 // Card lines that are item stats, not environment tags (mirrors `STAT_TERMS` in parsing.py).
@@ -205,20 +188,12 @@ function tagToken(line, envTags) {
  * @returns {string[]}
  */
 function cardAffixes(midLines) {
-  const affixes = [];
-  for (const entry of midLines) {
-    const cleaned = tagToken(entry, CARD_ENV_TAGS);
-    if (cleaned) affixes.push(cleaned);
-  }
-  return affixes;
+  return midLines.map((entry) => tagToken(entry, CARD_ENV_TAGS)).filter(Boolean);
 }
 
 /** The index of the card line ("Trading For" or "Make an Offer") that ends its item section; -1 when absent. */
 function tradeIdx(cleanPrefix) {
-  for (let i = 0; i < cleanPrefix.length; i += 1) {
-    if (TRADING_MARKERS.includes(cleanPrefix[i])) return i;
-  }
-  return -1;
+  return cleanPrefix.findIndex((line) => TRADING_MARKERS.includes(line));
 }
 
 /**
@@ -235,10 +210,7 @@ function cardSellerRating(cleanPrefix, itemName, itemIdx) {
     return { seller, rating };
   }
   const seller = cleanPrefix[0];
-  let rating = null;
-  if (cleanPrefix.length > 1 && cleanPrefix[1].startsWith("(") && cleanPrefix[1].endsWith(")")) {
-    rating = cleanPrefix[1];
-  }
+  const rating = cleanPrefix.length > 1 && isRatingLine(cleanPrefix[1]) ? cleanPrefix[1] : null;
   return { seller, rating };
 }
 
@@ -330,32 +302,26 @@ function listingBounds(lines) {
 
 /** Group the listing area's lines into cards: each card ends at its own time line. */
 function splitCards(listingLines) {
-  const cardsRaw = [];
+  const cards = [];
   let current = [];
   for (const line of listingLines) {
     current.push(line);
     if (TIME_REGEX.test(line)) {
-      cardsRaw.push(current);
+      cards.push(current);
       current = [];
     }
   }
-  return cardsRaw;
+  return cards;
 }
 
 export function parseTradingTxt(text, { itemName = "Harlequin Crest" } = {}) {
   if (!text) return [];
 
   const lines = textLines(text).map((line) => line.replaceAll("\xa0", " "));
-
   const { start, end } = listingBounds(lines);
-  const cardsRaw = splitCards(lines.slice(start, end));
-
-  const listings = [];
-  for (const card of cardsRaw) {
-    const listing = cardData(card, itemName);
-    if (listing) listings.push(listing);
-  }
-  return listings;
+  return splitCards(lines.slice(start, end))
+    .map((card) => cardData(card, itemName))
+    .filter(Boolean);
 }
 
 /** One wanted-tag line, cleaned; null for the environment words and the "Additional Item(s)" filler. */
@@ -433,26 +399,23 @@ function tradeBlock(lines, start) {
       break;
     } else if (low.startsWith("high rune value")) {
       // skipped
-    } else if (stage === "gave") {
-      rawEnvLines.push(line);
-      const cleaned = answerToken(line);
-      if (cleaned) gave.push(cleaned);
     } else {
+      if (stage === "gave") rawEnvLines.push(line);
       const cleaned = answerToken(line);
-      if (cleaned) received.push(cleaned);
+      if (cleaned) (stage === "gave" ? gave : received).push(cleaned);
     }
     j += 1;
   }
 
-  const { platform, mode, ladder, gameVersion } = tradeEnv(rawEnvLines);
-
   if (!tradeTime || !(gave.length || received.length)) return { record: null, next: start + 1 };
+  const { platform, mode, ladder, gameVersion } = tradeEnv(rawEnvLines);
   const item = gave.length ? gave.join(", ") : "Unknown";
-  const record = trade(item, orPrice(received), tradeTime);
-  record.platform = platform;
-  record.mode = mode;
-  record.ladder = ladder;
-  record.game_version = gameVersion;
+  const record = Object.assign(trade(item, orPrice(received), tradeTime), {
+    platform,
+    mode,
+    ladder,
+    game_version: gameVersion,
+  });
   return { record, next: j + 1 };
 }
 
