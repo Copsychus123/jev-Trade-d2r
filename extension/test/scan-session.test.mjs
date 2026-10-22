@@ -964,6 +964,23 @@ test("a record keeps the key its base is remembered under and how often it was c
   assert.equal(session.records[0].base, "Sacred Ring", "a read that knows nothing of the correction does not undo it");
 });
 
+test("a read that fails after its head made a record is retried after a fresh stable run, not on every frame", () => {
+  // The failure path runs removeRecord (which clears the hold) BEFORE pump calls forgetKey: the streak reset inside
+  // forgetKey's held-branch then finds held already null and resets nothing, and the same tooltip re-emits on the
+  // very next frame.
+  const session = createScanSession();
+  const img = frame(BOX_A);
+  assert.equal(appearance(session, img), true);
+  const job = session.take();
+  assert.ok(job, "the crop is queued");
+  assert.equal(session.addRecord(record({ key: job.key, text: "head" })), true, "the head's record");
+  const { id } = session.records[0];
+  session.removeRecord(id); // the read failed after its head: the half-read record is taken off first
+  session.forgetKey(job.key, job.generation);
+  assert.equal(session.feed(img), null, "the very next frame of the same still tooltip does not crop again");
+  assert.ok(session.feed(img), "a fresh stable run does");
+});
+
 test("a read that keeps failing on a tooltip that stays open is retried after a fresh stable run, not on every frame", () => {
   const session = createScanSession();
   const img = frame(BOX_A);

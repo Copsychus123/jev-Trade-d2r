@@ -119,6 +119,7 @@ export function createScanSession() {
   const stats = { frames: 0, detected: 0, read: 0, skipped: 0, dropped: 0, ocrSeconds: 0, fallbackRuns: 0, fallbackHits: 0 };
   Object.defineProperty(stats, "queued", { get: () => queue.length, enumerable: true });
   let streak = 0;
+  let lastEmittedBox = null; // the box of the last emitted crop: forgetKey needs it when held is already gone
   let emitted = false;
   let lastBox = null;
   let lastHash = null;
@@ -155,6 +156,7 @@ export function createScanSession() {
     lastBox = null;
     lastHash = null;
     held = null;
+    lastEmittedBox = null;
   };
 
   // A box that differs from the last one starts a fresh run of identical frames: one off, and not yet handed out.
@@ -185,6 +187,7 @@ export function createScanSession() {
     emitted = true;
     const key = boxKey(small, box);
     held = { key, box: { ...box } };
+    lastEmittedBox = { ...box };
     return { box, key };
   }
 
@@ -243,13 +246,15 @@ export function createScanSession() {
     if (!key || from !== generation || records.some((record) => record.key && keysAlike(record.key, key, KEY_TOLERANCE))) return;
     const at = seenKeys.findIndex((seen) => keyDistance(seen, key) === 0);
     if (at >= 0) seenKeys.splice(at, 1);
+    // A read that keeps failing is retried after a fresh stable run, not on every frame; a different tooltip's run in
+    // progress is left alone. The reset cannot sit inside the held-branch below: a read that fails after its head has
+    // removeRecord already clear the hold (removeRecord keeps its own state clean), so held is null here and the
+    // still-failing tooltip would re-emit on the very next frame.
+    if (lastEmittedBox && (!held || boxNear(held.box, lastEmittedBox))) {
+      streak = 0;
+      lastBox = null;
+    }
     if (held && keysAlike(held.key, key, HELD_KEY_TOLERANCE)) {
-      // A read that keeps failing is retried after a fresh stable run, not on every frame; a different tooltip's run
-      // in progress is left alone.
-      if (lastBox && boxNear(held.box, lastBox)) {
-        streak = 0;
-        lastBox = null;
-      }
       held = null;
       emitted = false;
     }

@@ -1233,9 +1233,10 @@ test("a read the engine refused shows 辨識失敗 in front of the live status, 
   setup();
   await startScan();
   // The second panel's last frame waits in the decoder, so the capture is still feeding frames when the first read
-  // fails: that is what lets the next crop reach the engine in this same run (a stable tooltip re-enters the pump).
+  // fails: that is what lets the next crop reach the engine in this same run. The failed tooltip's own crop is only
+  // retried after a fresh stable run (forgetKey resets the streak), so the second read is panel B's.
   env.holdFrames.add(400000);
-  deliver([{ box: PANEL_A }, { box: PANEL_B, stripes: 0.3 }]);
+  deliver([{ box: PANEL_A }, { box: PANEL_B, stripes: 0.3 }, { box: PANEL_A, frames: 2 }]);
   await settleReads(1); // panel A's crop is at the engine and stays there
   env.ocr.pending[0].reject(new Error("engine exploded"));
   await settle(() => statusText().includes("engine exploded"), "the failure to reach the status line");
