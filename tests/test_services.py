@@ -106,6 +106,42 @@ def test_used_up_code_stays_used_up_on_a_later_day(store, code):
     assert err.value.status == 429
 
 
+def test_a_lost_quota_rollback_leaves_the_count_high_and_the_code_spent_never_granting_a_query(store, code):
+    # A killed process between the +1 and its -1 leaves `used` one above the limit. That is the safe side of the window:
+    # every later request still counts one higher, compares over the limit and is refused, and the count never drops
+    # below what was really used -- so a crash can cost that code one query (topup gives it back) but never hand one
+    # out.
+    key = record_of(code)
+    store.run("HSET", key, "limit", "2")
+    for _ in range(2):
+        assert start(store, code)[0] == 200
+    assert store.data[key]["used"] == "2"
+
+    real_run = store.run
+
+    def run_with_a_lost_undo(*command):
+        if command[:2] == ("HINCRBY", key) and command[2:] == ("used", -1):
+            raise StoreError("the undo never landed")
+        return real_run(*command)
+
+    store.run = run_with_a_lost_undo
+    with pytest.raises(StoreError):  # the request that went over the limit died with the store gone
+        start(store, code)
+    store.run = real_run
+    assert store.data[key]["used"] == "3"  # its undo never ran, so the count is one too high
+
+    for _ in range(3):
+        assert start(store, code)[0] == 429  # the code stays spent ...
+        assert store.data[key]["used"] == "3"  # ... and the count holds: nothing lowers it below the truth
+
+    # The admin gives it back with topup. A lost undo costs two units, not one: the phantom count sits on top of the
+    # limit, so raising the limit by one only makes room for the phantom. This is the price of the crash window.
+    invites.topup(store, "amy", 1)
+    assert start(store, code)[0] == 429
+    invites.topup(store, "amy", 1)
+    assert start(store, code)[0] == 200
+
+
 def test_bad_input_does_not_count(store, code):
     assert start(store, code, item_name="   ")[1]["error"] == "請輸入裝備名稱"
     status, body = start(store, code, ip="i", item_name="a" * 201)
@@ -291,26 +327,28 @@ def test_base_picking_uses_the_run_call_limit_and_rejects_bad_lists(store, code)
 
 def test_a_failed_base_pick_keeps_its_call_and_gives_the_start_use_back_once(store, code):
     """A pick Jev cannot answer still costs the run the call it reserved, and — since the run got no answer at all —
-    the start use comes back once: the counter stays at one while the invitation's `used` drops by one."""
+    the start use comes back once, and the run is closed (its call budget is spent) so it cannot go on for free."""
     token, rid = token_and_run(store, code)
     record = record_of(code)
 
     status, reply = pick(store, token, jev_down)
     assert (status, reply["code"]) == (502, "model_unavailable")
-    assert store.run("GET", f"run:{rid}") == "1"  # the reserved call is this attempt's cost, not handed back
-    assert store.run("HGET", record, "used") == "0"  # but the start use of the unanswered run came back
+    assert store.run("GET", f"run:{rid}") == str(app.MAX_MODEL_CALLS)  # spent: the run is closed by its refund
+    assert store.run("HGET", record, "used") == "0"  # the start use of the unanswered run came back
     assert store.run("GET", f"refund:{rid}") == "1"  # claimed, so no later step of the run refunds again
 
 
-def test_a_second_failed_base_pick_in_a_run_does_not_give_the_start_use_back_again(store, code):
-    """The refund is claimed once per run: Jev failing twice keeps both attempts' calls, but the start use goes back
-    on the first failure only (`refund:{rid}` is set with NX)."""
+def test_a_refunded_run_is_closed_and_a_second_attempt_neither_runs_nor_refunds_again(store, code):
+    """A refunded run cannot keep serving steps for free: the next one is refused as the run's call limit, the model is
+    not asked, and the start use is given back once only."""
     token, rid = token_and_run(store, code)
     record = record_of(code)
 
     assert pick(store, token, jev_down)[0] == 502
-    assert pick(store, token, jev_down)[0] == 502
-    assert store.run("GET", f"run:{rid}") == "2"  # each attempt kept its own reserved call
+    status, reply = pick(store, token, lambda *_: pytest.fail("the model must not be asked for a refunded run"))
+    assert (status, reply["code"]) == (429, "call_limit")
+    status, reply = choose(store, token, lambda *_: pytest.fail("nor for a choose step"))
+    assert (status, reply["code"]) == (429, "call_limit")
     assert store.run("HGET", record, "used") == "0"  # one start use given back, not two
     assert store.run("GET", f"refund:{rid}") == "1"
 
@@ -363,7 +401,7 @@ def content_length(body=b"", length=None):
     return str(len(body)) if length is None else length
 
 
-def call_wsgi(method, path, body=b"", store=None, length=None):
+def call_wsgi(method, path, body=b"", store=None, length=None, content_type="application/json"):
     from jevsvc.http import wsgi
 
     seen = {}
@@ -371,6 +409,7 @@ def call_wsgi(method, path, body=b"", store=None, length=None):
         "REQUEST_METHOD": method,
         "PATH_INFO": path,
         "CONTENT_LENGTH": content_length(body, length),
+        "CONTENT_TYPE": content_type,
         "wsgi.input": io.BytesIO(body),
         "REMOTE_ADDR": "1.2.3.4",
     }
@@ -382,13 +421,13 @@ def call_wsgi(method, path, body=b"", store=None, length=None):
     return seen["status"], seen["headers"], data
 
 
-def test_wsgi_serves_the_two_routes_with_cors_and_rejects_everything_else(store, secret_env):
+def test_wsgi_serves_the_two_routes_without_cors_and_rejects_everything_else(store, secret_env):
     code = invites.add(store, "小明")
     start = json.dumps({"invite": code, "item_name": "Shako"}).encode()
     status, headers, data = call_wsgi("POST", "/api/run/start", start, store)
     assert status.startswith("200") and json.loads(data)["used"] == 1
-    assert headers["Access-Control-Allow-Origin"] == "*"
-    assert call_wsgi("OPTIONS", "/api/choose", store=store)[0].startswith("204")
+    assert not any(name.lower().startswith("access-control-") for name in headers), "no CORS: only the extension calls"
+    assert call_wsgi("OPTIONS", "/api/choose", store=store)[0].startswith("405"), "a preflight is never granted"
     assert call_wsgi("GET", "/api/choose", store=store)[0].startswith("405")
     assert call_wsgi("POST", "/api/other", store=store)[0].startswith("404")
     wrong = json.dumps({"invite": "inv-wrong", "item_name": "Shako"}).encode()
@@ -424,7 +463,7 @@ class FakeHandler:
         self.rfile = io.BytesIO(body)
         self.wfile = io.BytesIO()
         self.client_address = (address, 12345)
-        self.headers = FakeHeaders({"Content-Length": content_length(body, length)})
+        self.headers = FakeHeaders({"Content-Length": content_length(body, length), "Content-Type": "application/json"})
         self.status = None
         self.sent = []
 
@@ -470,7 +509,7 @@ def test_a_404_and_a_405_carry_their_exact_payloads(store):
     status, headers, data = call_wsgi("GET", "/api/choose", store=store)
     assert status == "405 Method Not Allowed"
     assert json.loads(data) == {"error": "只接受 POST", "code": "method_not_allowed"}
-    assert headers["Allow"] == "POST, OPTIONS"
+    assert headers["Allow"] == "POST"
     status, _headers, data = call_wsgi("POST", "/api/nope", store=store)
     assert status == "404 Not Found"
     assert json.loads(data) == {"error": "找不到", "code": "not_found"}
@@ -939,3 +978,81 @@ def test_history_that_is_not_a_list_of_shaped_entries_is_a_bad_page(store, code)
     assert app.choose_step({"run_token": token, "phase": "trading", "page": PAGE}, store, SECRET, NOW, ok)[0] == 200
     body = {"run_token": token, "phase": "trading", "page": PAGE, "history": [{"action": None}]}
     assert app.choose_step(body, store, SECRET, NOW, ok)[0] == 200
+
+
+def status_of(store, code, ip="1.1.1.1"):
+    try:
+        return app.invite_status({"invite": code}, ip, store, SECRET, NOW)
+    except invites.InviteError as err:
+        return err.status, {"error": err.message}
+
+
+def test_invite_status_reports_what_is_left_and_counts_nothing(store, code):
+    assert status_of(store, code) == (200, {"used": 0, "limit": 100, "left": 100})
+    start(store, code)
+    start(store, code)
+    assert status_of(store, code) == (200, {"used": 2, "limit": 100, "left": 98})
+    assert status_of(store, code) == (200, {"used": 2, "limit": 100, "left": 98}), "asking twice changes nothing"
+    assert store.data[record_of(code)]["used"] == "2"
+
+
+def test_invite_status_of_a_used_up_code_says_zero_left_instead_of_refusing(store):
+    code = invites.add(store, "amy", limit=1)
+    assert start(store, code)[0] == 200
+    assert status_of(store, code) == (200, {"used": 1, "limit": 1, "left": 0})
+
+
+def test_invite_status_refuses_an_unknown_code_and_shares_the_wrong_guess_throttle(store):
+    assert status_of(store, "nope") == (401, {"error": "邀請碼無效或已停用"})
+    for _ in range(invites.FAIL_LIMIT):
+        status_of(store, "nope")
+    assert status_of(store, "nope")[0] == 429
+    assert start(store, "nope")[0] == 429, "guesses made here count against starting a query too"
+
+
+def test_a_forged_or_expired_run_token_is_refused_without_touching_the_store(secret_env):
+    """Garbage traffic must not spend store commands: the token's HMAC is checked before the pause switch is read."""
+    from jevsvc.http import process
+
+    class Counting(MemoryStore):
+        commands = 0
+
+        def run(self, *args):
+            Counting.commands += 1
+            return super().run(*args)
+
+        def pipeline(self, commands, **kwargs):
+            Counting.commands += len(commands)
+            return super().pipeline(commands, **kwargs)
+
+    store = Counting()
+    body = json.dumps({"run_token": "forged.token", "phase": "trading"}).encode()
+    status, payload = process(str(len(body)), lambda n: body, "caller", app.choose_route, store)
+    assert (status, payload["code"]) == (401, "token_invalid")
+    assert Counting.commands == 0
+
+    expired = tokens.sign(SECRET, {"exp": 1, "rid": "r", "inv": "i" * 64, "item": "x", "lm": 0})
+    body = json.dumps({"run_token": expired}).encode()
+    assert process(str(len(body)), lambda n: body, "caller", app.choose_route, store)[0] == 401
+    assert Counting.commands == 0
+
+
+def test_a_body_that_is_not_an_object_is_a_400_through_the_transport_too(secret_env):
+    """The run-token pre-check runs before the route: a `null`, a number, or a string must still be a plain 400."""
+    from jevsvc.http import process
+
+    for raw in (b"null", b"5", b"true", b'"run_token"', b"[]"):
+        status, payload = process(str(len(raw)), lambda n, raw=raw: raw, "caller", app.choose_route, MemoryStore())
+        assert (status, payload["code"]) == (400, "bad_request"), raw
+
+
+def test_a_post_must_be_application_json_so_a_web_page_cannot_send_it_without_a_preflight(store, secret_env):
+    """A no-cors cross-site POST can only be text/plain (or form data): refused before anything is read or counted."""
+    body = json.dumps({"invite": "inv-wrong", "item_name": "Shako"}).encode()
+    for content_type in ("text/plain", "application/x-www-form-urlencoded", ""):
+        status, _headers, data = call_wsgi("POST", "/api/run/start", body, store, content_type=content_type)
+        assert status.startswith("415"), content_type
+        assert json.loads(data)["code"] == "unsupported_media_type"
+    assert not store.data, "the wrong-guess throttle was never touched"
+    json_type = "application/json; charset=utf-8"
+    assert call_wsgi("POST", "/api/run/start", body, store, content_type=json_type)[0].startswith("401")

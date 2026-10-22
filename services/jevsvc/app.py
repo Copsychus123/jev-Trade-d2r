@@ -54,17 +54,32 @@ def _error(status, error, code):
     return status, {"error": error, "code": code}
 
 
+def _api_key() -> str:
+    return os.environ.get("TYPESAFE_API_KEY", "").strip()
+
+
 def _brief(exc) -> str:
     """Exception type and a short one-line message for the log: never a request body, never the key."""
     text = " ".join(str(exc).split())
-    key = os.environ.get("TYPESAFE_API_KEY", "").strip()
-    if key:
+    if key := _api_key():
         text = text.replace(key, "***")
     return f"{type(exc).__name__}: {text[:200]}"
 
 
 def _model_configured() -> bool:
-    return bool(os.environ.get("TYPESAFE_API_KEY", "").strip())
+    return bool(_api_key())
+
+
+def _invite_code(body) -> str:
+    """The invite code a request carries; anything that is not a string reads as no code."""
+    invite = body.get("invite")
+    return invite if isinstance(invite, str) else ""
+
+
+def _has_invite_record(claims) -> bool:
+    """Whether the token's `inv` is a full code hash; tokens of an older version carry only a log prefix, so there is
+    no record to add to or refund."""
+    return len(claims["inv"]) == 64
 
 
 def _clean_item(raw) -> str:
@@ -102,6 +117,17 @@ def _remembered_start(store, saved_key, secret):
         return None  # unreadable: start again
 
 
+def _remember_start(store, saved_key, payload, used, limit) -> None:
+    """Keep the answer of a start under its request_id so a repeat can replay it. The use is already counted, so a store
+    failure is logged and the client is answered anyway."""
+    if not saved_key:
+        return
+    try:
+        store.run("SET", saved_key, json.dumps([payload, used, limit]), "EX", tokens.RUN_SECONDS)
+    except StoreError as exc:
+        print(f"start not remembered: {exc}", flush=True)
+
+
 def run_start(body, caller, store, secret, now):
     if refusal := _refuse_non_object(body):
         return refusal
@@ -116,8 +142,7 @@ def run_start(body, caller, store, secret, now):
     request_id = body.get("request_id")
     if request_id is not None and not (isinstance(request_id, str) and REQUEST_ID.match(request_id)):
         return _error(400, **BAD_REQUEST)
-    invite = body.get("invite")
-    invite = invite if isinstance(invite, str) else ""
+    invite = _invite_code(body)
     # A client that repeats a start it never got an answer for (same request_id) gets the same answer, uncounted.
     # This returns before the invite checks on purpose: the reply is the token already signed for that rid, so it
     # shares that run's own 30-call budget and cannot multiply it. The consequence is that revoke, disable and pause
@@ -134,12 +159,7 @@ def run_start(body, caller, store, secret, now):
         "lm": load_more,
         "exp": int(now.timestamp()) + tokens.RUN_SECONDS,
     }
-    if saved_key:
-        remembered = json.dumps([payload, invite_record["used"], invite_record["limit"]])
-        try:
-            store.run("SET", saved_key, remembered, "EX", tokens.RUN_SECONDS)
-        except StoreError as exc:  # the use is already counted: answer anyway
-            print(f"start not remembered: {exc}", flush=True)
+    _remember_start(store, saved_key, payload, invite_record["used"], invite_record["limit"])
     print(f"start inv={invite_record['hash'][:12]} used={invite_record['used']}", flush=True)
     return 200, _start_reply(secret, payload, invite_record["used"], invite_record["limit"])
 
@@ -263,7 +283,7 @@ def _after_success(store, claims, run_key, *, spare, calls, usage):
     commands = [("SET", f"ok:{claims['rid']}", "1", "EX", tokens.RUN_SECONDS)]
     if spare:
         commands.append(("DECRBY", run_key, spare))
-    if len(claims["inv"]) == 64:  # tokens of an older version carry only a log prefix: no record to add to
+    if _has_invite_record(claims):
         commands += invites.usage_commands(claims["inv"], calls, tokens_in)
     try:
         store.pipeline(commands)
@@ -287,10 +307,13 @@ def _after_failure(store, claims, run_key, *, spare=1):
         if (
             was_answered is None
             and claimed == "OK"
-            and len(claims["inv"]) == 64
+            and _has_invite_record(claims)
             and store.run("HEXISTS", record, "limit")
         ):
             store.run("HINCRBY", record, "used", -1)
+            # The use is given back, so this token must not keep serving: its budget is spent, and the next step answers
+            # 「已達上限，請重新開始」 (a new start is a new, counted use) instead of running the same run for free.
+            store.run("SET", run_key, MAX_MODEL_CALLS, "EX", tokens.RUN_SECONDS)
     except StoreError as exc:
         print(f"failed step not settled: {exc}", flush=True)
 
@@ -341,30 +364,37 @@ def _reserve_call_budget(store, claims, count, override=None):
     return run_key, _error(429, msg, "call_limit")
 
 
-def choose_step(body, store, secret, now, chooser=None):
-    if refusal := _refuse_non_object(body):
-        return refusal
-    deadline, claims = _step_claims(body, secret, now)
-    phase = body.get("phase")
+def _read_choose_page(body):
+    """(page, history, None) of a choose request once clean and in scope, else (None, None, the 400 refusal)."""
     page = _clean_page(body.get("page"))
     history = _clean_history(body.get("history", []))
-    if phase not in VIEW_NAMES or page is None or history is None:
-        return _error(400, BAD_PAGE, "bad_page")
+    if body.get("phase") not in VIEW_NAMES or page is None or history is None:
+        return None, None, _error(400, BAD_PAGE, "bad_page")
     reason = traderie_scope_reason(page["url"])
     if reason:
-        return _error(400, f"超出範圍：{reason}", "out_of_scope")
+        return None, None, _error(400, f"超出範圍：{reason}", "out_of_scope")
     try:
         # The one place a page of the wrong shape can fail. After this, errors are ours or Jev's, never the client's.
         model.action_space(page["actions"])
     except (KeyError, TypeError, ValueError, AttributeError):
-        return _error(400, BAD_PAGE, "bad_page")
+        return None, None, _error(400, BAD_PAGE, "bad_page")
+    return page, history, None
+
+
+def choose_step(body, store, secret, now, chooser=None):
+    if refusal := _refuse_non_object(body):
+        return refusal
+    deadline, claims = _step_claims(body, secret, now)
+    page, history, refusal = _read_choose_page(body)
+    if refusal:
+        return refusal
     # run:{rid} counts model calls. A request may cost two (re-ask), so both are reserved up front and one is handed
     # back when it was not needed: a run never makes more than MAX_MODEL_CALLS calls.
     run_key, refusal = _reserve_call_budget(store, claims, 2, chooser)
     if refusal:
         return refusal
     try:
-        goal = phase_plan(build_goal(claims["item"], claims["lm"]))[0][VIEW_NAMES.index(phase)]
+        goal = phase_plan(build_goal(claims["item"], claims["lm"]))[0][VIEW_NAMES.index(body["phase"])]
         # A client that saw a results page it is sure about asks again without the BLOCKED option.
         extra = {"allow_blocked": False} if body.get("no_block") is True else {}
         decision = (chooser or model.choose)(
@@ -434,8 +464,17 @@ def pick_base_route(body, caller, store, secret, now):
     return pick_base_step(body, store, secret, now)
 
 
+def invite_status(body, caller, store, secret, now):
+    """How many queries an invite code has left. Read-only: no use is counted and no model is called."""
+    if refusal := _refuse_non_object(body):
+        return refusal
+    status = invites.peek(store, _invite_code(body), caller, now)
+    return 200, {**status, "left": status["limit"] - status["used"]}
+
+
 ROUTES = {
     "/api/run/start": run_start,
+    "/api/invite/status": invite_status,
     "/api/choose": choose_route,
     "/api/run/base": pick_base_route,
 }

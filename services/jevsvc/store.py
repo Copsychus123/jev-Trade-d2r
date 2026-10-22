@@ -20,6 +20,12 @@ def _unsupported(name: str) -> StoreError:
     return StoreError(f"unsupported command {name}")
 
 
+def _raise_if_error(reply: dict) -> None:
+    """Upstash answers a failed command with {"error": ...} in place of {"result": ...}."""
+    if "error" in reply:
+        raise StoreError(str(reply["error"]))
+
+
 class Store:
     def __init__(self, url: str, token: str):
         self.url = url.rstrip("/")
@@ -44,20 +50,18 @@ class Store:
         body = self._post(self.url, [str(c) for c in command])
         if not isinstance(body, dict):
             raise StoreError("unexpected store reply")
-        if "error" in body:
-            raise StoreError(str(body["error"]))
+        _raise_if_error(body)
         return body.get("result")
 
     def pipeline(self, commands, atomic: bool = False) -> list:
         commands = [[str(c) for c in command] for command in commands]
         body = self._post(f"{self.url}/{'multi-exec' if atomic else 'pipeline'}", commands)
-        if isinstance(body, dict) and "error" in body:  # a rejected transaction is one error, not a list
-            raise StoreError(str(body["error"]))
+        if isinstance(body, dict):  # a rejected transaction is one error, not a list
+            _raise_if_error(body)
         if not isinstance(body, list) or len(body) != len(commands) or not all(isinstance(r, dict) for r in body):
             raise StoreError("unexpected store reply")
         for reply in body:
-            if "error" in reply:
-                raise StoreError(str(reply["error"]))
+            _raise_if_error(reply)
         return [reply.get("result") for reply in body]
 
 

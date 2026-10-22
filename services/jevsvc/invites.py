@@ -15,6 +15,7 @@ FAIL_LIMIT = 10
 FAIL_WINDOW = 900
 PAUSE_KEY = "paused"
 NAME_INDEX = "invite-names"
+RECORD_PREFIX = "invite:"
 DUPLICATE = "這個名字已經有邀請碼"
 NOT_FOUND = "找不到這個名字"
 
@@ -32,7 +33,7 @@ def code_hash(code) -> str:
 
 
 def record_key(digest: str) -> str:
-    return f"invite:{digest}"
+    return RECORD_PREFIX + digest
 
 
 def new_code() -> str:
@@ -83,7 +84,7 @@ def _all(store) -> list[dict]:
     """Every user record, each with its key, sorted by name. Keys that are not invite records are left out."""
     cursor, rows = "0", {}
     while True:
-        cursor, keys = store.run("SCAN", cursor, "MATCH", "invite:*", "COUNT", 1000)
+        cursor, keys = store.run("SCAN", cursor, "MATCH", f"{RECORD_PREFIX}*", "COUNT", 1000)
         if keys:
             for key, flat in zip(keys, store.pipeline([("HGETALL", key) for key in keys])):
                 rows[key] = {**fields_to_dict(flat), "key": key}  # SCAN may return a key more than once
@@ -100,7 +101,7 @@ def _find(store, name):
             return {**record, "key": record_key(digest)}
     found = next((r for r in _all(store) if r.get("name") == name), None)
     if found:  # created before the name index existed (or the entry went stale): index it
-        store.run("HSET", NAME_INDEX, name, found["key"].removeprefix("invite:"))
+        store.run("HSET", NAME_INDEX, name, found["key"].removeprefix(RECORD_PREFIX))
     return found
 
 
@@ -129,12 +130,16 @@ def add(store, name, *, limit=DEFAULT_LIMIT, expires=None) -> str:
     return code
 
 
+def _set_disabled(store, name, flag: str) -> None:
+    store.run("HSET", _require(store, name)["key"], "disabled", flag)
+
+
 def revoke(store, name) -> None:
-    store.run("HSET", _require(store, name)["key"], "disabled", "1")
+    _set_disabled(store, name, "1")
 
 
 def enable(store, name) -> None:
-    store.run("HSET", _require(store, name)["key"], "disabled", "0")
+    _set_disabled(store, name, "0")
 
 
 def topup(store, name, amount) -> int:
@@ -194,8 +199,9 @@ def usage_commands(digest: str, calls: int, input_tokens: int) -> list[tuple]:
     return [("HINCRBY", key, "calls", calls), ("HINCRBY", key, "input_tokens", input_tokens)]
 
 
-def check_and_count(store, code, caller, now) -> dict:
-    """Count one use of `code` for `caller` (the hashed throttle key from `client_key`), or refuse it."""
+def _valid_record(store, code, caller, now) -> tuple[str, str, dict]:
+    """(hash, record key, record) of a usable `code`, or the refusal: too many wrong guesses from `caller`, an unknown
+    or disabled code (counted as a wrong guess), an expired one. Shared by the counting check and the read-only one."""
     fail_key = f"fail:{caller}"
     digest = code_hash(code)
     key = record_key(digest)
@@ -209,7 +215,27 @@ def check_and_count(store, code, caller, now) -> dict:
         raise InviteError(401, "邀請碼無效或已停用", "invite_invalid")
     if _expired(record.get("expires"), now):
         raise InviteError(401, "邀請碼已過期", "invite_expired")
+    return digest, key, record
+
+
+def peek(store, code, caller, now) -> dict:
+    """What `code` has left, counting nothing: the same refusals and the same wrong-guess throttle as a start, so this
+    cannot be used to guess codes any faster than starting a query could."""
+    _, _, record = _valid_record(store, code, caller, now)
     limit = int(record["limit"])
+    return {"used": min(_count(record, "used"), limit), "limit": limit}
+
+
+def check_and_count(store, code, caller, now) -> dict:
+    """Count one use of `code` for `caller` (the hashed throttle key from `client_key`), or refuse it."""
+    digest, key, record = _valid_record(store, code, caller, now)
+    limit = int(record["limit"])
+    # Speculative count: +1 first, -1 back when it went over. Two commands, so a process killed between them leaves the
+    # count one too high -- that code then has one query fewer, and `invite.py topup` needs 2 units to give one back
+    # (the phantom sits on top of the limit). Kept this way on purpose: a "repair on read" that clamps an over-limit
+    # count was measured to race (two requests reading the same stale value both clamp, one erasing the other's +1; 18
+    # of 70 interleavings granted a spent code a query), and the store has no EVAL for an atomic read-compare-set. An
+    # overcount is the safe side of the window. Pinned by tests/test_services.py (lost rollback).
     used = store.run("HINCRBY", key, "used", 1)
     if used > limit:
         store.run("HINCRBY", key, "used", -1)

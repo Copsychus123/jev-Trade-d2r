@@ -9,13 +9,12 @@ from datetime import datetime, timezone
 from http import HTTPStatus
 from typing import Callable
 
-from . import invites
+from . import invites, tokens
 from .invites import InviteError
 from .store import StoreError, shared_store
 
 MAX_BODY = 262144
-ALLOWED_METHODS = "POST, OPTIONS"
-PREFLIGHT_MAX_AGE = "86400"
+ALLOWED_METHODS = "POST"
 # The two refusals this transport itself can produce, and the single home of their message and code: the routes import
 # them (app.py) so the same failure cannot come back with two different texts.
 BAD_REQUEST = {"error": "請求格式錯誤", "code": "bad_request"}
@@ -24,10 +23,12 @@ HEADERS = {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Access-Control-Allow-Methods": ALLOWED_METHODS,
 }
+# No CORS headers on purpose: the only client is the extension side panel, which reaches this origin through its
+# manifest host permission. A web page therefore cannot read the answers, and because a body must be application/json
+# (which a cross-site page can only send after a preflight that is never granted) it cannot burn a visitor's
+# wrong-guess throttle with a no-cors text/plain POST either.
+UNSUPPORTED_MEDIA = {"error": "請求格式錯誤", "code": "unsupported_media_type"}
 
 
 @dataclass(frozen=True)
@@ -66,6 +67,17 @@ def client_key(request: Request) -> str:
     return hashlib.sha256(address.encode("utf-8")).hexdigest()[:16]
 
 
+def _store_from_env():
+    """The shared Redis store the deployment is configured with, or None (after logging what is missing)."""
+    url = os.environ.get("KV_REST_API_URL")
+    token = os.environ.get("KV_REST_API_TOKEN")
+    for name, value in (("KV_REST_API_URL", url), ("KV_REST_API_TOKEN", token)):
+        if not value:
+            print(f"missing env: {name}", flush=True)
+            return None
+    return shared_store(url, token)
+
+
 def process(raw_length, read_body, caller, route, store=None):
     """The request logic shared by every transport: returns (status, payload).
     `raw_length` is the Content-Length header as sent (or None): it is client input and may be junk; `caller` is the
@@ -87,17 +99,18 @@ def process(raw_length, read_body, caller, route, store=None):
         if len(secret) < 32:
             print("missing or short env: RUN_TOKEN_SECRET", flush=True)
             return 500, NOT_CONFIGURED
+        now = datetime.now(timezone.utc)
+        # A step of a run carries a signed token: a forged, expired or malformed one is refused here, on the HMAC alone,
+        # so garbage traffic costs no store command (the store is the paid, rate-limited part of the deployment).
+        if isinstance(body, dict) and "run_token" in body:  # anything else is the route's own 400
+            tokens.verify(secret, body["run_token"], now.timestamp())
         if store is None:
-            url = os.environ.get("KV_REST_API_URL")
-            token = os.environ.get("KV_REST_API_TOKEN")
-            for name, value in (("KV_REST_API_URL", url), ("KV_REST_API_TOKEN", token)):
-                if not value:
-                    print(f"missing env: {name}", flush=True)
-                    return 500, NOT_CONFIGURED
-            store = shared_store(url, token)
+            store = _store_from_env()
+            if store is None:
+                return 500, NOT_CONFIGURED
         if store.run("GET", invites.PAUSE_KEY):  # the kill switch: `invite.py pause`
             return 503, {"error": "服務暫時停用，請稍後再試", "code": "paused"}
-        return route(body, caller, store, secret, datetime.now(timezone.utc))
+        return route(body, caller, store, secret, now)
     except InviteError as exc:
         return exc.status, {"error": exc.message, **({"code": exc.code} if exc.code else {})}
     except StoreError as exc:
@@ -113,10 +126,10 @@ def handle(request: Request, routes, store=None):
     route = routes.get(normalize_path(request.path))
     if route is None:
         return 404, {"error": "找不到", "code": "not_found"}, {}
-    if request.method == "OPTIONS":
-        return 204, None, {"Access-Control-Max-Age": PREFLIGHT_MAX_AGE}
     if request.method != "POST":
         return 405, {"error": "只接受 POST", "code": "method_not_allowed"}, {"Allow": ALLOWED_METHODS}
+    if not (request.header("Content-Type") or "").lower().startswith("application/json"):
+        return 415, UNSUPPORTED_MEDIA, {}
     status, payload = process(request.content_length, request.read, client_key(request), route, store)
     return status, payload, {}
 
@@ -147,13 +160,19 @@ def serve(handler, routes, store=None):
     handler.wfile.write(data)
 
 
+def _environ_key(name):
+    """The WSGI environ key of a request header: Content-Type has no HTTP_ prefix, every other header has one."""
+    key = name.upper().replace("-", "_")
+    return key if key == "CONTENT_TYPE" else "HTTP_" + key
+
+
 def wsgi(environ, start_response, routes, store=None):
-    """WSGI transport (Vercel): POST and OPTIONS on the paths in `routes`."""
+    """WSGI transport (Vercel): POST on the paths in `routes`."""
     request = Request(
         method=environ["REQUEST_METHOD"],
         path=environ.get("PATH_INFO", ""),
         content_length=environ.get("CONTENT_LENGTH"),
-        header=lambda name: environ.get("HTTP_" + name.upper().replace("-", "_")),
+        header=lambda name: environ.get(_environ_key(name)),
         read=environ["wsgi.input"].read,
         remote=environ.get("REMOTE_ADDR", ""),
     )
